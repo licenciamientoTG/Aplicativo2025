@@ -7522,6 +7522,77 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'cash_reconciliation_triple.html',compact('lastAutomaticRun','isSuperAdmin'));
     }
 
+    /** Historial del monitor de cambios ControlGas, restringido a Díaz Gas sin Praxedis. */
+    public function efc_conc_cambios_historial(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $from=(string)($_GET['desde']??date('Y-m-d',strtotime('-59 days')));$to=(string)($_GET['hasta']??date('Y-m-d'));
+            foreach([$from,$to] as $date){$parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);if(!$parsed||$parsed->format('Y-m-d')!==$date)throw new RuntimeException('Rango de fechas inválido.');}
+            if($from>$to)throw new RuntimeException('La fecha inicial debe ser menor o igual a la fecha final.');
+            $station=isset($_GET['estacion_id'])?(int)$_GET['estacion_id']:null;
+            $allowed=array_values(array_diff(EfcConciliacionModel::stationIds('DIAZ GAS'),[40]));
+            if($station!==null&&!in_array($station,$allowed,true))throw new RuntimeException('Estación fuera del alcance del monitor.');
+            $status=strtoupper(trim((string)($_GET['estado']??'TODOS')));
+            if(!in_array($status,['TODOS','PENDIENTE','APROBADO','RECHAZADO','SUPERSEDIDO'],true))throw new RuntimeException('Estado inválido.');
+            $changeId=isset($_GET['cambio_id'])?(int)$_GET['cambio_id']:null;if($changeId!==null&&$changeId<1)throw new RuntimeException('Cambio inválido.');
+            $data=['cambios'=>$this->efcConciliacion->cutChangeHistory($from,$to,$station,$status,$changeId),'estaciones'=>$this->efcConciliacion->cutChangeStations(),'destinatarios'=>$this->currentUserIsSuperAdmin()?$this->efcConciliacion->cutChangeRecipients():[]];
+            echo json_encode(['status'=>'success','data'=>$data],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
+        exit;
+    }
+
+    /** Applies the latest accepted ControlGas amount to the reconciliation board. */
+    public function efc_conc_cortes_aceptados(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $station=(int)($_GET['estacion_id']??0);$from=(string)($_GET['desde']??'');$to=(string)($_GET['hasta']??'');
+            $allowed=array_values(array_diff(EfcConciliacionModel::stationIds('DIAZ GAS'),[40]));
+            if(!in_array($station,$allowed,true))throw new RuntimeException('Estación fuera del alcance del monitor.');
+            foreach([$from,$to] as $date){$parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);if(!$parsed||$parsed->format('Y-m-d')!==$date)throw new RuntimeException('Rango de fechas inválido.');}
+            if($from>$to||(strtotime($to)-strtotime($from))>62*86400)throw new RuntimeException('Rango de consulta inválido.');
+            echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->acceptedCutAmounts($station,$from,$to)],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
+        exit;
+    }
+
+    public function efc_conc_cambios_decidir(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);if(!is_array($data))throw new RuntimeException('Solicitud inválida.');
+            $changeId=(int)($data['id']??0);$decision=strtoupper(trim((string)($data['decision']??'')));
+            if($decision==='APROBAR'){
+                $candidate=$this->efcConciliacion->pendingCutChange($changeId);if(!$candidate||$candidate['estado']!=='PENDIENTE')throw new RuntimeException('El cambio ya fue resuelto o no existe.');
+                $station=(int)$candidate['estacion_id'];$allowed=array_values(array_diff(EfcConciliacionModel::stationIds('DIAZ GAS'),[40]));if(!in_array($station,$allowed,true))throw new RuntimeException('Estación fuera del alcance del monitor.');
+                $day=new DateTimeImmutable($candidate['fecha_operativa']);$source=$this->efcConcReportControlGas($station,(int)$day->format('Y'),(int)$day->format('n'));
+                $live=$this->efcConciliacion->findControlGasCutAmount($source,$candidate['fecha_operativa'],(string)$candidate['turno'],(string)$candidate['concepto']);
+                if($live===null||round($live,2)!==round((float)$candidate['importe_nuevo'],2))throw new RuntimeException('ControlGas volvió a cambiar desde la última revisión. Espera el siguiente monitoreo y revisa la nueva versión.');
+            }
+            $result=$this->efcConciliacion->decideCutChange($changeId,$decision,(int)($_SESSION['tg_user']['Id']??0));
+            echo json_encode(['status'=>'success','data'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
+        exit;
+    }
+
+    public function efc_conc_cambios_destinatarios(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            if(!$this->currentUserIsSuperAdmin())throw new RuntimeException('Sólo un superadministrador puede configurar destinatarios.');
+            $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);if(!is_array($data))throw new RuntimeException('Solicitud inválida.');
+            if(!array_key_exists('activo',$data)||!in_array($data['activo'],[true,false,0,1,'0','1'],true))throw new RuntimeException('El estado del destinatario es inválido.');
+            $active=filter_var($data['activo'],FILTER_VALIDATE_BOOLEAN);
+            $this->efcConciliacion->setCutChangeRecipient((int)($data['usuario_id']??0),$active,(int)($_SESSION['tg_user']['Id']??0));
+            echo json_encode(['status'=>'success'],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
+        exit;
+    }
+
+    public function efc_conc_cambios_usuarios(): void {
+        ob_clean();header('Content-Type: application/json; charset=utf-8');
+        try {if(!$this->currentUserIsSuperAdmin())throw new RuntimeException('Sólo un superadministrador puede configurar destinatarios.');echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->searchCutChangeUsers((string)($_GET['buscar']??''))],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);}
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
+        exit;
+    }
+
     /** Normaliza valores Banorte para que la huella no dependa del formato de Excel/CSV. */
     private function normalizar_valor_huella_banorte($valor, bool $quitarDecimalEntero = false): string {
         if ($valor === null || is_array($valor) || is_object($valor)) return '';
@@ -7705,7 +7776,9 @@ public function stamped_invoices_detail(): void
             $reportStations=$station ? [$station] : $companyStations;
             $rows=[];
             foreach($reportStations as $reportStation){
-                $rows=array_merge($rows,$this->efcConciliacion->reportRows($reportStation,$year,$month,$concept,$this->efcConcReportControlGas($reportStation,$year,$month)));
+                $source=$this->efcConcReportControlGas($reportStation,$year,$month);
+                $source=$this->efcConciliacion->applyAcceptedCutAmounts($reportStation,$source);
+                $rows=array_merge($rows,$this->efcConciliacion->reportRows($reportStation,$year,$month,$concept,$source));
             }
             $mostrarTodos=filter_var($_GET['mostrar_todos'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $mostrarSinPapeleta=filter_var($_GET['mostrar_sin_papeleta'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -7737,6 +7810,7 @@ public function stamped_invoices_detail(): void
             $year=(int)$parsed->format('Y'); $month=(int)$parsed->format('m');
             if($year<2020) throw new RuntimeException('Fecha operativa fuera de rango.');
             $source=$this->efcConcReportControlGas($station,$year,$month);
+            $source=$this->efcConciliacion->applyAcceptedCutAmounts($station,$source);
             $rows=$this->efcConciliacion->reportRows($station,$year,$month,$concept,$source);
             $exists=false; foreach($rows as $row) if($row['fecha']===$date && $row['turno']===$turn && $row['concepto']===$concept) {$exists=true;break;}
             if(!$exists) throw new RuntimeException('La diferencia no existe en el reporte operativo.');
