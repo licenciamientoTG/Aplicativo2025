@@ -83,11 +83,13 @@ def start_run(cursor: pyodbc.Cursor) -> int:
 
 
 def scan_station(cursor: pyodbc.Cursor, run_id: int, station: int, first: date, last: date) -> int:
-    cursor.execute(
+    station_run = cursor.execute(
         "INSERT dbo.efc_conc_cortes_runs_estaciones(run_id,estacion_id,iniciado_en,estado,cambios_detectados) "
-        "VALUES(?,?,SYSDATETIME(),'EN_PROCESO',0)", run_id, station
-    )
-    station_run_id = int(cursor.execute("SELECT SCOPE_IDENTITY()").fetchone()[0])
+        "OUTPUT inserted.id VALUES(?,?,SYSDATETIME(),'EN_PROCESO',0)", run_id, station
+    ).fetchone()
+    if station_run is None or station_run[0] is None:
+        raise RuntimeError("No se pudo obtener el ID de la ejecución por estación")
+    station_run_id = int(station_run[0])
     cursor.connection.commit()
     # Fetch and validate the complete station response before opening its DB transaction.
     rows = fetch_controlgas(station, first, last)
@@ -258,7 +260,7 @@ def run() -> int:
                     safe, run_id, station,
                 )
                 conn.commit()
-                log(f"Estación {station}: error ({type(exc).__name__}); snapshot sin cambios.")
+                log(f"Estación {station}: error ({type(exc).__name__}): {safe}; snapshot sin cambios.")
         while send_one(conn):
             pass
         state = "PARCIAL" if errors else "COMPLETADO"
