@@ -98,15 +98,9 @@
                     {% endif %}
                 </div>
                 {% else %}
-                    {% if authorized(68) %}
-                    <button class="btn btn-info" onclick="openAuthModalAnticipo()">
-                        <i class="fas fa-check"></i> Autorizar como Tesorería
-                    </button>
-                    {% else %}
                     <div class="alert alert-warning mb-0">
                         <i class="fas fa-clock"></i> Esperando autorización de Tesorería
                     </div>
-                    {% endif %}
                 {% endif %}
             </div>
         </div>
@@ -222,27 +216,6 @@
 </div>
 {% endif %}
 
-<!-- Modal: Autorizar -->
-<div class="modal fade" id="authModalAnticipo" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-info text-white">
-                <h5 class="modal-title"><i class="fas fa-shield-alt"></i> Autorizar Anticipo</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p class="text-center mb-0"><strong>¿Confirmas la autorización de este anticipo como Tesorería?</strong></p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-success" onclick="confirmarAutorizacionAnticipo()">
-                    <i class="fas fa-check"></i> Confirmar
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Modal: Pagar anticipo -->
 <div class="modal fade" id="modalPagarAnticipo" tabindex="-1">
     <div class="modal-dialog">
@@ -286,4 +259,12 @@
 
 {% block myjs %}
 <script src="{{ js_v('payment.js') }}"></script>
+{% if anticipo.status == 1 and authorized(68) %}
+<script>
+// Viene del botón "Registrar pago" de Facturas Autorizadas (?pagar=1)
+if (new URLSearchParams(location.search).get('pagar') === '1') {
+    window.addEventListener('load', abrirModalPagarAnticipo);
+}
+</script>
+{% endif %}
 {% endblock %}
