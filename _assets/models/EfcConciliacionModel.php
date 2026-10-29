@@ -134,6 +134,105 @@ class EfcConciliacionModel {
         return $row;
     }
 
+    /** Latest accepted amounts used by the reconciliation board. */
+    public function acceptedCutAmounts(int $stationId, string $from, string $to): array {
+        if (!in_array($stationId, array_diff(self::stationIds('DIAZ GAS'), [40]), true)) return [];
+        if(!(bool)$this->db->query("SELECT OBJECT_ID('dbo.efc_conc_cortes_snapshot','U')")->fetchColumn()) return [];
+        $q=$this->db->prepare("SELECT fecha_operativa,turno,concepto,importe_aceptado FROM dbo.efc_conc_cortes_snapshot WHERE estacion_id=? AND fecha_operativa>=? AND fecha_operativa<=?");
+        $q->execute([$stationId,$from,$to]); $out=[];
+        while($r=$q->fetch(PDO::FETCH_ASSOC)) $out[$this->reportTurnKey($this->dateValue($r['fecha_operativa']),(string)$r['turno'],(string)$r['concepto'])]=(float)$r['importe_aceptado'];
+        return $out;
+    }
+
+    /** Replace raw ControlGas values with the last approved local values where a baseline exists. */
+    public function applyAcceptedCutAmounts(int $stationId,array $rows): array {
+        if(!in_array($stationId,array_diff(self::stationIds('DIAZ GAS'),[40]),true)||!$rows)return $rows;
+        $dates=array_values(array_filter(array_map(fn($r)=>$this->reportDate($r['Fecha']??null),$rows)));
+        if(!$dates)return $rows;
+        $accepted=$this->acceptedCutAmounts($stationId,min($dates),max($dates));
+        foreach($rows as &$row){$date=$this->reportDate($row['Fecha']??null);$turn=(string)($row['Turno']??'');if($date===null||$turn==='')continue;
+            foreach(['MN'=>'MN','MORRALLA'=>'Morralla','USD'=>'Dolares'] as $concept=>$field){$k=$this->reportTurnKey($date,$turn,$concept);if(array_key_exists($k,$accepted))$row[$field]=$accepted[$k];}
+            if(array_key_exists($this->reportTurnKey($date,$turn,'USD'),$accepted))$row['Dolares2']=0;
+        } unset($row);
+        return $rows;
+    }
+
+    /** Resolve the amount of a cut directly from a fresh ControlGas response. */
+    public function findControlGasCutAmount(array $rows,string $date,string $turn,string $concept): ?float {
+        $wanted=$this->reportTurnKey($date,$turn,$concept);$amount=null;
+        foreach($rows as $row){$rowDate=$this->reportDate($row['Fecha']??null);$rowTurn=(string)($row['Turno']??'');if($rowDate===null||$rowTurn===''||$this->reportTurnKey($rowDate,$rowTurn,$concept)!==$wanted)continue;
+            $value=match($concept){'MN'=>(float)($row['MN']??0),'MORRALLA'=>(float)($row['Morralla']??0),'USD'=>(float)($row['Dolares']??0)+(float)($row['Dolares2']??0),default=>null};
+            if($value===null)return null;if($amount!==null)return null;$amount=round($value,2);
+        }
+        return $amount;
+    }
+
+    public function pendingCutChange(int $changeId): ?array {
+        $q=$this->db->prepare("SELECT id,estacion_id,CONVERT(VARCHAR(10),fecha_operativa,23) AS fecha_operativa,turno,concepto,importe_nuevo,estado FROM dbo.efc_conc_cortes_cambios WHERE id=?");$q->execute([$changeId]);$row=$q->fetch(PDO::FETCH_ASSOC);if(!$row)return null;$row['id']=(int)$row['id'];$row['estacion_id']=(int)$row['estacion_id'];$row['importe_nuevo']=(float)$row['importe_nuevo'];return $row;
+    }
+
+    /** Searchable append-only change history; a new source revision supersedes the previous pending revision. */
+    public function cutChangeHistory(string $from, string $to, ?int $stationId, string $status, ?int $changeId=null): array {
+        $where=['C.fecha_operativa>=?','C.fecha_operativa<=?']; $params=[$from,$to];
+        if($stationId){$where[]='C.estacion_id=?';$params[]=$stationId;}
+        if($changeId){$where[]='C.id=?';$params[]=$changeId;}
+        if($status!=='TODOS'){$where[]='C.estado=?';$params[]=$status;}
+        $q=$this->db->prepare("SELECT C.id,C.estacion_id,E.Nombre AS estacion_nombre,CONVERT(VARCHAR(10),C.fecha_operativa,23) AS fecha_operativa,C.turno,C.concepto,C.importe_anterior,C.importe_nuevo,C.detectado_en,C.estado,C.decidido_por,C.decidido_en,U.Nombre AS decidido_por_nombre FROM dbo.efc_conc_cortes_cambios C LEFT JOIN TG.dbo.Estaciones E ON E.Codigo=C.estacion_id LEFT JOIN TG.dbo.Usuario U ON U.Id=C.decidido_por WHERE ".implode(' AND ',$where)." ORDER BY C.detectado_en DESC,C.id DESC");
+        $q->execute($params); $rows=$q->fetchAll(PDO::FETCH_ASSOC);
+        foreach($rows as &$r){$r['id']=(int)$r['id'];$r['estacion_id']=(int)$r['estacion_id'];foreach(['importe_anterior','importe_nuevo'] as $k)$r[$k]=(float)$r[$k];foreach(['detectado_en','decidido_en'] as $k)if($r[$k] instanceof DateTimeInterface)$r[$k]=$r[$k]->format('Y-m-d H:i:s');} unset($r);
+        return $rows;
+    }
+
+    public function cutChangeStations(): array {
+        $ids=array_values(array_diff(self::stationIds('DIAZ GAS'),[40]));$marks=implode(',',array_fill(0,count($ids),'?'));
+        $q=$this->db->prepare("SELECT Codigo AS estacion_id,Nombre AS estacion_nombre FROM TG.dbo.Estaciones WHERE Codigo IN ($marks) ORDER BY Nombre");$q->execute($ids);return $q->fetchAll(PDO::FETCH_ASSOC)?:[];
+    }
+
+    /** Apply a reviewed source revision atomically without altering bank partitions or cancelling the group. */
+    public function decideCutChange(int $changeId,string $decision,int $userId): array {
+        if($changeId<1 || !in_array($decision,['APROBAR','RECHAZAR'],true)) throw new RuntimeException('Decisión inválida.');
+        $this->db->beginTransaction();
+        try {
+            $q=$this->db->prepare("SELECT C.*,S.importe_observado,S.importe_aceptado FROM dbo.efc_conc_cortes_cambios C WITH (UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_cortes_snapshot S WITH (UPDLOCK,HOLDLOCK) ON S.estacion_id=C.estacion_id AND S.fecha_operativa=C.fecha_operativa AND S.turno=C.turno AND S.concepto=C.concepto WHERE C.id=?");$q->execute([$changeId]);$c=$q->fetch(PDO::FETCH_ASSOC);
+            if(!$c || $c['estado']!=='PENDIENTE') throw new RuntimeException('El cambio ya fue resuelto o no existe.');
+            if($userId<1) throw new RuntimeException('No se pudo identificar al usuario que revisa el cambio.');
+            $latest=$this->db->prepare("SELECT TOP 1 id FROM dbo.efc_conc_cortes_cambios WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=? AND estado='PENDIENTE' ORDER BY detectado_en DESC,id DESC");$latest->execute([(int)$c['estacion_id'],$c['fecha_operativa'],$c['turno'],$c['concepto']]);
+            if((int)$latest->fetchColumn()!==$changeId || round((float)$c['importe_observado'],2)!==round((float)$c['importe_nuevo'],2)) throw new RuntimeException('El corte volvió a cambiar. Actualiza el historial y revisa la versión más reciente.');
+            if($decision==='APROBAR') {
+                $station=(int)$c['estacion_id'];$date=$this->dateValue($c['fecha_operativa']);$turn=(string)$c['turno'];$concept=(string)$c['concepto'];$new=round((float)$c['importe_nuevo'],2);$old=round((float)$c['importe_aceptado'],2);$key='cg-'.$station.'-'.$date.'-'.$turn.'-'.$concept;
+                $groupDeltas=[];
+                $this->db->prepare("UPDATE dbo.efc_conc_analiticos_vinculos SET importe_cg=? WHERE estacion_id=? AND fecha_cg=? AND turno=? AND concepto=? AND activo=1")->execute([$new,$station,$date,$turn,$concept]);
+                $transitQuery=$this->db->prepare("SELECT id,mes_origen,estado,importe FROM dbo.efc_conc_transitos WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND clave_externa=? AND estado IN ('PENDIENTE','CONCILIADO')");$transitQuery->execute([$station,$key]);$transits=$transitQuery->fetchAll(PDO::FETCH_ASSOC);$pendingTransitDeltas=[];
+                foreach($transits as $transit)if($transit['estado']==='PENDIENTE'){$month=(string)$transit['mes_origen'];$pendingTransitDeltas[$month]=($pendingTransitDeltas[$month]??0)+round($new-(float)$transit['importe'],2);}
+                if($transits)$this->db->prepare("UPDATE dbo.efc_conc_transitos SET importe=? WHERE estacion_id=? AND clave_externa=? AND estado IN ('PENDIENTE','CONCILIADO')")->execute([$new,$station,$key]);
+                $reclass=$this->db->prepare("SELECT TOP 1 id,importe_original FROM dbo.efc_conc_reclasificaciones_cg WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto_original=? AND estado='ACTIVA'");$reclass->execute([$station,$date,$turn,$concept]);$reclassified=$reclass->fetch(PDO::FETCH_ASSOC);
+                if($reclassified){
+                    $delta=round($new-(float)$reclassified['importe_original'],2);
+                    $parts=$this->db->prepare("SELECT id,concepto,importe,grupo_id FROM dbo.efc_conc_reclasificaciones_cg_partidas WITH (UPDLOCK,HOLDLOCK) WHERE reclasificacion_id=? AND estado='ACTIVA'");$parts->execute([(int)$reclassified['id']]);$reclassParts=$parts->fetchAll(PDO::FETCH_ASSOC);$mnPart=null;foreach($reclassParts as $part)if($part['concepto']==='MN')$mnPart=$part;
+                    if(!$mnPart || round((float)$mnPart['importe']+$delta,2)<0) throw new RuntimeException('El cambio de este corte reclasificado requiere revisión manual de sus partidas MN y Morralla.');
+                    $this->db->prepare("UPDATE dbo.efc_conc_reclasificaciones_cg SET importe_original=? WHERE id=? AND estado='ACTIVA'")->execute([$new,(int)$reclassified['id']]);
+                    $this->db->prepare("UPDATE dbo.efc_conc_reclasificaciones_cg_partidas SET importe=importe+? WHERE id=? AND estado='ACTIVA'")->execute([$delta,(int)$mnPart['id']]);
+                    $this->db->prepare("UPDATE dbo.efc_conc_partidas SET importe=importe+? WHERE grupo_id=? AND origen='CG' AND activo=1")->execute([$delta,(int)$mnPart['grupo_id']]);
+                    $groupDeltas[(int)$mnPart['grupo_id']]=$delta;
+                } else {
+                    $parts=$this->db->prepare("SELECT P.id,P.grupo_id,P.importe FROM dbo.efc_conc_partidas P WITH (UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='CG' AND P.activo=1 AND G.estado='ACTIVA' AND G.estacion_id=? AND P.estacion_id=? AND (P.clave_externa=? OR EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WHERE T.estacion_id=? AND T.clave_externa=? AND P.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id)))");$parts->execute([$station,$station,$key,$station,$key]);
+                    foreach($parts->fetchAll(PDO::FETCH_ASSOC) as $part){$delta=round($new-(float)$part['importe'],2);$this->db->prepare("UPDATE dbo.efc_conc_partidas SET importe=? WHERE id=? AND activo=1")->execute([$new,(int)$part['id']]);$groupDeltas[(int)$part['grupo_id']]=$delta;}
+                }
+                $groups=$this->db->prepare("SELECT G.id,G.estacion_id,G.fecha_operativa,G.concepto FROM dbo.efc_conc_grupos G WHERE G.id=? AND G.estado='ACTIVA'");$groupId=null;
+                foreach($groupDeltas as $affectedId=>$deltaGroup){$groups->execute([$affectedId]);$g=$groups->fetch(PDO::FETCH_ASSOC);if(!$g)continue;$groupId=(int)$g['id'];$this->db->prepare("UPDATE G SET total_controlgas=X.cg,total_banorte=X.bank,diferencia=X.bank-X.cg FROM dbo.efc_conc_grupos G CROSS APPLY (SELECT ISNULL(SUM(CASE WHEN origen='CG' AND activo=1 THEN importe ELSE 0 END),0) cg,ISNULL(SUM(CASE WHEN origen='BANCO' AND activo=1 THEN importe ELSE 0 END),0) bank FROM dbo.efc_conc_partidas WHERE grupo_id=G.id) X WHERE G.id=? AND G.estado='ACTIVA'")->execute([$groupId]);
+                    $this->db->prepare("UPDATE dbo.efc_conc_cierres SET total_controlgas=total_controlgas+?,total_diferencia=total_diferencia-? WHERE estacion_id=? AND mes=CONVERT(CHAR(7),?,23) AND concepto=? AND estado='CERRADO'")->execute([$deltaGroup,$deltaGroup,(int)$g['estacion_id'],$g['fecha_operativa'],$g['concepto']]);
+                    $this->db->prepare("UPDATE dbo.efc_conc_cierres_etapas SET total_controlgas=total_controlgas+?,diferencia_regio=diferencia_regio-? WHERE estacion_id=? AND mes=CONVERT(CHAR(7),?,23) AND concepto=? AND estado='CERRADO'")->execute([$deltaGroup,$deltaGroup,(int)$g['estacion_id'],$g['fecha_operativa'],$g['concepto']]);
+                }
+                foreach($pendingTransitDeltas as $month=>$deltaTransit){$this->db->prepare("UPDATE dbo.efc_conc_cierres SET total_transito=total_transito+? WHERE estacion_id=? AND mes=? AND concepto=? AND estado='CERRADO'")->execute([$deltaTransit,$station,$month,$concept]);$this->db->prepare("UPDATE dbo.efc_conc_cierres_etapas SET total_transito=total_transito+? WHERE estacion_id=? AND mes=? AND concepto=? AND estado='CERRADO'")->execute([$deltaTransit,$station,$month,$concept]);}
+                $this->db->prepare("UPDATE dbo.efc_conc_cortes_snapshot SET importe_aceptado=?,actualizado_en=SYSDATETIME() WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?")->execute([$new,$station,$date,$turn,$concept]);
+                $this->db->prepare("UPDATE dbo.efc_conc_cortes_cambios SET estado='APROBADO',decidido_por=?,decidido_en=SYSDATETIME(),grupo_id=? WHERE id=? AND estado='PENDIENTE'")->execute([$userId,$groupId,$changeId]);
+                $detail=json_encode(['station_id'=>$station,'date'=>$date,'turn'=>$turn,'concept'=>$concept,'old'=>$old,'new'=>$new,'change_id'=>$changeId],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+                $this->log($groupId,null,'AJUSTE_CORTE_CONTROLGAS',$detail,$userId);
+            } else $this->db->prepare("UPDATE dbo.efc_conc_cortes_cambios SET estado='RECHAZADO',decidido_por=?,decidido_en=SYSDATETIME() WHERE id=? AND estado='PENDIENTE'")->execute([$userId,$changeId]);
+            $this->db->commit();return ['decision'=>$decision,'change_id'=>$changeId];
+        } catch(Throwable $e) { if($this->db->inTransaction())$this->db->rollBack();throw $e; }
+    }
+
     public function closureState(int $stationId, int $year, int $month, string $concept): ?array {
         if (!$stationId || $year < 2020 || $month < 1 || $month > 12 || !in_array($concept,['MN','MORRALLA','USD'],true)) throw new RuntimeException('Parámetros de cierre inválidos.');
         $mes=sprintf('%04d-%02d',$year,$month); $q=$this->db->prepare("SELECT TOP 1 id,estacion_id,mes,concepto,total_controlgas,total_banco,total_regio_declarado,total_regio_real,total_diferencia,total_transito,operaciones,pendientes,estado,cerrado_por,cerrado_en,reabierto_por,reabierto_en,nota FROM dbo.efc_conc_cierres WHERE estacion_id=? AND mes=? AND concepto=?"); $q->execute([$stationId,$mes,$concept]); $r=$q->fetch(PDO::FETCH_ASSOC); if(!$r)return null; foreach(['id','estacion_id','operaciones','pendientes'] as $k)$r[$k]=(int)$r[$k]; foreach(['total_controlgas','total_banco','total_regio_declarado','total_regio_real','total_diferencia','total_transito'] as $k)$r[$k]=(float)$r[$k]; return $r;
