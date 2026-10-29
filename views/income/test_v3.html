@@ -636,7 +636,7 @@
                     <!-- Panel Izquierdo: CG -->
                     <div class="col-6 h-100 d-flex flex-column">
                         <div class="bg-dark text-white p-2 rounded-top font-weight-bold d-flex justify-content-between">
-                            <span><i class="fas fa-gas-pump mr-2"></i> ControlGas</span>
+                            <span id="mtx-cg-label"><i class="fas fa-gas-pump mr-2"></i> ControlGas</span>
                             <span id="mtx-cg-total" class="badge badge-light text-dark">$0.00</span>
                         </div>
                         <div class="bg-white border rounded-bottom flex-fill p-0" style="overflow-y:auto;" id="mtx-panel-cg">
@@ -4230,9 +4230,12 @@ async function abrirModoComparacion(modo) {
     if (!currentRule) { alert('Primero selecciona una estación y banco.'); return; }
     const esModoDespachos = modo === 'DES';
     const nombreComparador = esModoDespachos ? 'Despachos Bankaool' : 'Transacciones';
+    const nombreCG = esModoDespachos ? 'ControlGas cortes' : 'ControlGas';
+    const nombreComparadorPanel = esModoDespachos ? 'ControlGas despachos' : nombreComparador;
     const iconoComparador = esModoDespachos ? 'fa-gas-pump' : 'fa-exchange-alt';
-    $('#mtx-title').html(`<i class="fas fa-columns mr-2"></i> Modo ${nombreComparador} — CG vs ${nombreComparador} por día`);
-    $('#mtx-comparison-label').html(`<i class="fas ${iconoComparador} mr-2"></i> ${nombreComparador}`);
+    $('#mtx-title').html(`<i class="fas fa-columns mr-2"></i> Modo ${nombreComparador} — ${nombreCG} vs ${nombreComparadorPanel} por día`);
+    $('#mtx-cg-label').html(`<i class="fas fa-gas-pump mr-2"></i> ${nombreCG}`);
+    $('#mtx-comparison-label').html(`<i class="fas ${iconoComparador} mr-2"></i> ${nombreComparadorPanel}`);
     $('#mtx-comparison-header').toggleClass('bg-primary', !esModoDespachos).toggleClass('bg-info', esModoDespachos);
 
     $('#mtx-context-estacion').text($('#estacionSelect option:selected').text() || '—');
