@@ -512,7 +512,9 @@ $('tr-open-faltantes').onclick=()=>openReport('faltantes');$('tr-open-diferencia
   modalIds.forEach(id=>{
     const modal=document.getElementById(id);if(!modal)return;
     modal.querySelectorAll('[data-dismiss="modal"]').forEach(button=>button.addEventListener('click',event=>{event.preventDefault();closeModal(modal)}));
-    modal.addEventListener('click',event=>{if(event.target===modal)closeModal(modal)});
+    let startedOnBackdrop=false;
+    modal.addEventListener('mousedown',event=>{startedOnBackdrop=event.target===modal});
+    modal.addEventListener('click',event=>{const backdropClick=event.target===modal&&startedOnBackdrop;startedOnBackdrop=false;if(backdropClick)closeModal(modal)});
     const $modal=window.jQuery?.(modal);
     if($modal)$modal.on('hidden.bs.modal.tripleClose',()=>{const trigger=modal.__tripleTrigger;if(trigger&&document.contains(trigger))trigger.focus();});
   });
