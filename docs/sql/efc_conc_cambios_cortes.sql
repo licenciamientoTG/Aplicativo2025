@@ -9,7 +9,9 @@
 
     Rollback: detener primero los procesos que consumen estas tablas y conservar
     cualquier historial requerido. Eliminar solamente los objetos creados aqui,
-    en orden: outbox, destinatarios, resultados, corridas, cambios, snapshot.
+    en orden: outbox, resultados, corridas, cambios, snapshot.
+    La columna user_id del outbox usa 0 como identificador fijo del destinatario
+    de correo; no se requiere una tabla de destinatarios configurables.
     No ejecutar DROP sobre tablas preexistentes. El rollback elimina los datos
     nuevos almacenados en estas tablas.
 */
@@ -91,19 +93,6 @@ BEGIN
         CONSTRAINT CK_efc_conc_cortes_runs_estaciones_estado CHECK (estado IN ('EN_PROCESO','COMPLETADO','ERROR'))
     );
     CREATE INDEX IX_efc_conc_cortes_runs_estaciones_estacion ON dbo.efc_conc_cortes_runs_estaciones (estacion_id, iniciado_en DESC);
-END;
-
-IF OBJECT_ID(N'dbo.efc_conc_cortes_destinatarios', N'U') IS NULL
-BEGIN
-    CREATE TABLE dbo.efc_conc_cortes_destinatarios (
-        user_id INT NOT NULL CONSTRAINT PK_efc_conc_cortes_destinatarios PRIMARY KEY,
-        activo BIT NOT NULL CONSTRAINT DF_efc_conc_cortes_dest_activo DEFAULT (1),
-        creado_por INT NULL,
-        creado_en DATETIME2(0) NOT NULL CONSTRAINT DF_efc_conc_cortes_dest_creado DEFAULT SYSDATETIME(),
-        actualizado_por INT NULL,
-        actualizado_en DATETIME2(0) NULL
-    );
-    CREATE INDEX IX_efc_conc_cortes_destinatarios_activo ON dbo.efc_conc_cortes_destinatarios (activo, user_id);
 END;
 
 IF OBJECT_ID(N'dbo.efc_conc_cortes_notificaciones', N'U') IS NULL

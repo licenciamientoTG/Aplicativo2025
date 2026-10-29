@@ -183,33 +183,9 @@ class EfcConciliacionModel {
         return $rows;
     }
 
-    public function cutChangeRecipients(): array {
-        $q=$this->db->query("SELECT R.user_id AS usuario_id,U.Nombre AS nombre,U.Correo AS correo,R.activo FROM dbo.efc_conc_cortes_destinatarios R JOIN TG.dbo.Usuario U ON U.Id=R.user_id ORDER BY U.Nombre");
-        return $q->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    }
-
     public function cutChangeStations(): array {
         $ids=array_values(array_diff(self::stationIds('DIAZ GAS'),[40]));$marks=implode(',',array_fill(0,count($ids),'?'));
         $q=$this->db->prepare("SELECT Codigo AS estacion_id,Nombre AS estacion_nombre FROM TG.dbo.Estaciones WHERE Codigo IN ($marks) ORDER BY Nombre");$q->execute($ids);return $q->fetchAll(PDO::FETCH_ASSOC)?:[];
-    }
-
-    public function searchCutChangeUsers(string $search): array {
-        $search=trim($search);if(mb_strlen($search)>100)$search=mb_substr($search,0,100);$like='%'.$search.'%';
-        $q=$this->db->prepare("SELECT TOP 50 U.Id AS usuario_id,U.Nombre AS nombre,U.Correo AS correo,CONVERT(BIT,ISNULL(R.activo,0)) AS activo FROM TG.dbo.Usuario U LEFT JOIN dbo.efc_conc_cortes_destinatarios R ON R.user_id=U.Id WHERE U.Estatus=1 AND NULLIF(LTRIM(RTRIM(U.Correo)),'') IS NOT NULL AND (?='' OR U.Nombre LIKE ? OR U.Correo LIKE ?) ORDER BY CASE WHEN R.activo=1 THEN 0 ELSE 1 END,U.Nombre");
-        $q->execute([$search,$like,$like]);return $q->fetchAll(PDO::FETCH_ASSOC)?:[];
-    }
-
-    public function setCutChangeRecipient(int $targetUserId, bool $active, int $actorId): void {
-        if($targetUserId<1) throw new RuntimeException('Usuario inválido.');
-        $user=$this->db->prepare("SELECT TOP 1 Correo FROM TG.dbo.Usuario WHERE Id=?");$user->execute([$targetUserId]);$email=$user->fetchColumn();
-        if(!$email || !filter_var(trim((string)$email),FILTER_VALIDATE_EMAIL)) throw new RuntimeException('El usuario no existe o no tiene correo válido.');
-        $this->db->beginTransaction();
-        try {
-            $q=$this->db->prepare("SELECT user_id FROM dbo.efc_conc_cortes_destinatarios WITH (UPDLOCK,HOLDLOCK) WHERE user_id=?");$q->execute([$targetUserId]);
-            if($q->fetchColumn()!==false) $this->db->prepare("UPDATE dbo.efc_conc_cortes_destinatarios SET activo=?,actualizado_por=?,actualizado_en=SYSDATETIME() WHERE user_id=?")->execute([$active?1:0,$actorId?:null,$targetUserId]);
-            else $this->db->prepare("INSERT dbo.efc_conc_cortes_destinatarios(user_id,activo,creado_por) VALUES(?,?,?)")->execute([$targetUserId,$active?1:0,$actorId?:null]);
-            $this->db->commit();
-        } catch(Throwable $e) { if($this->db->inTransaction())$this->db->rollBack();throw $e; }
     }
 
     /** Apply a reviewed source revision atomically without altering bank partitions or cancelling the group. */
@@ -219,7 +195,7 @@ class EfcConciliacionModel {
         try {
             $q=$this->db->prepare("SELECT C.*,S.importe_observado,S.importe_aceptado FROM dbo.efc_conc_cortes_cambios C WITH (UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_cortes_snapshot S WITH (UPDLOCK,HOLDLOCK) ON S.estacion_id=C.estacion_id AND S.fecha_operativa=C.fecha_operativa AND S.turno=C.turno AND S.concepto=C.concepto WHERE C.id=?");$q->execute([$changeId]);$c=$q->fetch(PDO::FETCH_ASSOC);
             if(!$c || $c['estado']!=='PENDIENTE') throw new RuntimeException('El cambio ya fue resuelto o no existe.');
-            $authorized=$this->db->prepare("SELECT 1 FROM dbo.efc_conc_cortes_destinatarios WHERE user_id=? AND activo=1");$authorized->execute([$userId]);if(!$authorized->fetchColumn())throw new RuntimeException('No está autorizado para aprobar cambios de cortes.');
+            if($userId<1) throw new RuntimeException('No se pudo identificar al usuario que revisa el cambio.');
             $latest=$this->db->prepare("SELECT TOP 1 id FROM dbo.efc_conc_cortes_cambios WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=? AND estado='PENDIENTE' ORDER BY detectado_en DESC,id DESC");$latest->execute([(int)$c['estacion_id'],$c['fecha_operativa'],$c['turno'],$c['concepto']]);
             if((int)$latest->fetchColumn()!==$changeId || round((float)$c['importe_observado'],2)!==round((float)$c['importe_nuevo'],2)) throw new RuntimeException('El corte volvió a cambiar. Actualiza el historial y revisa la versión más reciente.');
             if($decision==='APROBAR') {

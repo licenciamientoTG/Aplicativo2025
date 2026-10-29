@@ -7535,7 +7535,7 @@ public function stamped_invoices_detail(): void
             $status=strtoupper(trim((string)($_GET['estado']??'TODOS')));
             if(!in_array($status,['TODOS','PENDIENTE','APROBADO','RECHAZADO','SUPERSEDIDO'],true))throw new RuntimeException('Estado inválido.');
             $changeId=isset($_GET['cambio_id'])?(int)$_GET['cambio_id']:null;if($changeId!==null&&$changeId<1)throw new RuntimeException('Cambio inválido.');
-            $data=['cambios'=>$this->efcConciliacion->cutChangeHistory($from,$to,$station,$status,$changeId),'estaciones'=>$this->efcConciliacion->cutChangeStations(),'destinatarios'=>$this->currentUserIsSuperAdmin()?$this->efcConciliacion->cutChangeRecipients():[]];
+            $data=['cambios'=>$this->efcConciliacion->cutChangeHistory($from,$to,$station,$status,$changeId),'estaciones'=>$this->efcConciliacion->cutChangeStations()];
             echo json_encode(['status'=>'success','data'=>$data],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
         exit;
@@ -7570,26 +7570,6 @@ public function stamped_invoices_detail(): void
             $result=$this->efcConciliacion->decideCutChange($changeId,$decision,(int)($_SESSION['tg_user']['Id']??0));
             echo json_encode(['status'=>'success','data'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
-        exit;
-    }
-
-    public function efc_conc_cambios_destinatarios(): void {
-        ob_clean(); header('Content-Type: application/json; charset=utf-8');
-        try {
-            if(!$this->currentUserIsSuperAdmin())throw new RuntimeException('Sólo un superadministrador puede configurar destinatarios.');
-            $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);if(!is_array($data))throw new RuntimeException('Solicitud inválida.');
-            if(!array_key_exists('activo',$data)||!in_array($data['activo'],[true,false,0,1,'0','1'],true))throw new RuntimeException('El estado del destinatario es inválido.');
-            $active=filter_var($data['activo'],FILTER_VALIDATE_BOOLEAN);
-            $this->efcConciliacion->setCutChangeRecipient((int)($data['usuario_id']??0),$active,(int)($_SESSION['tg_user']['Id']??0));
-            echo json_encode(['status'=>'success'],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
-        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
-        exit;
-    }
-
-    public function efc_conc_cambios_usuarios(): void {
-        ob_clean();header('Content-Type: application/json; charset=utf-8');
-        try {if(!$this->currentUserIsSuperAdmin())throw new RuntimeException('Sólo un superadministrador puede configurar destinatarios.');echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->searchCutChangeUsers((string)($_GET['buscar']??''))],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);}
-        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
         exit;
     }
 

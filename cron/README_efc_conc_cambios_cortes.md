@@ -22,16 +22,15 @@ no se interpretan ausencias como cambios. El envío de correo usa reintentos con
 entrega al menos una vez: si el proceso se interrumpe después de que el servidor
 SMTP aceptó el mensaje y antes de registrar el éxito, podría reenviar ese correo.
 
-Los destinatarios se administran en `TG.dbo.efc_conc_cortes_destinatarios`;
-solo se notifica a destinatarios activos cuyo usuario TG también esté activo y
-tenga correo. SMTP usa `SMTP_HOST` / `EMAIL_SMTP_HOST`, `SMTP_PORT` /
-`EMAIL_SMTP_PORT` y `SMTP_FROM` / `EMAIL_FROM` con el relay interno como valor
-predeterminado. Fallos de envío permanecen en la cola para reintento en la
-siguiente ejecución. Una aplicación bloqueante de SQL Server evita ejecuciones
-simultáneas; los resultados se guardan en las tablas de ejecuciones generales y
-por estación.
+Cada aviso se envía únicamente a `daniel.ramirez@totalgas.com`. SMTP usa
+`SMTP_HOST` / `EMAIL_SMTP_HOST`, `SMTP_PORT` / `EMAIL_SMTP_PORT` y `SMTP_FROM` /
+`EMAIL_FROM` con el relay interno como valor predeterminado. Fallos de envío
+permanecen en la cola para reintento en la siguiente ejecución. Una aplicación
+bloqueante de SQL Server evita ejecuciones simultáneas; los resultados se
+guardan en las tablas de ejecuciones generales y por estación.
 
 Antes de programarlo, aplicar la migración SQL de las tablas
 `efc_conc_cortes_snapshot`, `efc_conc_cortes_cambios`,
-`efc_conc_cortes_notificaciones`, `efc_conc_cortes_destinatarios`,
-`efc_conc_cortes_runs` y `efc_conc_cortes_runs_estaciones`.
+`efc_conc_cortes_notificaciones`, `efc_conc_cortes_runs` y
+`efc_conc_cortes_runs_estaciones`. La tabla de destinatarios configurables ya
+no se utiliza; si existe de una instalación previa, queda inactiva.

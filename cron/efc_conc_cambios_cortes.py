@@ -17,6 +17,7 @@ from efc_conc_bancaria_automatica import connect, error_text, fetch_controlgas, 
 
 STATIONS = (2, *range(4, 19), 22, 30, 33)  # Praxedis 40 está excluida expresamente.
 LOCK_RESOURCE = "efc_conc_cambios_cortes"
+NOTIFICATION_EMAIL = "daniel.ramirez@totalgas.com"
 
 
 def log(message: str) -> None:
@@ -141,9 +142,7 @@ def scan_station(cursor: pyodbc.Cursor, run_id: int, station: int, first: date, 
             change_id = int(cursor.fetchone()[0])
             cursor.execute(
                 "INSERT dbo.efc_conc_cortes_notificaciones(change_id,user_id,estado,intentos,creado_en) "
-                "SELECT ?,D.user_id,'PENDIENTE',0,SYSDATETIME() FROM dbo.efc_conc_cortes_destinatarios D "
-                "JOIN TG.dbo.Usuario U ON U.Id=D.user_id AND U.Estatus=1 "
-                "WHERE D.activo=1 AND NULLIF(LTRIM(RTRIM(U.Correo)),'') IS NOT NULL",
+                "VALUES(?,0,'PENDIENTE',0,SYSDATETIME())",
                 change_id,
             )
             cursor.execute(
@@ -167,12 +166,12 @@ def send_one(conn: pyodbc.Connection) -> bool:
     cursor = conn.cursor()
     cursor.execute("BEGIN TRANSACTION")
     row = cursor.execute(
-        "SELECT TOP(1) N.change_id,N.user_id,C.estacion_id,C.fecha_operativa,C.turno,C.concepto,C.importe_anterior,C.importe_nuevo,U.Correo "
+        "SELECT TOP(1) N.change_id,N.user_id,C.estacion_id,C.fecha_operativa,C.turno,C.concepto,C.importe_anterior,C.importe_nuevo "
         "FROM dbo.efc_conc_cortes_notificaciones N WITH(UPDLOCK,READPAST,ROWLOCK) "
         "JOIN dbo.efc_conc_cortes_cambios C ON C.id=N.change_id "
-        "JOIN dbo.efc_conc_cortes_destinatarios D ON D.user_id=N.user_id AND D.activo=1 "
-        "JOIN TG.dbo.Usuario U ON U.Id=N.user_id AND U.Estatus=1 "
-        "WHERE N.estado IN('PENDIENTE','ERROR') AND LTRIM(RTRIM(U.Correo))<>'' ORDER BY N.change_id,N.user_id"
+        "WHERE N.estado IN('PENDIENTE','ERROR') AND NOT EXISTS ("
+        "SELECT 1 FROM dbo.efc_conc_cortes_notificaciones X WHERE X.change_id=N.change_id "
+        "AND X.estado IN('PENDIENTE','ERROR','ENVIANDO') AND X.id<N.id) ORDER BY N.change_id,N.user_id"
     ).fetchone()
     if row is None:
         cursor.execute("COMMIT TRANSACTION")
@@ -184,7 +183,7 @@ def send_one(conn: pyodbc.Connection) -> bool:
     conn.commit()
     msg = EmailMessage()
     msg["From"] = os.environ.get("SMTP_FROM", os.environ.get("EMAIL_FROM", "no-reply@totalgas.com"))
-    msg["To"] = str(row[8]).strip()
+    msg["To"] = NOTIFICATION_EMAIL
     msg["Message-ID"] = f"<efc-corte-{int(row[0])}-{int(row[1])}@totalgas.local>"
     msg["Subject"] = f"Cambio en corte ControlGas | estación {row[2]} | {row[3]}"
     app_url = os.environ.get(
@@ -206,8 +205,8 @@ def send_one(conn: pyodbc.Connection) -> bool:
             smtp.ehlo()
             smtp.send_message(msg)
         cursor.execute(
-            "UPDATE dbo.efc_conc_cortes_notificaciones SET estado='ENVIADO',enviado_en=SYSDATETIME() WHERE change_id=? AND user_id=?",
-            row[0], row[1],
+            "UPDATE dbo.efc_conc_cortes_notificaciones SET estado='ENVIADO',enviado_en=SYSDATETIME(),error_detalle=CASE WHEN user_id<>0 THEN 'Aviso duplicado consolidado' ELSE NULL END WHERE change_id=? AND estado IN('PENDIENTE','ERROR','ENVIANDO')",
+            row[0],
         )
     except Exception as exc:
         cursor.execute(
