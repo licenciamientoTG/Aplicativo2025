@@ -964,7 +964,10 @@ function abrirModalFactura(scheduleId) {
             }
             $('#modalFacturaContent').html(resp.html);
             if (window.feather) feather.replace();
-            const modal = new bootstrap.Modal(document.getElementById('modalFactura'));
+            // getOrCreateInstance: al desligar, el modal ya está abierto y se
+            // recarga su contenido; un `new Modal` duplicaba el backdrop y
+            // dejaba la pantalla en negro al cerrar.
+            const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modalFactura'));
             modal.show();
         })
         .fail(function () {
