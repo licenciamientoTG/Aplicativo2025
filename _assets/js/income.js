@@ -2975,7 +2975,7 @@ $('#modal_edo_drill_excel').on('click', function () {
     if (!exp) return;
 
     // Tabla temporal fuera del DOM visible: DataTables Buttons genera el .xlsx
-    var $tmp = $('<table class="d-none"><tfoot><tr><th></th><th></th><th></th><th></th><th>Total</th><th></th><th></th></tr></tfoot></table>').appendTo('body');
+    var $tmp = $('<table class="d-none"><tfoot><tr><th></th><th></th><th></th><th></th><th></th><th></th><th>Total</th><th></th><th></th></tr></tfoot></table>').appendTo('body');
     var dt = $tmp.DataTable({
         data: exp.rows,
         columns: exp.headers.map(function (h) { return { title: h }; }),
@@ -2987,7 +2987,7 @@ $('#modal_edo_drill_excel').on('click', function () {
             filename: exp.filename,
             footer: true,
             exportOptions: { format: { footer: function (data, row, column) {
-                if (column < 5) return column === 4 ? 'Total' : '';
+                if (column < 7) return column === 6 ? 'Total' : '';
                 return exp.rows.reduce(function (a, r) { return a + r[column]; }, 0);
             } } }
         }]
@@ -3002,7 +3002,7 @@ function edo_consumos_modal(codcli, cliente, from, until, tipval, empresa) {
     var money = function (v) {
         return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
-    var headers = ['Fecha', 'Hora', 'Despacho', 'Estación', 'Producto', 'Litros', 'Monto'];
+    var headers = ['Fecha', 'Hora', 'Despacho', 'Estación', 'Producto', 'Vehículo', 'Tarjeta', 'Litros', 'Monto'];
 
     $('#modal_edo_drill_title').html('Consumos (Despachos) — ' + cliente + ' <small class="text-muted">(' + from + ' → ' + until + ')</small>');
     $('#modal_edo_drill_table thead').html('<tr><th>' + headers.join('</th><th>') + '</th></tr>');
@@ -3031,6 +3031,7 @@ function edo_consumos_modal(codcli, cliente, from, until, tipval, empresa) {
             headers: headers,
             rows: rows.map(function (r) {
                 return [r.Fecha, horaDe(r), r.nrotrn, r.Estacion || '', r.producto || '',
+                        r.Vehiculo || (parseInt(r.nroveh, 10) > 0 ? r.nroveh : ''), r.Tarjeta || '',
                         parseFloat(r.Litros) || 0, parseFloat(r.Monto) || 0];
             })
         };
@@ -3039,13 +3040,15 @@ function edo_consumos_modal(codcli, cliente, from, until, tipval, empresa) {
             var hora = horaDe(r);
             return '<tr><td>' + r.Fecha + '</td><td>' + hora + '</td><td>' + r.nrotrn + '</td>' +
                    '<td>' + (r.Estacion || '') + '</td><td>' + (r.producto || '') + '</td>' +
+                   '<td class="text-nowrap">' + cpEsc(r.Vehiculo || (parseInt(r.nroveh, 10) > 0 ? r.nroveh : '')) + '</td>' +
+                   '<td class="text-nowrap">' + cpEsc(r.Tarjeta) + '</td>' +
                    '<td class="text-end">' + (parseFloat(r.Litros) || 0).toLocaleString('es-MX', { minimumFractionDigits: 3 }) + '</td>' +
                    '<td class="text-end">' + money(r.Monto) + '</td></tr>';
         }).join(''));
         var lt = rows.reduce(function (a, r) { return a + (parseFloat(r.Litros) || 0); }, 0);
         var mt = rows.reduce(function (a, r) { return a + (parseFloat(r.Monto) || 0); }, 0);
         $('#modal_edo_drill_table tfoot').html(
-            '<tr><th colspan="5" class="text-end">Total</th>' +
+            '<tr><th colspan="7" class="text-end">Total</th>' +
             '<th class="text-end">' + lt.toLocaleString('es-MX', { minimumFractionDigits: 3 }) + '</th>' +
             '<th class="text-end">' + money(mt) + '</th></tr>'
         );
