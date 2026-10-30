@@ -4768,6 +4768,7 @@ public function anomalies_client_tickets()
             $sql = "SELECT DISTINCT
                         T1.Codigo,
                         T1.Nombre,
+                        T1.Estacion AS Estacion,
                         ISNULL(T1.RFC, 'FORANEAS') as RFC,
                         CASE WHEN T1.RFC = 'DGA930823KD3' THEN 'DIAZ GAS'
                              WHEN T1.RFC = 'DGM880621FU5' THEN 'GASOMEX'
@@ -4801,6 +4802,7 @@ public function anomalies_client_tickets()
                 $result[] = [
                     'Codigo' => 333,
                     'Nombre' => 'COLOSIO',
+                    'Estacion' => 333,
                     'RFC'    => 'FORANEAS',
                     'Empresa'=> 'FORANEAS'
                 ];
