@@ -670,8 +670,6 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [object_id] = OBJECT_ID(N'dbo.tb_
     CREATE UNIQUE INDEX [UX_tb_workspace_member_workspace_user_active] ON dbo.tb_workspace_member ([workspace_id], [user_id]) WHERE [deleted_at] IS NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [object_id] = OBJECT_ID(N'dbo.tb_group') AND [name] = N'UX_tb_group_board_name_active')
     CREATE UNIQUE INDEX [UX_tb_group_board_name_active] ON dbo.tb_group ([board_id], [name]) WHERE [deleted_at] IS NULL;
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [object_id] = OBJECT_ID(N'dbo.tb_column') AND [name] = N'UX_tb_column_board_name_active')
-    CREATE UNIQUE INDEX [UX_tb_column_board_name_active] ON dbo.tb_column ([board_id], [name]) WHERE [deleted_at] IS NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [object_id] = OBJECT_ID(N'dbo.tb_view') AND [name] = N'UX_tb_view_board_owner_name_active')
     CREATE UNIQUE INDEX [UX_tb_view_board_owner_name_active] ON dbo.tb_view ([board_id], [owner_user_id], [name]) WHERE [deleted_at] IS NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE [object_id] = OBJECT_ID(N'dbo.tb_automation') AND [name] = N'UX_tb_automation_board_name_active')

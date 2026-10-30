@@ -248,6 +248,7 @@
   const itemCommentSelectedFiles = [];
   const itemCommentPendingByItem = new Map();
   let groupSortable = null;
+  let columnSortables = [];
   let navSortables = [];
   let itemSortables = [];
   let kanbanSortables = [];
@@ -5522,6 +5523,8 @@
   function renderTable() {
     itemSortables.forEach((sortable) => sortable.destroy());
     itemSortables = [];
+    columnSortables.forEach((sortable) => sortable.destroy());
+    columnSortables = [];
     const query = boardSearchValue().trim().toLocaleLowerCase();
     const filteredItems = getFilteredItems();
     const columns = orderedColumns();
@@ -5758,6 +5761,42 @@
     els.boardTableContainer.append(table);
     bindColumnResizing(table);
     syncGroupHeadingWidths();
+    if (window.Sortable && canManageStructure() && !query && !state.filters.length
+      && !state.columnMenuState.filters.length && !state.columnMenuState.sort && !state.columnMenuState.groupBy) {
+      table.querySelectorAll('tr.boards-group-columns').forEach((headerRow) => {
+        const headers = headerRow.querySelectorAll('th[data-column-header]');
+        if (headers.length < 2) return;
+        columnSortables.push(window.Sortable.create(headerRow, {
+          draggable: 'th[data-column-header]',
+          handle: '.boards-column-heading-title',
+          filter: '.boards-column-menu-trigger',
+          preventOnFilter: false,
+          animation: 180,
+          forceFallback: true,
+          fallbackOnBody: true,
+          fallbackTolerance: 4,
+          touchStartThreshold: 5,
+          ghostClass: 'boards-column-sortable-ghost',
+          chosenClass: 'boards-column-sortable-chosen',
+          onEnd: (event) => {
+            const visibleOrder = [...headerRow.querySelectorAll('th[data-column-header]')]
+              .map((header) => String(header.dataset.columnHeader));
+            const priorVisibleOrder = [...orderedColumns().map((column) => String(column.id))];
+            if (visibleOrder.length !== priorVisibleOrder.length
+              || visibleOrder.every((id, index) => id === priorVisibleOrder[index])) return;
+            const nextOrder = orderedColumns(true).map((column) => String(column.id));
+            const visibleSet = new Set(priorVisibleOrder);
+            let visibleIndex = 0;
+            const reordered = nextOrder.map((id) => visibleSet.has(id) ? visibleOrder[visibleIndex++] : id);
+            state.viewConfig.column_order = reordered;
+            markViewModified();
+            renderColumnControls();
+            renderActiveView();
+            setNotice('Se actualizó el orden de las columnas para esta vista.', 'success');
+          }
+        }));
+      });
+    }
     if (window.Sortable && canEditBoard() && !query && !state.filters.length && !state.columnMenuState.filters.length && !state.columnMenuState.sort && !state.columnMenuState.groupBy) {
       table.querySelectorAll(':scope > tbody[data-group-body]').forEach((body) => {
         itemSortables.push(window.Sortable.create(body, {
@@ -6421,6 +6460,8 @@
     if (type !== 'table') {
       itemSortables.forEach((sortable) => sortable.destroy());
       itemSortables = [];
+      columnSortables.forEach((sortable) => sortable.destroy());
+      columnSortables = [];
       groupSortable?.destroy();
       groupSortable = null;
     }
