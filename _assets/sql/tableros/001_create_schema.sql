@@ -9,9 +9,9 @@
     An existing [tableros] database with another collation is left untouched
     and causes the script to stop; resolve that with the DBA first.
 
-    Run with a SQL Server client that supports GO batch separators (for example
-    SSMS or sqlcmd). Permission rows in [TG] are seeded separately by
-    002_seed_tg_permissions.sql. TG user IDs stored below are integers only;
+    Run as a SQL script from DBeaver or another SQL Server client. This file
+    contains no GO batch separators. Permission rows in [TG] are seeded
+    separately by 002_seed_tg_permissions.sql. TG user IDs stored below are integers only;
     there are no foreign keys to TG or any other database.
 
     Contract notes:
@@ -29,7 +29,6 @@ IF DB_ID(N'tableros') IS NULL
 BEGIN
     EXEC(N'CREATE DATABASE [tableros] COLLATE Modern_Spanish_CI_AS;');
 END;
-GO
 
 IF DB_ID(N'tableros') IS NULL
     THROW 50100, 'No se pudo crear o encontrar la base [tableros].', 1;
@@ -41,10 +40,8 @@ IF NOT EXISTS (
       AND [collation_name] = N'Modern_Spanish_CI_AS'
 )
     THROW 50101, 'La base [tableros] debe usar la intercalacion Modern_Spanish_CI_AS. No se altero la base existente.', 1;
-GO
 
 USE [tableros];
-GO
 SET NOCOUNT ON;
 
 IF OBJECT_ID(N'dbo.tb_workspace', N'U') IS NULL
@@ -58,7 +55,7 @@ BEGIN
         [name] NVARCHAR(200) NOT NULL,
         [description] NVARCHAR(1000) NULL,
         [visibility] VARCHAR(16) NOT NULL
-            CONSTRAINT [DF_tb_workspace_visibility] DEFAULT ('private'),
+            CONSTRAINT [DF_tb_workspace_visibility] DEFAULT ('closed'),
         [created_by] INT NULL,
         [created_at] DATETIME2(3) NOT NULL
             CONSTRAINT [DF_tb_workspace_created_at] DEFAULT (SYSUTCDATETIME()),
@@ -75,7 +72,7 @@ BEGIN
                 OR ([workspace_type] = 'space' AND [parent_workspace_id] IS NOT NULL)
             ),
         CONSTRAINT [CK_tb_workspace_visibility]
-            CHECK ([visibility] IN ('private', 'workspace', 'public'))
+            CHECK ([visibility] IN ('open', 'closed'))
     );
 END;
 
@@ -154,7 +151,7 @@ BEGIN
             FOREIGN KEY ([folder_id], [workspace_id])
             REFERENCES dbo.tb_folder ([id], [workspace_id]),
         CONSTRAINT [CK_tb_board_visibility]
-            CHECK ([visibility] IN ('private', 'workspace', 'public'))
+            CHECK ([visibility] IN ('private', 'workspace', 'organization'))
     );
 END;
 
@@ -176,7 +173,7 @@ BEGIN
         CONSTRAINT [FK_tb_board_member_board]
             FOREIGN KEY ([board_id]) REFERENCES dbo.tb_board ([id]),
         CONSTRAINT [CK_tb_board_member_role]
-            CHECK ([role] IN ('viewer', 'editor', 'designer'))
+            CHECK ([role] IN ('designer', 'editor', 'contributor', 'viewer'))
     );
 END;
 
@@ -766,7 +763,7 @@ BEGIN TRY
             THROW 50103, 'Ya existe un workspace General sin la clave estable general.', 1;
 
         INSERT INTO dbo.tb_workspace ([workspace_key], [workspace_type], [name], [visibility])
-        VALUES (N'general', 'workspace', N'General', 'workspace');
+        VALUES (N'general', 'workspace', N'General', 'open');
     END;
 
     SELECT @default_workspace_id = [id]
@@ -809,4 +806,3 @@ SELECT w.[id] AS [default_workspace_id], w.[workspace_key], w.[name] AS [workspa
 FROM dbo.tb_workspace AS w
 JOIN dbo.tb_folder AS f ON f.[workspace_id] = w.[id]
 WHERE w.[workspace_key] = N'general' AND f.[folder_key] = N'tableros';
-GO
