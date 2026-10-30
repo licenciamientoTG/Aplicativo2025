@@ -248,6 +248,8 @@
   const itemCommentSelectedFiles = [];
   const itemCommentPendingByItem = new Map();
   let groupSortable = null;
+  let columnSortables = [];
+  let columnOrderSaving = false;
   let navSortables = [];
   let itemSortables = [];
   let kanbanSortables = [];
@@ -5048,6 +5050,47 @@
     }
   }
 
+  async function saveColumnOrder(columnIds, previousOrder) {
+    if (columnOrderSaving || !state.board?.id) return;
+    columnOrderSaving = true;
+    const boardId = String(state.board.id);
+    const viewId = state.activeSavedViewId ? String(state.activeSavedViewId) : '';
+    columnSortables.forEach((sortable) => sortable.option('disabled', true));
+    try {
+      const payload = { board_id: boardId, column_ids: columnIds.map(Number) };
+      if (viewId) payload.view_id = viewId;
+      const result = await post(apiUrl('reorder_columns'), payload);
+      if (String(state.board?.id || '') !== boardId) return;
+      const orderMap = new Map((result.data?.columns || []).map((column) => [String(column.id), Number(column.sort_order)]));
+      state.columns.forEach((column) => {
+        const position = orderMap.get(String(column.id));
+        if (position !== undefined) column.sort_order = position;
+      });
+      state.columns.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+      if (viewId) {
+        const savedView = state.views.find((view) => String(view.id) === viewId);
+        if (savedView) savedView.config = { ...(savedView.config || {}), column_order: columnIds.map(String) };
+      }
+      setNotice('El orden de las columnas quedó guardado.', 'success');
+    } catch (error) {
+      if (String(state.board?.id || '') === boardId) {
+        if (String(state.activeSavedViewId || '') === viewId) {
+          state.viewConfig.column_order = previousOrder;
+          renderColumnControls();
+          renderActiveView();
+        }
+        setNotice(errorMessage(error, 'No se pudo guardar el orden de las columnas.'), 'error');
+      }
+    } finally {
+      columnOrderSaving = false;
+      if (String(state.board?.id || '') !== boardId && state.board?.id) {
+        renderActiveView();
+      } else {
+        columnSortables.forEach((sortable) => sortable.option('disabled', false));
+      }
+    }
+  }
+
   function createMoveEditor(item) {
     const select = document.createElement('select');
     select.className = 'boards-move-select';
@@ -5522,6 +5565,8 @@
   function renderTable() {
     itemSortables.forEach((sortable) => sortable.destroy());
     itemSortables = [];
+    columnSortables.forEach((sortable) => sortable.destroy());
+    columnSortables = [];
     const query = boardSearchValue().trim().toLocaleLowerCase();
     const filteredItems = getFilteredItems();
     const columns = orderedColumns();
@@ -5758,6 +5803,42 @@
     els.boardTableContainer.append(table);
     bindColumnResizing(table);
     syncGroupHeadingWidths();
+    if (window.Sortable && canManageStructure() && !columnOrderSaving && !query && !state.filters.length
+      && !state.columnMenuState.filters.length && !state.columnMenuState.sort && !state.columnMenuState.groupBy) {
+      table.querySelectorAll('tr.boards-group-columns').forEach((headerRow) => {
+        const headers = headerRow.querySelectorAll('th[data-column-header]');
+        if (headers.length < 2) return;
+        columnSortables.push(window.Sortable.create(headerRow, {
+          draggable: 'th[data-column-header]',
+          handle: '.boards-column-heading-title',
+          filter: '.boards-column-menu-trigger',
+          preventOnFilter: false,
+          animation: 180,
+          forceFallback: true,
+          fallbackOnBody: true,
+          fallbackTolerance: 4,
+          touchStartThreshold: 5,
+          ghostClass: 'boards-column-sortable-ghost',
+          chosenClass: 'boards-column-sortable-chosen',
+          onEnd: () => {
+            const visibleOrder = [...headerRow.querySelectorAll('th[data-column-header]')]
+              .map((header) => String(header.dataset.columnHeader));
+            const priorVisibleOrder = [...orderedColumns().map((column) => String(column.id))];
+            if (visibleOrder.length !== priorVisibleOrder.length
+              || visibleOrder.every((id, index) => id === priorVisibleOrder[index])) return;
+            const previousOrder = orderedColumns(true).map((column) => String(column.id));
+            const nextOrder = orderedColumns(true).map((column) => String(column.id));
+            const visibleSet = new Set(priorVisibleOrder);
+            let visibleIndex = 0;
+            const reordered = nextOrder.map((id) => visibleSet.has(id) ? visibleOrder[visibleIndex++] : id);
+            state.viewConfig.column_order = reordered;
+            renderColumnControls();
+            renderActiveView();
+            void saveColumnOrder(reordered, previousOrder);
+          }
+        }));
+      });
+    }
     if (window.Sortable && canEditBoard() && !query && !state.filters.length && !state.columnMenuState.filters.length && !state.columnMenuState.sort && !state.columnMenuState.groupBy) {
       table.querySelectorAll(':scope > tbody[data-group-body]').forEach((body) => {
         itemSortables.push(window.Sortable.create(body, {
@@ -6421,6 +6502,8 @@
     if (type !== 'table') {
       itemSortables.forEach((sortable) => sortable.destroy());
       itemSortables = [];
+      columnSortables.forEach((sortable) => sortable.destroy());
+      columnSortables = [];
       groupSortable?.destroy();
       groupSortable = null;
     }

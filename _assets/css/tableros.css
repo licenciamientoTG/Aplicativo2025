@@ -1120,6 +1120,9 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-selection-bar .boards-button-light { border-color: #60729f; color: #e5ebff; background: #344778; }
 .boards-table thead { display: none; }
 .boards-group-columns th { position: sticky; z-index: 3; top: 48px; height: 32px; padding: 3px 9px; border-right: 1px solid #3d4160; border-bottom: 1px solid #525672; color: #bfc4dc; background: #313450; font-size: .72rem; font-weight: 600; white-space: nowrap; }
+.boards-column-heading-title { cursor: grab; touch-action: none; }
+.boards-column-sortable-chosen .boards-column-heading-title { cursor: grabbing; }
+.boards-column-sortable-ghost { opacity: .35; outline: 2px solid #8baaff; }
 .boards-group-columns .boards-item-head { left: 38px; z-index: 5; min-width: 270px; box-shadow: 1px 0 0 #4a4d68; }
 .boards-table .boards-select-head,
 .boards-table .boards-select-cell { position: sticky; z-index: 4; left: 0; min-width: 38px; width: 38px; max-width: 38px; padding: 0; text-align: center; }
