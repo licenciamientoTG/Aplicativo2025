@@ -770,6 +770,7 @@ public function balance_age()
         if ($ventas = $this->ingresosModel->get_cash_sales($from, $until, $_POST['codgas'])) {
             foreach ($ventas as $venta) {
                 $data[] = array(
+                    'CodigoGasolinera'   => $venta['CodigoGasolinera'],
                     'Fecha'              => $venta['Fecha'],
                     'Gasolinera'           => $venta['Gasolinera'],
                     'Turno'              => $venta['Turno'],
@@ -7520,6 +7521,12 @@ public function stamped_invoices_detail(): void
         $lastAutomaticRun=$this->efcConciliacion->lastAutomaticRun();
         $isSuperAdmin = $this->currentUserIsSuperAdmin();
         echo $this->twig->render($this->route . 'cash_reconciliation_triple.html',compact('lastAutomaticRun','isSuperAdmin'));
+    }
+
+    /** Resumen mensual de ventas y depósitos de efectivo. */
+    public function cash_reconciliation_resumen_general(): void {
+        $isSuperAdmin = $this->currentUserIsSuperAdmin();
+        echo $this->twig->render($this->route . 'cash_reconciliation_resumen_general.html', compact('isSuperAdmin'));
     }
 
     /** Historial del monitor de cambios ControlGas, restringido a Díaz Gas sin Praxedis. */
