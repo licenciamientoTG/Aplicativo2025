@@ -7534,6 +7534,84 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'cash_reconciliation_resumen_general.html', compact('isSuperAdmin'));
     }
 
+    /** Genera un Excel con los renglones visibles del resumen general. */
+    public function cash_reconciliation_resumen_general_excel(): void {
+        $filas = json_decode((string)($_POST['filas'] ?? ''), true);
+        $totales = json_decode((string)($_POST['totales'] ?? ''), true);
+        $periodo = (string)($_POST['periodo'] ?? '');
+        $empresa = trim((string)($_POST['empresa'] ?? ''));
+
+        if (!is_array($filas) || !$filas || count($filas) > 2000 || !is_array($totales) || count($totales) !== 15
+            || !preg_match('/^\d{4}-\d{2}$/', $periodo) || $empresa === '') {
+            http_response_code(400);
+            echo 'No hay datos válidos para exportar.';
+            return;
+        }
+
+        $encabezados = ['Número', 'Estación', 'Venta M.N.', 'Venta Morralla', 'Venta total en MN', 'Depósitos en el mes', 'Depósito en tránsito MN', 'Total comprobado', 'Diferencia', 'Venta pesos USD', 'Ventas DLLS', 'Depósitos en el mes (USD)', 'Tránsito USD', 'Venta total (MN)', 'Tránsito MN saldo inicial'];
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Resumen general');
+        $sheet->mergeCells('A1:O1');
+        $sheet->setCellValue('A1', 'RESUMEN MENSUAL DE VENTAS VS DEPÓSITOS ACREDITADOS');
+        $sheet->mergeCells('A2:O2');
+        $sheet->setCellValue('A2', $empresa . ' · ' . $periodo);
+        $sheet->fromArray($encabezados, null, 'A4');
+
+        $filaExcel = 5;
+        foreach ($filas as $fila) {
+            if (!is_array($fila) || count($fila) !== 15) {
+                http_response_code(400);
+                echo 'El formato de las filas no es válido.';
+                return;
+            }
+            $valores = array_values($fila);
+            foreach ($valores as $indice => $valor) {
+                $valor = trim((string)($valor ?? ''));
+                if ($indice >= 2 && $valor !== '' && $valor !== '—') {
+                    $normalizado = str_replace([',', '$', '*', ' '], '', $valor);
+                    if (is_numeric($normalizado)) {
+                        $valores[$indice] = (float)$normalizado;
+                    }
+                }
+            }
+            $sheet->fromArray($valores, null, 'A' . $filaExcel);
+            $filaExcel++;
+        }
+
+        $lastDataRow = $filaExcel - 1;
+        foreach ($totales as $indice => $valor) {
+            $valor = trim((string)($valor ?? ''));
+            if ($indice >= 2 && $valor !== '' && $valor !== '—') {
+                $normalizado = str_replace([',', '$', '*', ' '], '', $valor);
+                if (is_numeric($normalizado)) {
+                    $totales[$indice] = (float)$normalizado;
+                }
+            }
+        }
+        $tabla = new \PhpOffice\PhpSpreadsheet\Worksheet\Table('A4:O' . $lastDataRow, 'ResumenGeneral');
+        $tabla->getStyle()->setTheme(\PhpOffice\PhpSpreadsheet\Worksheet\Table\TableStyle::TABLE_STYLE_MEDIUM_2);
+        $sheet->addTable($tabla);
+        $sheet->fromArray($totales, null, 'A' . $filaExcel);
+        $sheet->getStyle('A' . $filaExcel . ':O' . $filaExcel)->getFont()->setBold(true);
+        $sheet->getStyle('A' . $filaExcel . ':O' . $filaExcel)->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setARGB('FFD6E2EB');
+        $sheet->getStyle('C5:O' . $filaExcel)->getNumberFormat()->setFormatCode('#,##0.00;[Red]-#,##0.00;0.00');
+        $sheet->getStyle('A1:O1')->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
+        $sheet->getStyle('A1:O1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setARGB('FF0E3A63');
+        $sheet->getStyle('A1:O2')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('A4:O4')->getFont()->setBold(true);
+        foreach (range('A', 'O') as $columna) {
+            $sheet->getColumnDimension($columna)->setAutoSize(true);
+        }
+        $sheet->freezePane('A5');
+        $archivo = 'resumen_general_' . preg_replace('/[^A-Za-z0-9_-]/', '_', $empresa) . '_' . $periodo . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $archivo . '"');
+        header('Cache-Control: max-age=0');
+        (new Xlsx($spreadsheet))->save('php://output');
+        exit;
+    }
+
     /** Historial del monitor de cambios ControlGas, restringido a Díaz Gas sin Praxedis. */
     public function efc_conc_cambios_historial(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
