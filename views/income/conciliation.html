@@ -159,6 +159,12 @@
           <option value="-1">(Sin razón social)</option>
         </select>
       </div>
+      <div class="col-auto pb-1">
+        <div class="form-check" title="Quita de todos los tabs, chips y del Resumen a los clientes cuyo nombre contiene FINANCIER (p. ej. C-FINANCIERA BAJIO). Se puede marcar y desmarcar sin volver a consultar.">
+          <input class="form-check-input" type="checkbox" id="cvSinFinanciera" checked>
+          <label class="form-check-label" for="cvSinFinanciera">Excluir C-FINANCIERA</label>
+        </div>
+      </div>
       <div class="col-auto">
         <button type="submit" class="btn btn-primary">Buscar</button>
       </div>
@@ -1030,7 +1036,7 @@ $(function () {
   $('#modalDespachos').on('shown.bs.modal', function () { tablaDespachos.columns.adjust(); tablaCortes.columns.adjust(); });
 
   // ---------------------------------------------------------------- datos
-  var estado = { busqueda: 0, venta: [], facturas: [], cobros: [], xhrs: [], fin: {}, t0: {}, resumenListo: false };
+  var estado = { raw: {}, alOk: {}, busqueda: 0, venta: [], facturas: [], cobros: [], xhrs: [], fin: {}, t0: {}, resumenListo: false };
 
   function filtros(extra) {
     return $.extend({ mes: $('#cvMes').val(), empresa: $('#cvEmpresa').val() }, extra || {});
@@ -1098,12 +1104,23 @@ $(function () {
   $('#cvProgItems').on('click', '.cv-prog-item.ok', function () { abrirTab($(this).data('tab')); });
 
   // Lanza una consulta; si ya hay otra búsqueda en marcha, su respuesta se descarta.
+  // Excluir C-FINANCIERA: se aplica a los datos crudos de cada consulta, así el checkbox no obliga a volver a consultar.
+  function sinFinanciera(filas) {
+    if (!$('#cvSinFinanciera').is(':checked')) return filas;
+    return filas.filter(function (r) { return !/FINANCIER/i.test(String(r.cliente || r.Cliente || '')); });
+  }
+  $('#cvSinFinanciera').on('change', function () {
+    Object.keys(estado.raw).forEach(function (k) { estado.alOk[k](sinFinanciera(estado.raw[k])); });
+    if (estado.resumenListo) pintarResumen();
+  });
   function consultar(k, xhr, alOk) {
     var busqueda = estado.busqueda;
     estado.xhrs.push(xhr);
     xhr.done(function (r) {
       if (busqueda !== estado.busqueda) return;
-      alOk((r && r.data) || []);
+      estado.raw[k] = (r && r.data) || [];
+      estado.alOk[k] = alOk;
+      alOk(sinFinanciera(estado.raw[k]));
       progresoMarca(k, true);
     }).fail(function (x, st) {
       if (st === 'abort' || busqueda !== estado.busqueda) return;
@@ -1116,7 +1133,7 @@ $(function () {
   function buscar() {
     (estado.xhrs || []).forEach(function (x) { x.abort(); });
     estado.busqueda++;
-    estado.xhrs = []; estado.fin = {}; estado.resumenListo = false;
+    estado.xhrs = []; estado.fin = {}; estado.resumenListo = false; estado.raw = {}; estado.alOk = {};
     estado.venta = []; estado.facturas = []; estado.cobros = []; estado.cortesDif = [];
 
     TABLAS().forEach(function (t) { t.settings()[0].oLanguage.sEmptyTable = 'Consultando…'; t.clear().draw(); });

@@ -894,6 +894,9 @@ public function balance_age()
                     'RazonSocial' => $r['RazonSocial'],
                     'producto' => $r['producto'],
                     'Categoria' => $r['Categoria'],
+                    'nroveh'   => $r['nroveh'],
+                    'Vehiculo' => $r['Vehiculo'],
+                    'Tarjeta'  => $r['Tarjeta'],
                 ];
             }
         }
