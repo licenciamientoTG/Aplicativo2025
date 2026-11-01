@@ -193,9 +193,17 @@ class ClientesModel extends Model{
                     t4.abr   AS Estacion,
                     ISNULL(EMP.den, '(Sin razón social)') AS RazonSocial,
                     t3.den as producto,
-                    ISNULL(CP.categoria, '') AS Categoria
+                    ISNULL(CP.categoria, '') AS Categoria,
+                    t1.nroveh,
+                    ISNULL(VEH.den, '') AS Vehiculo,
+                    ISNULL(VEH.tar, '') AS Tarjeta
                 FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
                 LEFT JOIN [SG12].[dbo].[Clientes]    t2 ON t1.codcli = t2.cod
+                OUTER APPLY (
+                    SELECT TOP (1) cv.den, cv.tar
+                    FROM [SG12].[dbo].[ClientesVehiculos] cv WITH (NOLOCK)
+                    WHERE cv.codcli = t1.codcli AND cv.nroveh = t1.nroveh
+                ) VEH
                 LEFT JOIN [SG12].[dbo].[Gasolineras] t4 ON t1.codgas = t4.cod
                 LEFT JOIn [SG12].[dbo].[Productos] t3 on t1.codprd = t3.cod
                 LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas

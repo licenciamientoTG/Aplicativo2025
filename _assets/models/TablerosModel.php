@@ -2436,6 +2436,69 @@ class TablerosModel {
         });
     }
 
+    public function reorderColumns(int $boardId, int $userId, array $input): array {
+        $columnIds = $input['column_ids'] ?? null;
+        if (!is_array($columnIds) || !array_is_list($columnIds)) {
+            throw new TablerosApiException('validation', 'El orden debe incluir la lista completa de columnas.', 422);
+        }
+        $ids = [];
+        foreach ($columnIds as $value) {
+            $id = $this->positiveInt($value, 'column_id');
+            if (isset($ids[$id])) {
+                throw new TablerosApiException('validation', 'No se permiten columnas repetidas en el orden.', 422);
+            }
+            $ids[$id] = $id;
+        }
+        $viewId = $this->optionalPositiveInt($input['view_id'] ?? null, 'view_id');
+
+        return $this->transaction(function () use ($boardId, $userId, $ids, $viewId): array {
+            $columns = $this->all(
+                'SELECT id FROM tb_column WITH (UPDLOCK, HOLDLOCK) WHERE board_id = ? AND deleted_at IS NULL ORDER BY sort_order, id',
+                [$boardId]
+            );
+            $activeIds = array_map(static fn(array $column): int => (int)$column['id'], $columns);
+            if (count($activeIds) !== count($ids) || array_diff($activeIds, array_values($ids))) {
+                throw new TablerosApiException('validation', 'El orden debe incluir exactamente las columnas activas de este tablero. Actualiza el tablero e inténtalo de nuevo.', 422);
+            }
+
+            if ($viewId !== null) {
+                $view = $this->one(
+                    'SELECT id, config_json, owner_user_id, is_shared FROM tb_view WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND board_id = ? AND deleted_at IS NULL',
+                    [$viewId, $boardId]
+                );
+                if (!$view) {
+                    throw new TablerosApiException('not_found', 'No se encontró la vista guardada de este tablero.', 404);
+                }
+                if ((int)($view['owner_user_id'] ?? 0) !== $userId && empty($view['is_shared'])) {
+                    throw new TablerosApiException('forbidden', 'No tienes permiso para cambiar el orden de esta vista.', 403);
+                }
+                $config = $this->decodeJson($view['config_json'] ?? null, []);
+                if (!is_array($config) || ($config !== [] && array_is_list($config))) $config = [];
+                $config['column_order'] = array_map('strval', array_values($ids));
+                $configJson = json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                if ($configJson === false) {
+                    throw new TablerosApiException('validation', 'No se pudo guardar la configuración de la vista.', 422);
+                }
+                $this->execute(
+                    'UPDATE tb_view SET config_json = ?, updated_at = GETDATE() WHERE id = ? AND board_id = ? AND deleted_at IS NULL',
+                    [$configJson, $viewId, $boardId]
+                );
+            }
+
+            $ordered = [];
+            foreach (array_values($ids) as $index => $id) {
+                $position = $index * 10;
+                $this->execute(
+                    'UPDATE tb_column SET sort_order = ?, updated_at = GETDATE() WHERE id = ? AND board_id = ? AND deleted_at IS NULL',
+                    [$position, $id, $boardId]
+                );
+                $ordered[] = ['id' => $id, 'sort_order' => $position];
+            }
+            $this->writeActivity($boardId, null, $userId, 'column.reordered', ['column_ids' => array_values($ids), 'view_id' => $viewId]);
+            return ['columns' => $ordered, 'view_id' => $viewId];
+        });
+    }
+
     public function createColumn(int $boardId, int $userId, array $input): array {
         $name = $this->requiredString($input, 'name', 120);
         if (!is_string($input['type'] ?? null)) {

@@ -3894,12 +3894,22 @@ function loadAuthorizedPendingInvoices() {
         className: "text-center",
         render: function (data, type, row) {
           if (row.tipo_registro === "ANTICIPO") {
+            const btnPagarAnticipo = window.PUEDE_TESORERIA
+              ? `<a href="/payment/anticipo_detail/${row.payment_request_id}?pagar=1"
+                       title="Registrar pago y subir comprobante" data-bs-toggle="tooltip"
+                       style="color:#16a34a;background:#ecfdf5;border:none;border-radius:5px;padding:.3rem .5rem;display:inline-block;">
+                   <i class="fas fa-dollar-sign" style="font-size:.8rem;"></i>
+               </a>`
+              : "";
             return `
+                        <div class="d-inline-flex gap-1 justify-content-center">
                             <button onclick="verDetalleAnticipo(${row.payment_request_id})"
                                     title="Ver detalle del anticipo" data-bs-toggle="tooltip"
                                     style="color:#2563eb;background:#eff6ff;border:none;border-radius:5px;padding:.3rem .5rem;">
                                 <i class="fas fa-eye" style="font-size:.8rem;"></i>
                             </button>
+                            ${btnPagarAnticipo}
+                        </div>
                         `;
           }
 
@@ -4017,18 +4027,68 @@ function loadAuthorizedPendingInvoices() {
 
 // ✅ Función para ver detalle del anticipo (reutiliza la que ya tienes)
 function verDetalleAnticipo(paymentRequestId) {
-  // Cargar el modal de detalle de anticipo que ya tienes
-  $.ajax({
-    url: "/payment/anticipo_detail_modal/" + paymentRequestId,
-    method: "GET",
-    success: function (response) {
-      $("#modalDetalleAnticipoContent").html(response);
-      $("#modalDetalleAnticipo").modal("show");
-    },
-    error: function () {
-      alertify.error("Error al cargar el detalle del anticipo");
-    },
-  });
+  const fmt = (v) => "$" + parseFloat(v || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 });
+  const esc = (s) => $("<div>").text(s == null ? "" : s).html();
+
+  $("#modalDetalleAnticipoContent").html(
+    '<div class="modal-body text-center py-4"><i class="fas fa-spinner fa-spin fa-2x"></i></div>',
+  );
+  $("#modalDetalleAnticipo").modal("show");
+
+  $.getJSON("/payment/anticipo_summary_json/" + paymentRequestId)
+    .done(function (resp) {
+      if (!resp || !resp.success) {
+        $("#modalDetalleAnticipoContent").html(
+          '<div class="modal-body text-danger">' + esc((resp && resp.message) || "Error al cargar el detalle del anticipo") + "</div>",
+        );
+        return;
+      }
+      const d = resp.data;
+
+      const comprobantes = (d.comprobantes || [])
+        .map(
+          (c) =>
+            `<button type="button" class="btn btn-sm btn-outline-success me-1" onclick="window.open('/payment/view_payment_document/${c.doc_id}', '_blank')">
+               <i class="fas fa-receipt"></i> ${esc(c.original_filename || "Comprobante")}</button>`,
+        )
+        .join("");
+
+      const filas = (d.aplicaciones || [])
+        .map(
+          (a) => `<tr>
+            <td><strong>${esc(a.folio)}</strong><br><small class="text-muted">${esc(a.invoice_number)}</small></td>
+            <td>${esc(a.estacion_nombre || "—")}</td>
+            <td class="text-end">${fmt(a.monto_factura)}</td>
+            <td class="text-end fw-bold text-danger">${fmt(a.monto_aplicado)}</td>
+            <td class="text-center">${a.fecha_aplicacion ? new Date(a.fecha_aplicacion).toLocaleDateString("es-MX") : "—"}</td>
+            <td><small>${esc(a.aplicado_por_nombre || "—")}</small></td>
+          </tr>`,
+        )
+        .join("");
+
+      $("#modalDetalleAnticipoContent").html(`
+        <div class="modal-body">
+          <div class="row text-center mb-3">
+            <div class="col-4"><small class="text-muted">Monto</small><div class="fw-bold">${fmt(d.monto_original)}</div></div>
+            <div class="col-4"><small class="text-muted">Aplicado</small><div class="fw-bold text-danger">${fmt(d.total_aplicado)}</div></div>
+            <div class="col-4"><small class="text-muted">Saldo disponible</small><div class="fw-bold text-success">${fmt(d.saldo_disponible)}</div></div>
+          </div>
+          ${comprobantes ? `<div class="mb-3">${comprobantes}</div>` : ""}
+          ${
+            filas
+              ? `<table class="table table-sm table-hover mb-0" style="font-size:.8rem;">
+                   <thead class="table-light"><tr><th>Folio / Factura</th><th>Estación</th><th class="text-end">Monto Factura</th><th class="text-end">Aplicado</th><th class="text-center">Fecha</th><th>Aplicó</th></tr></thead>
+                   <tbody>${filas}</tbody></table>`
+              : '<div class="text-muted text-center">Sin facturas aplicadas todavía</div>'
+          }
+        </div>
+        <div class="modal-footer">
+          <a href="/payment/anticipo_detail/${paymentRequestId}" class="btn btn-sm btn-outline-primary"><i class="fas fa-external-link-alt"></i> Abrir anticipo completo</a>
+        </div>`);
+    })
+    .fail(function () {
+      $("#modalDetalleAnticipoContent").html('<div class="modal-body text-danger">Error al cargar el detalle del anticipo</div>');
+    });
 }
 
 
@@ -4816,25 +4876,29 @@ function validarYGenerarLayout(banco) {
       .filter((fila) => fila.banco_asignado === banco);
   }
 
+  // Por ahora los anticipos NO entran al layout bancario (se pagan desde su detalle).
+  const totalFilas = filas.length;
+  filas = filas.filter((fila) => fila.tipo_registro !== "ANTICIPO");
+  if (filas.length < totalFilas) {
+    alertify.message("Los anticipos se omitieron del layout");
+  }
+
   if (filas.length === 0) {
-    alertify.warning(`No hay pagos de ${banco} para generar el layout`);
+    alertify.warning(`No hay facturas de ${banco} para generar el layout`);
     return;
   }
 
   const facturasSeleccionadas = [];
   const anticiposSeleccionados = [];
   filas.forEach((fila) => {
-    const grupo = {
+    facturasSeleccionadas.push({
       banco: fila.banco_asignado,
       empresa: fila.empresa_nombre,
       proveedor: fila.proveedor_nombre,
       monto: fila.total_autorizado,
-    };
-    if (fila.tipo_registro === "ANTICIPO") {
-      anticiposSeleccionados.push({ ...grupo, payment_request_id: fila.payment_request_id, tipo: "ANTICIPO" });
-    } else {
-      facturasSeleccionadas.push({ ...grupo, invoice_ids: fila.invoice_ids, tipo: "FACTURAS" });
-    }
+      invoice_ids: fila.invoice_ids,
+      tipo: "FACTURAS",
+    });
   });
   const empresasSeleccionadas = [...new Set(filas.map((fila) => fila.empresa_nombre))];
 

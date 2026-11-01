@@ -60,6 +60,7 @@ return [
         route('create-board/', [tableros_api::class, 'create_board'], name: 'tableros_api.create_board', methods: [], alias: ['tableros_api/create_board']),
         route('create-group/', [tableros_api::class, 'create_group'], name: 'tableros_api.create_group', methods: [], alias: ['tableros_api/create_group']),
         route('reorder-groups/', [tableros_api::class, 'reorder_groups'], name: 'tableros_api.reorder_groups', methods: [], alias: ['tableros_api/reorder_groups']),
+        route('reorder-columns/', [tableros_api::class, 'reorder_columns'], name: 'tableros_api.reorder_columns', methods: [], alias: ['tableros_api/reorder_columns']),
         route('create-column/', [tableros_api::class, 'create_column'], name: 'tableros_api.create_column', methods: [], alias: ['tableros_api/create_column']),
         route('update-column-options/', [tableros_api::class, 'update_column_options'], name: 'tableros_api.update_column_options', methods: [], alias: ['tableros_api/update_column_options']),
         route('rename-column/', [tableros_api::class, 'rename_column'], name: 'tableros_api.rename_column', methods: [], alias: ['tableros_api/rename_column']),

@@ -233,6 +233,36 @@ class Income{
         ]);
     }
 
+    /** Ingresos > Valeras: consumo de valeras del corte por día, razón social, estación y concepto (permiso 14, routes/income.php). */
+    public function valeras() : void {
+        echo $this->twig->render($this->route . 'valeras.html', [
+            'desde'    => date('Y-m-01'),
+            'hasta'    => date('Y-m-d'),
+            'empresas' => $this->clientesModel->get_station_companies(),
+        ]);
+    }
+
+    /** POST: {data: [{fecha, empresa, estacion, concepto, monto}]}; una fila por día, razón social, estación y valera. */
+    public function valeras_daily() : void {
+        set_time_limit(300);
+        $valid = fn($f) => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$f) && strtotime($f) !== false;
+        $desde = $valid($_POST['desde'] ?? '') ? $_POST['desde'] : date('Y-m-01');
+        $hasta = $valid($_POST['hasta'] ?? '') ? $_POST['hasta'] : date('Y-m-d');
+        if ($hasta < $desde) [$desde, $hasta] = [$hasta, $desde];
+
+        $data = [];
+        foreach ((new ValerasModel)->consumo_diario(dateToInt($desde), dateToInt($hasta), $this->conciliationEmpresa()) as $r) {
+            $data[] = [
+                'fecha'    => $r['fecha'],
+                'empresa'  => $r['empresa'],
+                'estacion' => $r['estacion'],
+                'concepto' => $r['concepto'],
+                'monto'    => round((float)$r['monto'], 2),
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
     /** POST: una fila por cliente de crédito con venta, cortes y lo facturado de sus despachos del mes. */
     public function conciliation_sales() : void {
         set_time_limit(300);
@@ -294,6 +324,7 @@ class Income{
                 'despacho'      => $r['nrotrn'],
                 'fecha'         => $r['fecha'],
                 'hora'          => substr($hora, 0, 2) . ':' . substr($hora, 2, 2),
+                'turno'         => $this->conciliationTurno($r['nrotur']),
                 'producto'      => trim((string)$r['producto']),
                 'litros'        => round((float)$r['litros'], 3),
                 'monto'         => round((float)$r['monto'], 2),
@@ -302,6 +333,93 @@ class Income{
                 'fecha_factura' => $r['fecha_factura'] ?? '',
                 'uuid'          => $r['satuid'] ?? '',
                 'estado'        => $estado,
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /** POST (codcli): despachos del cliente contra sus vales del corte (ValesR), con la diferencia de cada uno. */
+    public function conciliation_client_cuts() : void {
+        [$from, $until] = $this->conciliationRange();
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        if ($codcli <= 0) json_output(['data' => []]);
+        $data = [];
+        foreach ((new ConciliacionVentaModel)->despachos_vs_cortes($from, $until, $this->conciliationEmpresa(), $codcli) as $r) {
+            $tieneDesp = $r['monto_despacho'] !== null;
+            $tieneVale = $r['monto_vale'] !== null;
+            $montoDesp = $tieneDesp ? round((float)$r['monto_despacho'], 2) : 0.0;
+            $montoVale = $tieneVale ? round((float)$r['monto_vale'], 2) : 0.0;
+            // Despacho de $0 sin vale: no mueve nada, no se lista
+            if ($tieneDesp && !$tieneVale && abs($montoDesp) < 0.005) continue;
+            if (!$tieneVale)                              $estado = 'Despacho sin vale';
+            elseif (!$tieneDesp)                          $estado = 'Vale sin despacho';
+            elseif ((int)$r['n_vales'] > 1)               $estado = 'Vale duplicado';
+            elseif (abs($montoDesp - $montoVale) >= 0.01) $estado = 'Monto distinto';
+            else                                          $estado = 'Cuadra';
+            $hora = $r['hratrn'] === null ? '' : str_pad((string)$r['hratrn'], 4, '0', STR_PAD_LEFT);
+            $data[] = [
+                'estacion'        => trim((string)$r['estacion']),
+                'despacho'        => $r['nrotrn'],
+                'fecha'           => $r['fecha'],
+                'hora'            => $hora === '' ? '' : substr($hora, 0, 2) . ':' . substr($hora, 2, 2),
+                'producto'        => trim((string)$r['producto']),
+                'litros'          => $tieneDesp ? round((float)$r['litros'], 3) : null,
+                'monto_despacho'  => $montoDesp,
+                'turno_despacho'  => $this->conciliationTurno($r['turno_despacho']),
+                'turno_vale'      => $this->conciliationTurno($r['turno']),
+                'monto_vale'      => $montoVale,
+                'diferencia'      => round($montoDesp - $montoVale, 2),
+                'estado'          => $estado,
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /** POST: folios de crédito cuyo despacho y vale del corte no cuadran, con el corte (estación + fecha + turno). */
+    public function conciliation_cuts_diff() : void {
+        set_time_limit(300);
+        [$from, $until, $desde, $hasta] = $this->conciliationRange();
+        $data = [];
+        foreach ((new ConciliacionVentaModel)->cortes_con_diferencia($from, $until, $this->conciliationEmpresa()) as $r) {
+            $enD = (int)$r['en_rango_d'] === 1;
+            $enV = (int)$r['en_rango_v'] === 1;
+            $tieneVale = $r['mto_v'] !== null;
+            $mtoD = $enD ? (float)$r['mto_d'] : ($r['mto_o'] !== null ? (float)$r['mto_o'] : 0.0);
+            $mtoV = $tieneVale ? (float)$r['mto_v'] : 0.0;
+            $hayDespacho = $enD || $r['mto_o'] !== null;
+            if (!$hayDespacho) {
+                $estado = (int)$r['manual'] === 1 ? 'Vale manual sin despacho' : 'Vale con producto sin despacho';
+            } elseif (!$enD) {
+                $estado = ($r['fecha_despacho'] >= $desde && $r['fecha_despacho'] <= $hasta) ? 'Despacho de otro cliente' : 'Despacho de otro mes';
+            } elseif (!$tieneVale) {
+                if (abs($mtoD) < 0.005) continue;   // despacho de $0 sin vale: no mueve nada, no se lista
+                $estado = 'Despacho sin vale';
+            } elseif ((int)$r['n_vales'] > 1) {
+                $estado = 'Vale duplicado';
+            } elseif (abs($mtoD - $mtoV) >= 0.01) {
+                $estado = 'Monto distinto';
+            } elseif (!$enV) {
+                $estado = 'Vale en otro mes';
+            } else {
+                $estado = 'Cuadra en otro corte';
+            }
+            $hora = $r['hra'] === null ? '' : str_pad((string)$r['hra'], 4, '0', STR_PAD_LEFT);
+            $data[] = [
+                'estacion'       => trim((string)$r['estacion']),
+                'fecha_corte'    => $r['fecha_corte'],
+                'turno'          => $this->conciliationTurno($r['turno']),
+                'codcli'         => (int)$r['codcli'],
+                'cliente'        => trim((string)$r['cliente']),
+                'folio'          => $r['nrotrn'],
+                'fecha_despacho' => $hayDespacho ? $r['fecha_despacho'] : '',
+                'hora'           => $hora === '' ? '' : substr($hora, 0, 2) . ':' . substr($hora, 2, 2),
+                'producto'       => trim((string)$r['producto']),
+                'monto_despacho' => $hayDespacho ? round($mtoD, 2) : null,
+                'corte_vale'     => $tieneVale ? $r['fecha_vale'] . ' T' . $this->conciliationTurno($r['turno_vale']) : '',
+                'monto_vale'     => $tieneVale ? round($mtoV, 2) : null,
+                // Solo lo que cae en el mes: despacho por su fecha, vale por la fecha del corte
+                'diferencia'     => round(($enD ? $mtoD : 0.0) - ($enV ? $mtoV : 0.0), 2),
+                'estado'         => $estado,
             ];
         }
         json_output(['data' => $data]);
@@ -472,6 +590,11 @@ class Income{
         $desde = $mes . '-01';
         $hasta = date('Y-m-t', strtotime($desde));
         return [dateToInt($desde), dateToInt($hasta), $desde, $hasta];
+    }
+
+    /** ControlGas guarda el turno como 11, 21, 31, 41: el turno real es el primer dígito (1, 2, 3, 4). */
+    private function conciliationTurno(mixed $nrotur) : string {
+        return $nrotur === null || $nrotur === '' ? '' : substr((string)(int)$nrotur, 0, 1);
     }
 
     /** Razón social del POST: 0 = todas, -1 = sin razón social, >0 = SG12.Empresas.cod. */
@@ -647,6 +770,7 @@ public function balance_age()
         if ($ventas = $this->ingresosModel->get_cash_sales($from, $until, $_POST['codgas'])) {
             foreach ($ventas as $venta) {
                 $data[] = array(
+                    'CodigoGasolinera'   => $venta['CodigoGasolinera'],
                     'Fecha'              => $venta['Fecha'],
                     'Gasolinera'           => $venta['Gasolinera'],
                     'Turno'              => $venta['Turno'],
@@ -770,6 +894,9 @@ public function balance_age()
                     'RazonSocial' => $r['RazonSocial'],
                     'producto' => $r['producto'],
                     'Categoria' => $r['Categoria'],
+                    'nroveh'   => $r['nroveh'],
+                    'Vehiculo' => $r['Vehiculo'],
+                    'Tarjeta'  => $r['Tarjeta'],
                 ];
             }
         }
@@ -4641,6 +4768,7 @@ public function anomalies_client_tickets()
             $sql = "SELECT DISTINCT
                         T1.Codigo,
                         T1.Nombre,
+                        T1.Estacion AS Estacion,
                         ISNULL(T1.RFC, 'FORANEAS') as RFC,
                         CASE WHEN T1.RFC = 'DGA930823KD3' THEN 'DIAZ GAS'
                              WHEN T1.RFC = 'DGM880621FU5' THEN 'GASOMEX'
@@ -4674,6 +4802,7 @@ public function anomalies_client_tickets()
                 $result[] = [
                     'Codigo' => 333,
                     'Nombre' => 'COLOSIO',
+                    'Estacion' => 333,
                     'RFC'    => 'FORANEAS',
                     'Empresa'=> 'FORANEAS'
                 ];
@@ -7399,6 +7528,141 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'cash_reconciliation_triple.html',compact('lastAutomaticRun','isSuperAdmin'));
     }
 
+    /** Resumen mensual de ventas y depósitos de efectivo. */
+    public function cash_reconciliation_resumen_general(): void {
+        $isSuperAdmin = $this->currentUserIsSuperAdmin();
+        echo $this->twig->render($this->route . 'cash_reconciliation_resumen_general.html', compact('isSuperAdmin'));
+    }
+
+    /** Genera un Excel con los renglones visibles del resumen general. */
+    public function cash_reconciliation_resumen_general_excel(): void {
+        $filas = json_decode((string)($_POST['filas'] ?? ''), true);
+        $totales = json_decode((string)($_POST['totales'] ?? ''), true);
+        $periodo = (string)($_POST['periodo'] ?? '');
+        $empresa = trim((string)($_POST['empresa'] ?? ''));
+
+        if (!is_array($filas) || !$filas || count($filas) > 2000 || !is_array($totales) || count($totales) !== 15
+            || !preg_match('/^\d{4}-\d{2}$/', $periodo) || $empresa === '') {
+            http_response_code(400);
+            echo 'No hay datos válidos para exportar.';
+            return;
+        }
+
+        $encabezados = ['Número', 'Estación', 'Venta M.N.', 'Venta Morralla', 'Venta total en MN', 'Depósitos en el mes', 'Depósito en tránsito MN', 'Total comprobado', 'Diferencia', 'Venta pesos USD', 'Ventas DLLS', 'Depósitos en el mes (USD)', 'Tránsito USD', 'Venta total (MN)', 'Tránsito MN saldo inicial'];
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Resumen general');
+        $sheet->mergeCells('A1:O1');
+        $sheet->setCellValue('A1', 'RESUMEN MENSUAL DE VENTAS VS DEPÓSITOS ACREDITADOS');
+        $sheet->mergeCells('A2:O2');
+        $sheet->setCellValue('A2', $empresa . ' · ' . $periodo);
+        $sheet->fromArray($encabezados, null, 'A4');
+
+        $filaExcel = 5;
+        foreach ($filas as $fila) {
+            if (!is_array($fila) || count($fila) !== 15) {
+                http_response_code(400);
+                echo 'El formato de las filas no es válido.';
+                return;
+            }
+            $valores = array_values($fila);
+            foreach ($valores as $indice => $valor) {
+                $valor = trim((string)($valor ?? ''));
+                if ($indice >= 2 && $valor !== '' && $valor !== '—') {
+                    $normalizado = str_replace([',', '$', '*', ' '], '', $valor);
+                    if (is_numeric($normalizado)) {
+                        $valores[$indice] = (float)$normalizado;
+                    }
+                }
+            }
+            $sheet->fromArray($valores, null, 'A' . $filaExcel);
+            $filaExcel++;
+        }
+
+        $lastDataRow = $filaExcel - 1;
+        foreach ($totales as $indice => $valor) {
+            $valor = trim((string)($valor ?? ''));
+            if ($indice >= 2 && $valor !== '' && $valor !== '—') {
+                $normalizado = str_replace([',', '$', '*', ' '], '', $valor);
+                if (is_numeric($normalizado)) {
+                    $totales[$indice] = (float)$normalizado;
+                }
+            }
+        }
+        $tabla = new \PhpOffice\PhpSpreadsheet\Worksheet\Table('A4:O' . $lastDataRow, 'ResumenGeneral');
+        $tabla->getStyle()->setTheme(\PhpOffice\PhpSpreadsheet\Worksheet\Table\TableStyle::TABLE_STYLE_MEDIUM_2);
+        $sheet->addTable($tabla);
+        $sheet->fromArray($totales, null, 'A' . $filaExcel);
+        $sheet->getStyle('A' . $filaExcel . ':O' . $filaExcel)->getFont()->setBold(true);
+        $sheet->getStyle('A' . $filaExcel . ':O' . $filaExcel)->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setARGB('FFD6E2EB');
+        $sheet->getStyle('C5:O' . $filaExcel)->getNumberFormat()->setFormatCode('#,##0.00;[Red]-#,##0.00;0.00');
+        $sheet->getStyle('A1:O1')->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
+        $sheet->getStyle('A1:O1')->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)->getStartColor()->setARGB('FF0E3A63');
+        $sheet->getStyle('A1:O2')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('A4:O4')->getFont()->setBold(true);
+        foreach (range('A', 'O') as $columna) {
+            $sheet->getColumnDimension($columna)->setAutoSize(true);
+        }
+        $sheet->freezePane('A5');
+        $archivo = 'resumen_general_' . preg_replace('/[^A-Za-z0-9_-]/', '_', $empresa) . '_' . $periodo . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $archivo . '"');
+        header('Cache-Control: max-age=0');
+        (new Xlsx($spreadsheet))->save('php://output');
+        exit;
+    }
+
+    /** Historial del monitor de cambios ControlGas, restringido a Díaz Gas sin Praxedis. */
+    public function efc_conc_cambios_historial(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $from=(string)($_GET['desde']??date('Y-m-d',strtotime('-59 days')));$to=(string)($_GET['hasta']??date('Y-m-d'));
+            foreach([$from,$to] as $date){$parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);if(!$parsed||$parsed->format('Y-m-d')!==$date)throw new RuntimeException('Rango de fechas inválido.');}
+            if($from>$to)throw new RuntimeException('La fecha inicial debe ser menor o igual a la fecha final.');
+            $station=isset($_GET['estacion_id'])?(int)$_GET['estacion_id']:null;
+            $allowed=array_values(array_diff(EfcConciliacionModel::stationIds('DIAZ GAS'),[40]));
+            if($station!==null&&!in_array($station,$allowed,true))throw new RuntimeException('Estación fuera del alcance del monitor.');
+            $status=strtoupper(trim((string)($_GET['estado']??'TODOS')));
+            if(!in_array($status,['TODOS','PENDIENTE','APROBADO','RECHAZADO','SUPERSEDIDO'],true))throw new RuntimeException('Estado inválido.');
+            $changeId=isset($_GET['cambio_id'])?(int)$_GET['cambio_id']:null;if($changeId!==null&&$changeId<1)throw new RuntimeException('Cambio inválido.');
+            $data=['cambios'=>$this->efcConciliacion->cutChangeHistory($from,$to,$station,$status,$changeId),'estaciones'=>$this->efcConciliacion->cutChangeStations()];
+            echo json_encode(['status'=>'success','data'=>$data],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
+        exit;
+    }
+
+    /** Applies the latest accepted ControlGas amount to the reconciliation board. */
+    public function efc_conc_cortes_aceptados(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $station=(int)($_GET['estacion_id']??0);$from=(string)($_GET['desde']??'');$to=(string)($_GET['hasta']??'');
+            $allowed=array_values(array_diff(EfcConciliacionModel::stationIds('DIAZ GAS'),[40]));
+            if(!in_array($station,$allowed,true))throw new RuntimeException('Estación fuera del alcance del monitor.');
+            foreach([$from,$to] as $date){$parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);if(!$parsed||$parsed->format('Y-m-d')!==$date)throw new RuntimeException('Rango de fechas inválido.');}
+            if($from>$to||(strtotime($to)-strtotime($from))>62*86400)throw new RuntimeException('Rango de consulta inválido.');
+            echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->acceptedCutAmounts($station,$from,$to)],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
+        exit;
+    }
+
+    public function efc_conc_cambios_decidir(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);if(!is_array($data))throw new RuntimeException('Solicitud inválida.');
+            $changeId=(int)($data['id']??0);$decision=strtoupper(trim((string)($data['decision']??'')));
+            if($decision==='APROBAR'){
+                $candidate=$this->efcConciliacion->pendingCutChange($changeId);if(!$candidate||$candidate['estado']!=='PENDIENTE')throw new RuntimeException('El cambio ya fue resuelto o no existe.');
+                $station=(int)$candidate['estacion_id'];$allowed=array_values(array_diff(EfcConciliacionModel::stationIds('DIAZ GAS'),[40]));if(!in_array($station,$allowed,true))throw new RuntimeException('Estación fuera del alcance del monitor.');
+                $day=new DateTimeImmutable($candidate['fecha_operativa']);$source=$this->efcConcReportControlGas($station,(int)$day->format('Y'),(int)$day->format('n'));
+                $live=$this->efcConciliacion->findControlGasCutAmount($source,$candidate['fecha_operativa'],(string)$candidate['turno'],(string)$candidate['concepto']);
+                if($live===null||round($live,2)!==round((float)$candidate['importe_nuevo'],2))throw new RuntimeException('ControlGas volvió a cambiar desde la última revisión. Espera el siguiente monitoreo y revisa la nueva versión.');
+            }
+            $result=$this->efcConciliacion->decideCutChange($changeId,$decision,(int)($_SESSION['tg_user']['Id']??0));
+            echo json_encode(['status'=>'success','data'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
+        exit;
+    }
+
     /** Normaliza valores Banorte para que la huella no dependa del formato de Excel/CSV. */
     private function normalizar_valor_huella_banorte($valor, bool $quitarDecimalEntero = false): string {
         if ($valor === null || is_array($valor) || is_object($valor)) return '';
@@ -7571,7 +7835,9 @@ public function stamped_invoices_detail(): void
             $company=strtoupper(trim((string)($_GET['empresa'] ?? '')));
             $station=(int)($_GET['estacion_id'] ?? 0); $year=(int)($_GET['year'] ?? 0); $month=(int)($_GET['month'] ?? 0);
             $concept=strtoupper(trim((string)($_GET['concepto'] ?? ''))); $concept=$concept === '' ? null : $concept;
+            $captura=strtoupper(trim((string)($_GET['captura'] ?? 'TODOS')));
             if (!in_array($report, ['faltantes','diferencias'], true)) throw new RuntimeException('Tipo de reporte inválido.');
+            if (!in_array($captura, ['TODOS','CAPTURADOS','NO_CAPTURADOS'], true)) throw new RuntimeException('Filtro de captura inválido.');
             if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) throw new RuntimeException('Empresa inválida.');
             $companyStations=EfcConciliacionModel::stationIds($company);
             if ($year < 2020 || $month < 1 || $month > 12 || ($station && !in_array($station, $companyStations, true))) throw new RuntimeException('Periodo o estación fuera del alcance de la empresa.');
@@ -7580,7 +7846,9 @@ public function stamped_invoices_detail(): void
             $reportStations=$station ? [$station] : $companyStations;
             $rows=[];
             foreach($reportStations as $reportStation){
-                $rows=array_merge($rows,$this->efcConciliacion->reportRows($reportStation,$year,$month,$concept,$this->efcConcReportControlGas($reportStation,$year,$month)));
+                $source=$this->efcConcReportControlGas($reportStation,$year,$month);
+                $source=$this->efcConciliacion->applyAcceptedCutAmounts($reportStation,$source);
+                $rows=array_merge($rows,$this->efcConciliacion->reportRows($reportStation,$year,$month,$concept,$source));
             }
             $mostrarTodos=filter_var($_GET['mostrar_todos'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $mostrarSinPapeleta=filter_var($_GET['mostrar_sin_papeleta'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -7591,7 +7859,33 @@ public function stamped_invoices_detail(): void
             } else {
                 $rows=array_values(array_filter($rows, static fn(array $row): bool => empty($row['sin_papeleta']) && $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
             }
+            if($captura!=='TODOS') $rows=array_values(array_filter($rows,static fn(array $row): bool => $captura==='CAPTURADOS' ? !empty($row['capturado']) : empty($row['capturado'])));
             echo json_encode(['status'=>'success','data'=>$rows]);
+        } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
+        exit;
+    }
+
+    /** POST /income/efc_conc_diferencia_captura */
+    public function efc_conc_diferencia_captura(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);
+            if(!is_array($data)) throw new RuntimeException('Solicitud inválida.');
+            $station=(int)($data['estacion_id']??0); $date=(string)($data['fecha']??''); $turn=trim((string)($data['turno']??'')); $concept=strtoupper(trim((string)($data['concepto']??'')));
+            if(!array_key_exists('capturado',$data) || !in_array($data['capturado'],[true,false,0,1,'0','1'],true)) throw new RuntimeException('El estado de captura debe ser booleano.');
+            $captured=filter_var($data['capturado'],FILTER_VALIDATE_BOOLEAN); $company=EfcConciliacionModel::stationCompany($station);
+            if($company===null || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !in_array($concept,['MN','MORRALLA','USD'],true) || $turn==='') throw new RuntimeException('Clave de diferencia inválida.');
+            $parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
+            if(!$parsed || $parsed->format('Y-m-d')!==$date) throw new RuntimeException('Fecha operativa inválida.');
+            $year=(int)$parsed->format('Y'); $month=(int)$parsed->format('m');
+            if($year<2020) throw new RuntimeException('Fecha operativa fuera de rango.');
+            $source=$this->efcConcReportControlGas($station,$year,$month);
+            $source=$this->efcConciliacion->applyAcceptedCutAmounts($station,$source);
+            $rows=$this->efcConciliacion->reportRows($station,$year,$month,$concept,$source);
+            $exists=false; foreach($rows as $row) if($row['fecha']===$date && $row['turno']===$turn && $row['concepto']===$concept) {$exists=true;break;}
+            if(!$exists) throw new RuntimeException('La diferencia no existe en el reporte operativo.');
+            $this->efcConciliacion->setDifferenceCaptured($station,$date,$turn,$concept,$captured,(int)($_SESSION['tg_user']['Id']??0));
+            echo json_encode(['status'=>'success','capturado'=>$captured?1:0]);
         } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
         exit;
     }
@@ -7794,6 +8088,8 @@ public function stamped_invoices_detail(): void
             echo json_encode(['status' => 'error', 'message' => 'Periodo o estación inválidos']);
             exit;
         }
+        $periodStart = sprintf('%04d-%02d-01', $year, $month);
+        $periodEnd = (new DateTimeImmutable($periodStart))->modify('+1 month')->format('Y-m-d');
 
         $normalizarCodigo = static function ($valor): string {
             $digitos = preg_replace('/\D+/', '', (string)$valor);
@@ -7856,7 +8152,7 @@ public function stamped_invoices_detail(): void
                      ) X
                  ) CG_MATCH
                  WHERE M.abono > 0
-                   AND YEAR(M.fecha) = ? AND MONTH(M.fecha) = ?
+                   AND M.fecha >= ? AND M.fecha < ?
                    -- Banorte, Bankaool y Santander no nombran el mismo movimiento
                    -- de efectivo igual. Sólo se admiten las descripciones operativas
                    -- verificadas; se mantienen fuera SPEI, traspasos y otros abonos.
@@ -7873,7 +8169,7 @@ public function stamped_invoices_detail(): void
                    AND ($accountWhere)
                  ORDER BY M.fecha, M.id"
             );
-            $params = [$year, $month];
+            $params = [$periodStart, $periodEnd];
             foreach ($suffixes as $suffix) { $params[] = $suffix; $params[] = $suffix; }
             $stmt->execute($params);
 

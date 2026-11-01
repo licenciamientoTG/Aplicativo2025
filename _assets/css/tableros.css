@@ -320,6 +320,9 @@
 .boards-readonly-value { display: block; overflow: hidden; max-width: 250px; color: #72838d; text-overflow: ellipsis; white-space: nowrap; }
 .boards-readonly-value.is-structured { max-width: 235px; color: #536d7b; font-family: Consolas, "Courier New", monospace; font-size: .73rem; }
 .boards-cell-input.has-error { border-color: #b64f57; background: #fff7f6; }
+.boards-item-row td.is-long-text-editing { position: relative; z-index: 12; overflow: visible; }
+.boards-cell-input.is-long-text { resize: none; overflow: hidden; }
+.boards-cell-input.is-long-text:focus { position: absolute; z-index: 12; top: 0; left: 0; width: max(100%, min(360px, 70vw)); min-width: 100%; max-width: min(560px, 85vw); min-height: 36px; box-sizing: border-box; padding: 7px; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: 0 3px 12px rgb(0 0 0 / 28%); }
 .boards-editor-help { display: block; max-width: 230px; padding: 0 4px 3px; color: #82919a; font-size: .65rem; line-height: 1.3; }
 .boards-structured-editor { min-width: 180px; }
 .boards-file-cell { display: flex; min-width: 170px; min-height: 60px; align-items: center; gap: 6px; padding: 5px 4px; }
@@ -1117,6 +1120,9 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-selection-bar .boards-button-light { border-color: #60729f; color: #e5ebff; background: #344778; }
 .boards-table thead { display: none; }
 .boards-group-columns th { position: sticky; z-index: 3; top: 48px; height: 32px; padding: 3px 9px; border-right: 1px solid #3d4160; border-bottom: 1px solid #525672; color: #bfc4dc; background: #313450; font-size: .72rem; font-weight: 600; white-space: nowrap; }
+.boards-column-heading-title { cursor: grab; touch-action: none; }
+.boards-column-sortable-chosen .boards-column-heading-title { cursor: grabbing; }
+.boards-column-sortable-ghost { opacity: .35; outline: 2px solid #8baaff; }
 .boards-group-columns .boards-item-head { left: 38px; z-index: 5; min-width: 270px; box-shadow: 1px 0 0 #4a4d68; }
 .boards-table .boards-select-head,
 .boards-table .boards-select-cell { position: sticky; z-index: 4; left: 0; min-width: 38px; width: 38px; max-width: 38px; padding: 0; text-align: center; }

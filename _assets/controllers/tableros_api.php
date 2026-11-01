@@ -915,6 +915,14 @@ class tableros_api {
         });
     }
 
+    public function reorder_columns(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $boardId = $this->bodyBoardId($input);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor']);
+            return $this->model->reorderColumns($boardId, $userId, $input);
+        });
+    }
+
     public function create_column(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $boardId = $this->bodyBoardId($input);

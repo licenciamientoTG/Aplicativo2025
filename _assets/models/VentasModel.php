@@ -1091,7 +1091,7 @@ class VentasModel extends Model
     {
         return "' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer',' SMARTBT - American Express',' Tarjetas Santander',' Tarjetas Banorte',' Tarjetas Afirme','SMARTBT - MANUAL Bancarias','INTERL - Tarjeta de Crédito','INTERL - Tarjeta de Débito','INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express','HTI - Tarjeta American Express','INTERL - Tarjeta American Express',' Banca MiFel',' Tarjeta Inbursa',' BANKAOOL',' BANKAOOL (Propinas)'";
     }
-    private function conceptosValeras() : string
+    public function conceptosValeras() : string
     {
         return "' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro',' Tarjeta Inburgas',' Tarjeta TicketCar',' Tarjeta TicketCar +',' Vale Efectivale',' SMARTBT - EFECTIVALE','Ultra Gas','Tarjetas Sodexo (Pluxee)',' Tarjeta EfectiCard +',' GASnGO MEXICO'";
     }

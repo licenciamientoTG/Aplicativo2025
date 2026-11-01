@@ -83,7 +83,7 @@ class ConciliacionVentaModel extends Model {
                        SUM(CASE WHEN f.cancelada = 0 AND f.fch <= @h THEN d.mto ELSE 0 END) AS facturado_mes,
                        SUM(CASE WHEN f.cancelada = 0 AND f.fch >  @h THEN d.mto ELSE 0 END) AS facturado_despues,
                        SUM(CASE WHEN d.nrofac = 0 THEN d.mto ELSE 0 END)                    AS sin_factura,
-                       SUM(CASE WHEN d.nrofac = 0 THEN 1 ELSE 0 END)                        AS n_sin_factura,
+                       SUM(CASE WHEN d.nrofac = 0 AND d.mto <> 0 THEN 1 ELSE 0 END)           AS n_sin_factura,
                        SUM(CASE WHEN d.nrofac <> 0 AND (f.nro IS NULL OR f.cancelada = 1) THEN d.mto ELSE 0 END) AS factura_cancelada,
                        COUNT(DISTINCT CASE WHEN f.cancelada = 0 THEN CAST(f.codgas AS varchar(6)) + '-' + CAST(f.nro AS varchar(12)) END) AS facturas
                   FROM #d d
@@ -203,7 +203,7 @@ class ConciliacionVentaModel extends Model {
             DECLARE @d int = ?, @h int = ?, @emp int = ?, @cli int = ?;
             SELECT g.abr AS estacion, t.nrotrn,
                    CONVERT(varchar(10), DATEADD(day, t.fchtrn - 1, '19000101'), 23) AS fecha,
-                   t.hratrn, p.den AS producto, t.can AS litros, t.mto AS monto,
+                   t.hratrn, t.nrotur, p.den AS producto, t.can AS litros, t.mto AS monto,
                    ISNULL(t.nrofac, 0) AS nrofac, gf.abr AS estacion_factura,
                    CONVERT(varchar(10), DATEADD(day, c.fch - 1, '19000101'), 23) AS fecha_factura,
                    c.satuid,
@@ -218,10 +218,166 @@ class ConciliacionVentaModel extends Model {
               LEFT JOIN SG12.dbo.DocumentosC c WITH (NOLOCK) ON c.nro = t.nrofac AND c.codgas = t.gasfac AND c.tip = 3
              WHERE t.fchtrn BETWEEN @d AND @h
                AND t.codcli = @cli
+               AND NOT (t.mto = 0 AND t.can = 0)
                AND {$emp}
              ORDER BY t.fchtrn, t.hratrn
             OPTION (RECOMPILE);";
         return $this->sql->select($query, [$from, $until, $empresa, $codcli]) ?: [];
+    }
+
+    /**
+     * Despachos de un cliente contra sus vales de crédito del corte (ValesR), uno a uno.
+     * El vale se liga al despacho por estación + folio (ValesR.sec = -Despachos.nrotrn).
+     * Salen también los vales del cliente sin despacho y los despachos sin vale.
+     */
+    public function despachos_vs_cortes(int $from, int $until, int $empresa, int $codcli): array {
+        $emp = self::EMP_FILTER;
+        $codval = self::CODVAL_CREDITO;
+        $query = "
+            SET NOCOUNT ON;
+            DECLARE @d int = ?, @h int = ?, @emp int = ?, @cli int = ?;
+            DROP TABLE IF EXISTS #k, #kd, #v;
+
+            CREATE TABLE #k (codgas int NOT NULL, nrotrn int NOT NULL, PRIMARY KEY (codgas, nrotrn));
+
+            INSERT INTO #k (codgas, nrotrn)
+            SELECT DISTINCT t.codgas, ABS(t.nrotrn)
+              FROM SG12.dbo.Despachos t WITH (NOLOCK)
+              LEFT JOIN TG.dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t.codgas
+              LEFT JOIN SG12.dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+             WHERE t.fchtrn BETWEEN @d AND @h AND t.codcli = @cli AND {$emp}
+            OPTION (RECOMPILE);
+
+            SELECT codgas, nrotrn INTO #kd FROM #k;
+
+            INSERT INTO #k (codgas, nrotrn)
+            SELECT DISTINCT r.codgas, -r.sec
+              FROM SG12.dbo.ValesR r WITH (NOLOCK)
+              LEFT JOIN TG.dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = r.codgas
+              LEFT JOIN SG12.dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+             WHERE r.fch BETWEEN @d AND @h AND r.codcli = @cli AND r.codval = {$codval} AND {$emp}
+               AND NOT EXISTS (SELECT 1 FROM SG12.dbo.Despachos t WITH (NOLOCK)
+                                WHERE t.codgas = r.codgas AND ABS(t.nrotrn) = -r.sec AND t.fchtrn BETWEEN @d AND @h AND t.codcli = @cli)
+            OPTION (RECOMPILE);
+
+            -- Un renglón por vale (estación + folio + corte). Los vales manuales repiten folio (1, 2...) en cada corte,
+            -- así que sin fecha y turno se sumarían años de vales. Un vale de otro cliente cuenta si liga con un despacho de éste.
+            SELECT r.codgas, -r.sec AS nrotrn, r.fch, r.nrotur, COUNT(*) AS n, SUM(r.mto) AS mto
+              INTO #v
+              FROM SG12.dbo.ValesR r WITH (NOLOCK)
+              JOIN #k ON #k.codgas = r.codgas AND #k.nrotrn = -r.sec
+             WHERE r.codval = {$codval} AND r.fch BETWEEN @d - 10 AND @h + 10
+               AND (r.codcli = @cli OR EXISTS (SELECT 1 FROM #kd WHERE #kd.codgas = r.codgas AND #kd.nrotrn = -r.sec))
+               AND (r.fch BETWEEN @d AND @h OR EXISTS (SELECT 1 FROM #kd WHERE #kd.codgas = r.codgas AND #kd.nrotrn = -r.sec))
+             GROUP BY r.codgas, r.sec, r.fch, r.nrotur;
+
+            SELECT g.abr AS estacion, COALESCE(t.nrotrn, k.nrotrn) AS nrotrn,
+                   CONVERT(varchar(10), DATEADD(day, COALESCE(t.fchtrn, v.fch) - 1, '19000101'), 23) AS fecha,
+                   t.hratrn, p.den AS producto,
+                   t.can AS litros, t.mto AS monto_despacho, t.codcli AS cli_despacho, t.nrotur AS turno_despacho,
+                   v.nrotur AS turno, v.n AS n_vales, v.mto AS monto_vale
+              FROM #k k
+              LEFT JOIN SG12.dbo.Despachos t WITH (NOLOCK) ON t.codgas = k.codgas AND t.nrotrn IN (k.nrotrn, -k.nrotrn)
+                                                     AND t.fchtrn BETWEEN @d - 10 AND @h + 10
+              LEFT JOIN #v v ON v.codgas = k.codgas AND v.nrotrn = k.nrotrn
+              LEFT JOIN SG12.dbo.Gasolineras g WITH (NOLOCK) ON g.cod = k.codgas
+              LEFT JOIN SG12.dbo.Productos p WITH (NOLOCK) ON p.cod = t.codprd
+             ORDER BY COALESCE(t.fchtrn, v.fch), t.hratrn, k.nrotrn
+            OPTION (RECOMPILE);
+
+            DROP TABLE IF EXISTS #k, #kd, #v;";
+        return $this->sql->select($query, [$from, $until, $empresa, $codcli]) ?: [];
+    }
+
+    /**
+     * Cortes con diferencia: despachos de clientes de crédito contra los vales de crédito del corte
+     * (ValesR), ligados por estación + folio (ValesR.sec = -Despachos.nrotrn). Devuelve solo los
+     * folios que no cuadran, para ubicar el corte (estación + fecha + turno) del problema.
+     * monto_despacho / monto_vale son los reales; diferencia_mes solo cuenta lo que cae en el rango
+     * (despacho por fecha del despacho, vale por fecha del corte), así que su suma explica "Monto − Cortes".
+     */
+    public function cortes_con_diferencia(int $from, int $until, int $empresa): array {
+        $emp = self::EMP_FILTER;
+        $codval = self::CODVAL_CREDITO;
+        $query = "
+            SET NOCOUNT ON;
+            DECLARE @d int = ?, @h int = ?, @emp int = ?;
+            DROP TABLE IF EXISTS #d, #v, #o, #x;
+
+            SELECT t.codgas, t.nrotrn, ABS(t.nrotrn) AS dkey, t.codcli, t.fchtrn, t.hratrn, t.fchcor, t.nrotur, t.codprd, t.mto
+              INTO #d
+              FROM SG12.dbo.Despachos t WITH (NOLOCK)
+              JOIN SG12.dbo.Clientes c WITH (NOLOCK) ON c.cod = t.codcli AND c.tipval = 3
+              LEFT JOIN TG.dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t.codgas
+              LEFT JOIN SG12.dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+             WHERE t.fchtrn BETWEEN @d AND @h AND t.codcli > 0 AND {$emp}
+            OPTION (RECOMPILE);
+            CREATE CLUSTERED INDEX ix_d ON #d (codgas, dkey);
+
+            -- vales del rango y una semana alrededor (un corte cierra días después del despacho).
+            -- El folio del despacho es -sec (en algunas estaciones el despacho trae folio negativo: se compara en valor absoluto);
+            -- un vale con sec >= 0 es siempre manual y nunca liga por folio.
+            SELECT r.codgas, -r.sec AS nrotrn, r.sec, r.codcli, r.fch AS fch, r.nrotur AS nrotur,
+                   MAX(CASE WHEN r.codprd = 0 THEN 1 ELSE 0 END) AS manual, COUNT(*) AS n, SUM(r.mto) AS mto
+              INTO #v
+              FROM SG12.dbo.ValesR r WITH (NOLOCK)
+              LEFT JOIN TG.dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = r.codgas
+              LEFT JOIN SG12.dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+             WHERE r.codval = {$codval} AND r.fch BETWEEN @d - 7 AND @h + 7 AND {$emp}
+             GROUP BY r.codgas, r.sec, r.codcli, r.fch, r.nrotur
+            OPTION (RECOMPILE);
+
+            -- fuera del rango solo interesan los que ligan con un despacho del rango
+            DELETE v FROM #v v
+             WHERE (v.fch < @d OR v.fch > @h)
+               AND NOT EXISTS (SELECT 1 FROM #d d WHERE d.codgas = v.codgas AND d.dkey = v.nrotrn);
+
+            -- vales sin despacho en el rango: ¿existe el despacho en otro mes o de otro cliente?
+            SELECT v.codgas, v.nrotrn, t.nrotrn AS folio, t.fchtrn, t.hratrn, t.codcli, t.codprd, t.mto
+              INTO #o
+              FROM #v v
+              JOIN SG12.dbo.Despachos t WITH (NOLOCK) ON t.codgas = v.codgas AND t.nrotrn = v.nrotrn
+             WHERE v.nrotrn > 0 AND t.fchtrn BETWEEN v.fch - 10 AND v.fch + 10
+               AND NOT EXISTS (SELECT 1 FROM #d d WHERE d.codgas = v.codgas AND d.dkey = v.nrotrn)
+            UNION ALL
+            SELECT v.codgas, v.nrotrn, t.nrotrn, t.fchtrn, t.hratrn, t.codcli, t.codprd, t.mto
+              FROM #v v
+              JOIN SG12.dbo.Despachos t WITH (NOLOCK) ON t.codgas = v.codgas AND t.nrotrn = -v.nrotrn
+             WHERE v.nrotrn > 0 AND t.fchtrn BETWEEN v.fch - 10 AND v.fch + 10
+               AND NOT EXISTS (SELECT 1 FROM #d d WHERE d.codgas = v.codgas AND d.dkey = v.nrotrn)
+            OPTION (RECOMPILE);
+
+            SELECT COALESCE(d.codgas, v.codgas) AS codgas, COALESCE(d.nrotrn, o.folio, v.sec) AS nrotrn,
+                   COALESCE(d.codcli, v.codcli) AS codcli,
+                   COALESCE(d.fchcor, v.fch) AS fch_corte, COALESCE(d.nrotur, v.nrotur) AS turno,
+                   v.fch AS fch_vale, v.nrotur AS turno_vale,
+                   COALESCE(d.fchtrn, o.fchtrn) AS fch_despacho, COALESCE(d.hratrn, o.hratrn) AS hra, COALESCE(d.codprd, o.codprd) AS codprd,
+                   d.mto AS mto_d, o.mto AS mto_o, v.mto AS mto_v,
+                   CASE WHEN d.nrotrn IS NULL THEN 0 ELSE 1 END AS en_rango_d,
+                   CASE WHEN v.nrotrn IS NULL THEN 0 WHEN v.fch BETWEEN @d AND @h THEN 1 ELSE 0 END AS en_rango_v,
+                   v.n AS n_vales, v.manual
+              INTO #x
+              FROM #d d
+              FULL JOIN #v v ON v.codgas = d.codgas AND v.nrotrn = d.dkey
+              LEFT JOIN #o o ON o.codgas = v.codgas AND o.nrotrn = v.nrotrn
+             WHERE d.nrotrn IS NULL OR v.nrotrn IS NULL OR v.n > 1 OR ABS(d.mto - v.mto) >= 0.01
+                   OR v.fch NOT BETWEEN @d AND @h OR d.fchcor <> v.fch OR d.nrotur <> v.nrotur;
+
+            SELECT g.abr AS estacion, x.nrotrn, x.codcli, c.den AS cliente,
+                   CONVERT(varchar(10), DATEADD(day, x.fch_corte - 1, '19000101'), 23) AS fecha_corte, x.turno,
+                   CASE WHEN x.fch_vale IS NULL THEN NULL
+                        ELSE CONVERT(varchar(10), DATEADD(day, x.fch_vale - 1, '19000101'), 23) END AS fecha_vale, x.turno_vale,
+                   CONVERT(varchar(10), DATEADD(day, x.fch_despacho - 1, '19000101'), 23) AS fecha_despacho, x.hra,
+                   p.den AS producto, x.mto_d, x.mto_o, x.mto_v, x.en_rango_d, x.en_rango_v, x.n_vales, x.manual
+              FROM #x x
+              LEFT JOIN SG12.dbo.Gasolineras g WITH (NOLOCK) ON g.cod = x.codgas
+              LEFT JOIN SG12.dbo.Clientes c WITH (NOLOCK) ON c.cod = x.codcli
+              LEFT JOIN SG12.dbo.Productos p WITH (NOLOCK) ON p.cod = x.codprd
+             ORDER BY x.fch_corte, g.abr, x.turno, x.nrotrn
+            OPTION (RECOMPILE);
+
+            DROP TABLE IF EXISTS #d, #v, #o, #x;";
+        return $this->sql->select($query, [$from, $until, $empresa]) ?: [];
     }
 
     /**
