@@ -3283,9 +3283,10 @@ class Operations{
      * Busca clientes de contado en UNA estación. La tabla Clientes de cada
      * estación tiene ~230k filas de tipval=0 (facturación de mostrador
      * acumulada desde 2022), así que nunca se consultan las 40 estaciones a
-     * la vez. Siempre regresa TODOS los registros que cumplen el filtro; con
-     * término vacío, eso es todo el catálogo de la estación (sin tipval 3/4)
-     * ordenado por fecha de alta descendente.
+     * la vez ni se trae la tabla completa (ver ClientesModel::CONTADO_MAX_ROWS;
+     * tronó memoria en producción al quitarle el límite). Si el resultado
+     * llega exactamente al límite, se avisa al front que pudo haber más
+     * registros sin traer.
      */
     function clientes_contado_search() : void {
         $codgas  = (int)($_POST['codgas'] ?? 0);
@@ -3329,7 +3330,10 @@ class Operations{
             ];
         }
 
-        json_output(['data' => $data]);
+        json_output([
+            'data'      => $data,
+            'truncated' => count($data) >= ClientesModel::CONTADO_MAX_ROWS,
+        ]);
     }
 
     function edit_cliente_contado() : void {
