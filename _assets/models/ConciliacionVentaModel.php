@@ -502,7 +502,7 @@ class ConciliacionVentaModel extends Model {
 
             SELECT c.codgas, gs.abr AS estacion, EMP.cod AS empresa, c.nro,
                    CONVERT(varchar(10), DATEADD(day, c.fch - 1, '19000101'), 23) AS fecha,
-                   c.codopr, cl.den AS cliente, ef.den AS tipo, c.satuid, c.t AS txtref, c.cancelado,
+                   c.codopr, cl.den AS cliente, cl.cresdo AS saldo_linea, ef.den AS tipo, c.satuid, c.t AS txtref, c.cancelado,
                    ISNULL(m.monto, 0) AS monto, a.facturas
               FROM #c c
               LEFT JOIN #m m ON m.codgas = c.codgas AND m.nro = c.nro
