@@ -3283,9 +3283,9 @@ class Operations{
      * Busca clientes de contado en UNA estación. La tabla Clientes de cada
      * estación tiene ~230k filas de tipval=0 (facturación de mostrador
      * acumulada desde 2022), así que nunca se consultan las 40 estaciones a
-     * la vez ni se trae el catálogo completo de una. Con término vacío
-     * regresa los últimos 200 registrados (por fecha de alta) en vez de
-     * filtrar por texto, para poder ver qué acaba de darse de alta.
+     * la vez. Siempre regresa TODOS los registros que cumplen el filtro; con
+     * término vacío, eso es todo el catálogo de la estación (sin tipval 3/4)
+     * ordenado por fecha de alta descendente.
      */
     function clientes_contado_search() : void {
         $codgas  = (int)($_POST['codgas'] ?? 0);
@@ -3296,7 +3296,7 @@ class Operations{
             return;
         }
         if ($termino !== '' && mb_strlen($termino) < 3) {
-            json_output(['data' => [], 'error' => 'Escribe al menos 3 caracteres para buscar, o déjalo vacío para ver los últimos registrados.']);
+            json_output(['data' => [], 'error' => 'Escribe al menos 3 caracteres para buscar, o déjalo vacío para ver todos los clientes.']);
             return;
         }
 

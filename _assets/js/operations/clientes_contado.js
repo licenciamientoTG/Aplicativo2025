@@ -51,7 +51,7 @@ $('#btn_buscar_contado').on('click', function () {
         return;
     }
     if (termino.length > 0 && termino.length < 3) {
-        alertify.error('Escribe al menos 3 caracteres para buscar, o déjalo vacío para ver los últimos registrados');
+        alertify.error('Escribe al menos 3 caracteres para buscar, o déjalo vacío para ver todos los clientes');
         return;
     }
 

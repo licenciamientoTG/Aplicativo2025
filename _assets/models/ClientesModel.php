@@ -425,16 +425,17 @@ class ClientesModel extends Model{
      * Busca clientes con tipval distinto de 3 (Crédito) y 4 (Débito) en UNA
      * estación, por nombre/RFC/código. La tabla Clientes de cada estación
      * tiene ~230k filas de tipval=0 (facturación de mostrador acumulada desde
-     * 2022): jamás se debe traer completa, por eso el filtro y el TOP van en
-     * la consulta remota, no en PHP. Con $termino vacío, regresa los últimos
-     * 200 registrados (por logfch) en vez de filtrar por texto — útil para
-     * ver qué acaba de darse de alta en la estación.
+     * 2022): jamás se debe traer completa, por eso el filtro va en la consulta
+     * remota, no en PHP. Regresa TODAS las coincidencias del filtro (sin TOP);
+     * con $termino vacío, el filtro es "todos los registros de la estación"
+     * ordenados por fecha de alta descendente.
      *
      * @return array|false false = error de conexión/consulta en la estación
      */
     public function search_contado_por_estacion(string $servidor, string $baseDatos, string $termino) : array|false {
-        $select = "SELECT TOP 200 cod, den, dom, rfc, codpos, tel, correo, tipval, logfch,
-                    CASE WHEN codest = 1 THEN 'Suspendido' WHEN codest = 0 THEN 'Activo' ELSE 'NA' END AS estatus
+        $columnas = "cod, den, dom, rfc, codpos, tel, correo, tipval, logfch,
+                    CASE WHEN codest = 1 THEN 'Suspendido' WHEN codest = 0 THEN 'Activo' ELSE 'NA' END AS estatus";
+        $select = "SELECT {$columnas}
                   FROM [{$baseDatos}].dbo.Clientes
                   WHERE tipval NOT IN (3,4)";
 
