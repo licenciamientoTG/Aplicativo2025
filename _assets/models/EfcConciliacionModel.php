@@ -190,7 +190,7 @@ class EfcConciliacionModel {
 
     /** Apply a reviewed source revision atomically without altering bank partitions or cancelling the group. */
     public function decideCutChange(int $changeId,string $decision,int $userId): array {
-        if($changeId<1 || !in_array($decision,['APROBAR','RECHAZAR'],true)) throw new RuntimeException('Decisión inválida.');
+        if($changeId<1 || $decision!=='APROBAR') throw new RuntimeException('Solo se permite aprobar cambios.');
         $this->db->beginTransaction();
         try {
             $q=$this->db->prepare("SELECT C.*,S.importe_observado,S.importe_aceptado FROM dbo.efc_conc_cortes_cambios C WITH (UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_cortes_snapshot S WITH (UPDLOCK,HOLDLOCK) ON S.estacion_id=C.estacion_id AND S.fecha_operativa=C.fecha_operativa AND S.turno=C.turno AND S.concepto=C.concepto WHERE C.id=?");$q->execute([$changeId]);$c=$q->fetch(PDO::FETCH_ASSOC);
@@ -198,8 +198,7 @@ class EfcConciliacionModel {
             if($userId<1) throw new RuntimeException('No se pudo identificar al usuario que revisa el cambio.');
             $latest=$this->db->prepare("SELECT TOP 1 id FROM dbo.efc_conc_cortes_cambios WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=? AND estado='PENDIENTE' ORDER BY detectado_en DESC,id DESC");$latest->execute([(int)$c['estacion_id'],$c['fecha_operativa'],$c['turno'],$c['concepto']]);
             if((int)$latest->fetchColumn()!==$changeId || round((float)$c['importe_observado'],2)!==round((float)$c['importe_nuevo'],2)) throw new RuntimeException('El corte volvió a cambiar. Actualiza el historial y revisa la versión más reciente.');
-            if($decision==='APROBAR') {
-                $station=(int)$c['estacion_id'];$date=$this->dateValue($c['fecha_operativa']);$turn=(string)$c['turno'];$concept=(string)$c['concepto'];$new=round((float)$c['importe_nuevo'],2);$old=round((float)$c['importe_aceptado'],2);$key='cg-'.$station.'-'.$date.'-'.$turn.'-'.$concept;
+            $station=(int)$c['estacion_id'];$date=$this->dateValue($c['fecha_operativa']);$turn=(string)$c['turno'];$concept=(string)$c['concepto'];$new=round((float)$c['importe_nuevo'],2);$old=round((float)$c['importe_aceptado'],2);$key='cg-'.$station.'-'.$date.'-'.$turn.'-'.$concept;
                 $groupDeltas=[];
                 $this->db->prepare("UPDATE dbo.efc_conc_analiticos_vinculos SET importe_cg=? WHERE estacion_id=? AND fecha_cg=? AND turno=? AND concepto=? AND activo=1")->execute([$new,$station,$date,$turn,$concept]);
                 $transitQuery=$this->db->prepare("SELECT id,mes_origen,estado,importe FROM dbo.efc_conc_transitos WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND clave_externa=? AND estado IN ('PENDIENTE','CONCILIADO')");$transitQuery->execute([$station,$key]);$transits=$transitQuery->fetchAll(PDO::FETCH_ASSOC);$pendingTransitDeltas=[];
@@ -228,7 +227,6 @@ class EfcConciliacionModel {
                 $this->db->prepare("UPDATE dbo.efc_conc_cortes_cambios SET estado='APROBADO',decidido_por=?,decidido_en=SYSDATETIME(),grupo_id=? WHERE id=? AND estado='PENDIENTE'")->execute([$userId,$groupId,$changeId]);
                 $detail=json_encode(['station_id'=>$station,'date'=>$date,'turn'=>$turn,'concept'=>$concept,'old'=>$old,'new'=>$new,'change_id'=>$changeId],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
                 $this->log($groupId,null,'AJUSTE_CORTE_CONTROLGAS',$detail,$userId);
-            } else $this->db->prepare("UPDATE dbo.efc_conc_cortes_cambios SET estado='RECHAZADO',decidido_por=?,decidido_en=SYSDATETIME() WHERE id=? AND estado='PENDIENTE'")->execute([$userId,$changeId]);
             $this->db->commit();return ['decision'=>$decision,'change_id'=>$changeId];
         } catch(Throwable $e) { if($this->db->inTransaction())$this->db->rollBack();throw $e; }
     }

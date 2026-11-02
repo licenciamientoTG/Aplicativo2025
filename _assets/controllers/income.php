@@ -7590,7 +7590,7 @@ public function stamped_invoices_detail(): void
             }
         }
         $tabla = new \PhpOffice\PhpSpreadsheet\Worksheet\Table('A4:O' . $lastDataRow, 'ResumenGeneral');
-        $tabla->getStyle()->setTheme(\PhpOffice\PhpSpreadsheet\Worksheet\Table\TableStyle::TABLE_STYLE_MEDIUM_2);
+        $tabla->getStyle()->setTheme(\PhpOffice\PhpSpreadsheet\Worksheet\Table\TableStyle::TABLE_STYLE_MEDIUM2);
         $sheet->addTable($tabla);
         $sheet->fromArray($totales, null, 'A' . $filaExcel);
         $sheet->getStyle('A' . $filaExcel . ':O' . $filaExcel)->getFont()->setBold(true);
@@ -7650,13 +7650,12 @@ public function stamped_invoices_detail(): void
         try {
             $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);if(!is_array($data))throw new RuntimeException('Solicitud inválida.');
             $changeId=(int)($data['id']??0);$decision=strtoupper(trim((string)($data['decision']??'')));
-            if($decision==='APROBAR'){
-                $candidate=$this->efcConciliacion->pendingCutChange($changeId);if(!$candidate||$candidate['estado']!=='PENDIENTE')throw new RuntimeException('El cambio ya fue resuelto o no existe.');
-                $station=(int)$candidate['estacion_id'];$allowed=array_values(array_diff(EfcConciliacionModel::stationIds('DIAZ GAS'),[40]));if(!in_array($station,$allowed,true))throw new RuntimeException('Estación fuera del alcance del monitor.');
-                $day=new DateTimeImmutable($candidate['fecha_operativa']);$source=$this->efcConcReportControlGas($station,(int)$day->format('Y'),(int)$day->format('n'));
-                $live=$this->efcConciliacion->findControlGasCutAmount($source,$candidate['fecha_operativa'],(string)$candidate['turno'],(string)$candidate['concepto']);
-                if($live===null||round($live,2)!==round((float)$candidate['importe_nuevo'],2))throw new RuntimeException('ControlGas volvió a cambiar desde la última revisión. Espera el siguiente monitoreo y revisa la nueva versión.');
-            }
+            if($decision!=='APROBAR')throw new RuntimeException('Solo se permite aprobar cambios.');
+            $candidate=$this->efcConciliacion->pendingCutChange($changeId);if(!$candidate||$candidate['estado']!=='PENDIENTE')throw new RuntimeException('El cambio ya fue resuelto o no existe.');
+            $station=(int)$candidate['estacion_id'];$allowed=array_values(array_diff(EfcConciliacionModel::stationIds('DIAZ GAS'),[40]));if(!in_array($station,$allowed,true))throw new RuntimeException('Estación fuera del alcance del monitor.');
+            $day=new DateTimeImmutable($candidate['fecha_operativa']);$source=$this->efcConcReportControlGas($station,(int)$day->format('Y'),(int)$day->format('n'));
+            $live=$this->efcConciliacion->findControlGasCutAmount($source,$candidate['fecha_operativa'],(string)$candidate['turno'],(string)$candidate['concepto']);
+            if($live===null||round($live,2)!==round((float)$candidate['importe_nuevo'],2))throw new RuntimeException('ControlGas volvió a cambiar desde la última revisión. Espera el siguiente monitoreo y revisa la nueva versión.');
             $result=$this->efcConciliacion->decideCutChange($changeId,$decision,(int)($_SESSION['tg_user']['Id']??0));
             echo json_encode(['status'=>'success','data'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
