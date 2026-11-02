@@ -276,7 +276,12 @@ def catalog(cursor: pyodbc.Cursor) -> tuple[list[tuple], dict[str, int]]:
 def resolve_station(raw: object, name: object, stations: list[tuple], aliases: dict[str, int]) -> tuple[int | None, str]:
     # El identificador del Excel suele venir como 4179.0 y el catálogo como
     # E04179. Se comparan primero en su forma numérica normalizada.
-    candidates = [item for item in (digits(raw), key(raw), key(name)) if item]
+    source_code, source_name = digits(raw), key(name)
+    # Excepción compuesta del Excel: ambos valores deben coincidir para evitar
+    # asignar otra estación que comparta el código fuente 1000.
+    if source_code == "1000" and source_name == "ESTANCIAAVENIDAHERMANOSESCOBAR":
+        return 30, "IDENTIFICADA_ALIAS"
+    candidates = [item for item in (source_code, key(raw), source_name) if item]
     for candidate in candidates:
         if candidate in aliases:
             return aliases[candidate], "IDENTIFICADA_ALIAS"
