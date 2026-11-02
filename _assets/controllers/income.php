@@ -8083,6 +8083,9 @@ public function stamped_invoices_detail(): void
         $month      = (int)($_GET['month'] ?? date('m'));
         $estacionId = (int)($_GET['estacion_id'] ?? 0);
         $todasEstaciones = ($_GET['all'] ?? '') === '1';
+        // Compatibility: reconciliation consumers keep the historical cash
+        // description filter unless they explicitly request all bank credits.
+        $includeNonCash = ($_GET['include_non_cash'] ?? '') === '1';
         $empresa = EfcConciliacionModel::normalizeCompany($_GET['empresa'] ?? 'DIAZ GAS');
         if ($year < 2020 || $month < 1 || $month > 12 || (!$todasEstaciones && !$estacionId)) {
             echo json_encode(['status' => 'error', 'message' => 'Periodo o estación inválidos']);
@@ -8153,10 +8156,10 @@ public function stamped_invoices_detail(): void
                  ) CG_MATCH
                  WHERE M.abono > 0
                    AND M.fecha >= ? AND M.fecha < ?
-                   -- Banorte, Bankaool y Santander no nombran el mismo movimiento
-                   -- de efectivo igual. Sólo se admiten las descripciones operativas
-                   -- verificadas; se mantienen fuera SPEI, traspasos y otros abonos.
-                   AND (
+                   " . ($includeNonCash ? "AND 1=1" : "AND (
+                       -- Banorte, Bankaool y Santander no nombran el mismo movimiento
+                       -- de efectivo igual. Sólo se admiten las descripciones operativas
+                       -- verificadas; se mantienen fuera SPEI, traspasos y otros abonos.
                        UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%'
                        OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO EN EFECTIVO%'
                        OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EFECTIVO%'
@@ -8165,7 +8168,7 @@ public function stamped_invoices_detail(): void
                        OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEP EN EFECTIV%'
                        OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO VTAS%'
                        OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO VTAS%'
-                   )
+                   )") . "
                    AND ($accountWhere)
                  ORDER BY M.fecha, M.id"
             );
