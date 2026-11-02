@@ -962,6 +962,7 @@
         document.getElementById('notas-cargo-collapse').style.display = '';
         document.getElementById('notas-chevron').classList.replace('fa-chevron-down', 'fa-chevron-up');
         tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3"><i class="fas fa-spinner fa-spin me-2"></i>Cargando notas de cargo...</td></tr>';
+        showPaymentLoader('Buscando notas de cargo...', 'Por favor espere');
 
         fetch('/payment/getProviderNotes', {
             method: 'POST',
@@ -979,7 +980,8 @@
         })
         .catch(err => {
             tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3"><i class="fas fa-exclamation-triangle me-2"></i>${err.message}</td></tr>`;
-        });
+        })
+        .finally(() => hidePaymentLoader());
     }
 
     // ── Renderizar tabla de notas de cargo ────────────────────────────────────

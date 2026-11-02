@@ -118,6 +118,10 @@ async function payment_create_table() {
       },
       beforeSend: function () {
         $(".table-responsive").addClass("loading");
+        showPaymentLoader("Buscando facturas...", "Esto puede tardar unos segundos");
+      },
+      complete: function () {
+        hidePaymentLoader();
       },
     },
     columns: [
