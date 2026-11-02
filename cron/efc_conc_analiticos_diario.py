@@ -846,6 +846,73 @@ def relink_praxedis(start_date: date, end_date: date) -> dict:
         connection.close()
 
 
+def auto_link_imports_in_range(
+    start_date: date,
+    end_date: date,
+    station_id: int,
+    dry_run: bool = False,
+) -> dict:
+    """Aplica el vinculador automático a importaciones existentes de una estación y rango."""
+    if start_date > end_date:
+        raise RuntimeError("La fecha inicial no puede ser posterior a la fecha final.")
+    if station_id <= 0:
+        raise RuntimeError("El ID de estación debe ser un entero positivo.")
+
+    connection = db_connection()
+    try:
+        cursor = connection.cursor()
+        imported = cursor.execute(
+            "SELECT id,nombre_archivo FROM dbo.efc_conc_analiticos_importaciones WHERE estado='IMPORTADA'"
+        ).fetchall()
+        targets = sorted(
+            (
+                (report_date, int(import_id))
+                for import_id, filename in imported
+                if (report_date := report_date_from_filename(str(filename or ""))) is not None
+                and start_date <= report_date <= end_date
+            ),
+            key=lambda item: (item[0], item[1]),
+        )
+
+        papers = 0
+        target_station_imports = []
+        for report_date, import_id in targets:
+            paper_count = int(cursor.execute(
+                "SELECT COUNT(*) FROM dbo.efc_conc_analiticos_papeletas "
+                "WHERE importacion_id=? AND estacion_id=? AND fecha_reportada IS NOT NULL",
+                import_id,
+                station_id,
+            ).fetchone()[0])
+            papers += paper_count
+            if paper_count:
+                target_station_imports.append((report_date, import_id))
+
+        created = 0
+        for _report_date, import_id in target_station_imports:
+            created += auto_link_import(cursor, import_id, station_filter=station_id)
+
+        result = {
+            "operation": "auto_link_imports_in_range",
+            "station_id": station_id,
+            "from": start_date.isoformat(),
+            "to": end_date.isoformat(),
+            "imports": len(target_station_imports),
+            "papers": papers,
+            "auto_links_created": created,
+            "dry_run": dry_run,
+        }
+        if dry_run:
+            connection.rollback()
+        else:
+            connection.commit()
+        return result
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
 def import_attachment(connection: pyodbc.Connection, content: bytes, filename: str, metadata: dict[str, str], reprocess: bool = False, parser=parse_workbook) -> dict:
     hash_value = hashlib.sha256(content).hexdigest()
     cursor = connection.cursor()
@@ -1036,6 +1103,11 @@ def main() -> int:
         help="Recalcula únicamente vínculos automáticos de Praxedis en el rango de fechas indicado.",
     )
     operation_group.add_argument(
+        "--auto-link-range",
+        action="store_true",
+        help="Aplica el vinculador automático a importaciones existentes de una estación y rango de fechas.",
+    )
+    operation_group.add_argument(
         "--manual-file",
         metavar="PATH",
         help="Importa un concentrado tabulado manual de GASOMEX usando la misma ruta de persistencia del correo.",
@@ -1054,9 +1126,28 @@ def main() -> int:
         metavar="AAAA-MM-DD",
         help="Incluye archivos con fecha operativa igual o anterior (fecha tomada del nombre del archivo).",
     )
+    parser.add_argument(
+        "--station-id",
+        type=int,
+        metavar="ID",
+        help="ID interno de estación requerido por --auto-link-range.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Con --auto-link-range, muestra los vínculos propuestos y revierte la transacción.",
+    )
     args = parser.parse_args()
     if args.relink_praxedis and (args.start_date is None or args.end_date is None):
         parser.error("--relink-praxedis requiere --from y --to para limitar el reproceso.")
+    if args.auto_link_range and (args.start_date is None or args.end_date is None):
+        parser.error("--auto-link-range requiere --from y --to.")
+    if args.auto_link_range and args.station_id is None:
+        parser.error("--auto-link-range requiere --station-id.")
+    if args.station_id is not None and not args.auto_link_range:
+        parser.error("--station-id solo aplica con --auto-link-range.")
+    if args.dry_run and not args.auto_link_range:
+        parser.error("--dry-run solo aplica con --auto-link-range.")
     if (args.start_date or args.end_date) and (args.reassign_stations or args.manual_file):
         parser.error("--from/--to solo aplican a la sincronización del buzón.")
     load_env_file()
@@ -1067,6 +1158,13 @@ def main() -> int:
             result = import_manual_file(args.manual_file)
         elif args.relink_praxedis:
             result = relink_praxedis(args.start_date, args.end_date)
+        elif args.auto_link_range:
+            result = auto_link_imports_in_range(
+                args.start_date,
+                args.end_date,
+                args.station_id,
+                dry_run=args.dry_run,
+            )
         else:
             result = sync(args.start_date, args.end_date, reprocess=args.reprocess)
         print(json.dumps(result, ensure_ascii=False)); return 0
