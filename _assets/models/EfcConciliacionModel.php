@@ -863,6 +863,35 @@ class EfcConciliacionModel {
             $name=preg_replace('/^\d+\s+/', '', $name);
             if($name!=='' && str_contains($normalizedText,$name)) $textStations[(int)$item['Codigo']]=true;
         }
+        $reference=trim((string)($movement['referencia']??''));
+        $aliasStation=null;
+        $aliasTokenPresent=preg_match('/^1000(?:\.0+)?$/',$reference) || preg_match('/(?<![A-Z0-9])0+1000(?![A-Z0-9])/i',$text);
+        if($aliasTokenPresent) {
+            $aliasStations=[]; $realCode1000Stations=[];
+            $descriptionText=implode(' ',[(string)($movement['descripcion_larga']??''),(string)($movement['descripcion']??''),(string)($movement['concepto']??'')]);
+            $normalizedDescription=$normalizeName($descriptionText); $explicitStations=[];
+            preg_match_all('/\d+/',$normalizedDescription,$descriptionNumbers);
+            foreach($catalog as $item) {
+                $name=preg_replace('/^\d+\s+/','',trim($normalizeName($item['Nombre'])));
+                $station=(int)$item['Codigo'];
+                if($name==='HERMANOS ESCOBAR') $aliasStations[]=$station;
+                if($name!=='' && str_contains($normalizedDescription,$name)) $explicitStations[$station]=true;
+                $code=ltrim(preg_replace('/\D+/','',(string)$item['Estacion']),'0');
+                if($code==='1000') $realCode1000Stations[]=$station;
+                if($code!=='' && in_array($code,array_map(static fn($number)=>ltrim($number,'0'),$descriptionNumbers[0]),true)) $explicitStations[$station]=true;
+            }
+            if(count($aliasStations)!==1) return null;
+            $aliasStation=$aliasStations[0];
+            foreach($realCode1000Stations as $realCodeStation) if($realCodeStation!==$aliasStation) return null;
+        }
+        if($aliasStation!==null) {
+            if(count($explicitStations)>1) return null;
+            if(count($explicitStations)===1) {
+                $explicitStation=(int)array_key_first($explicitStations);
+                return $explicitStation===$aliasStation ? $explicitStation : null;
+            }
+            return $aliasStation;
+        }
         if(count($textStations)===1) return (int)array_key_first($textStations);
         if(count($accountStations)===1) return (int)array_key_first($accountStations);
         foreach($catalog as $item) { $code=ltrim(preg_replace('/\D+/','',(string)$item['Estacion']),'0'); if($code!=='') $map[$code]=(int)$item['Codigo']; }

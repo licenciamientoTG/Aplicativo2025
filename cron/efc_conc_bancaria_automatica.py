@@ -417,7 +417,16 @@ def resolved_bank_station(bank: tuple, catalog: list[tuple]) -> int | None:
     correction = bank[5]
     if correction is not None:
         return int(correction)
-    text = normalize_name(bank[4])
+    reference_text = str(bank[3] or "").strip()
+    alias_text = f"{reference_text} {bank[4] or ''}"
+    alias_token_present = (
+        re.fullmatch(r"1000(?:\.0+)?", reference_text) is not None
+        or re.search(r"(?<![A-Z0-9])0+1000(?![A-Z0-9])", alias_text.upper()) is not None
+    )
+    alias_station = exact_hermanos_escobar_reference(bank[3], catalog, bank[4]) if alias_token_present else None
+    if alias_token_present and alias_station is None:
+        return None
+    text = normalize_name(alias_text if alias_token_present else bank[4])
     matches: set[int] = set()
     for station_id, station_name, station_code in catalog:
         station_name = re.sub(r"^\d+\s+", "", normalize_name(station_name))
@@ -436,7 +445,15 @@ def resolved_bank_station(bank: tuple, catalog: list[tuple]) -> int | None:
         if name_hit or code_hit:
             matches.add(int(station_id))
     if matches:
-        return next(iter(matches)) if len(matches) == 1 else None
+        if len(matches) != 1:
+            return None
+        explicit_station = next(iter(matches))
+        if alias_token_present and alias_station != explicit_station:
+            return None
+        return explicit_station
+
+    if alias_token_present:
+        return alias_station
 
     account = re.sub(r"[^A-Z0-9]", "", str(bank[6] or "").upper())
     account_matches: set[int] = set()
@@ -448,6 +465,22 @@ def resolved_bank_station(bank: tuple, catalog: list[tuple]) -> int | None:
             if any(marker in normalized_station for marker in station_markers):
                 account_matches.add(int(station_id))
     return next(iter(account_matches)) if len(account_matches) == 1 else None
+
+
+def exact_hermanos_escobar_reference(reference: object, catalog: list[tuple], description: object = "") -> int | None:
+    """Resolve a complete normalized 1000 token to the unique Hermanos Escobar row."""
+    reference_text = str(reference or "").strip()
+    has_exact_reference = re.fullmatch(r"1000(?:\.0+)?", reference_text) is not None
+    token_text = f"{reference_text} {description or ''}".upper()
+    has_code_token = re.search(r"(?<![A-Z0-9])0+1000(?![A-Z0-9])", token_text) is not None
+    if not (has_exact_reference or has_code_token):
+        return None
+    matches = [
+        int(station_id)
+        for station_id, station_name, _station_code in catalog
+        if re.sub(r"^\d+\s+", "", normalize_name(station_name)) == "HERMANOS ESCOBAR"
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 def matching_bank_rows(cursor: pyodbc.Cursor, first: date, last: date | None = None) -> list[tuple]:

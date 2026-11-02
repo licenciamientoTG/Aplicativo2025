@@ -8116,9 +8116,11 @@ public function stamped_invoices_detail(): void
             );
             $catalogo = [];
             $catalogoPorNombre = [];
+            $codigo1000Rows = [];
             while ($est = $stmtEstaciones->fetch(PDO::FETCH_ASSOC)) {
                 if (strcasecmp(trim((string)$est['Nombre']), 'NO FUNCIONA') === 0) continue;
                 $codigo = $normalizarCodigo($est['codigo_banco']);
+                if ($codigo === '1000') $codigo1000Rows[] = (int)$est['Codigo'];
                 if ($codigo !== '0') {
                     $catalogo[$codigo] = [
                         'station_id' => (int)$est['Codigo'],
@@ -8130,6 +8132,20 @@ public function stamped_invoices_detail(): void
                     'station' => trim((string)$est['Nombre']),
                     'normalized' => $normalizarNombre($est['Nombre']),
                 ];
+            }
+            $hermanosRows = [];
+            foreach ($catalogoPorNombre as $estacionCatalogo) {
+                $nombreSinPrefijo = preg_replace('/^\d+\s+/', '', trim($estacionCatalogo['normalized']));
+                if ($nombreSinPrefijo === 'HERMANOS ESCOBAR') $hermanosRows[] = $estacionCatalogo;
+            }
+            $hermanosEscobarAlias = count($hermanosRows) === 1 ? [
+                'station_id' => $hermanosRows[0]['station_id'],
+                'station' => $hermanosRows[0]['station'],
+            ] : null;
+            $codigo1000Conflicto = $hermanosEscobarAlias !== null
+                && count(array_filter($codigo1000Rows, static fn($stationId) => $stationId !== $hermanosEscobarAlias['station_id'])) > 0;
+            if ($hermanosEscobarAlias !== null && !isset($catalogo['1000'])) {
+                $catalogo['1000'] = $hermanosEscobarAlias;
             }
             $correcciones = [];
             $stmtCorrecciones = $conn->query("SELECT C.movimiento_bancario_id, C.estacion_id, E.Nombre FROM dbo.efc_conc_correcciones_banco C JOIN TG.dbo.Estaciones E ON E.Codigo=C.estacion_id");
@@ -8182,10 +8198,16 @@ public function stamped_invoices_detail(): void
                     (string)($mov['descripcion_larga'] ?? ''), (string)($mov['descripcion'] ?? ''),
                     (string)($mov['concepto'] ?? ''), (string)($mov['referencia'] ?? ''),
                 ]);
+                $referencia1000Exacta = preg_match('/^1000(?:\.0+)?$/', trim((string)($mov['referencia'] ?? ''))) === 1;
+                $token1000Completo = $referencia1000Exacta || preg_match('/(?<![A-Z0-9])0+1000(?![A-Z0-9])/i', $texto) === 1;
+                $alias1000Conflictivo = $token1000Completo
+                    && ($hermanosEscobarAlias === null || $codigo1000Conflicto);
                 preg_match_all('/\d+/', $texto, $coincidencias);
                 $codigos = [];
                 foreach ($coincidencias[0] as $crudo) {
                     $codigo = $normalizarCodigo($crudo);
+                    if ($codigo === '1000' && $hermanosEscobarAlias !== null && !$token1000Completo) continue;
+                    if ($codigo === '1000' && $alias1000Conflictivo) continue;
                     if (isset($catalogo[$codigo])) $codigos[$codigo] = true;
                 }
 
@@ -8227,6 +8249,10 @@ public function stamped_invoices_detail(): void
                     }
                 }
                 $estacionPorTexto = count($candidatasTexto) === 1 ? reset($candidatasTexto) : null;
+                $conflictoAliasHermanos = $token1000Completo
+                    && ($alias1000Conflictivo || $hermanosEscobarAlias === null
+                        || count(array_filter(array_keys($codigos), static fn($codigo) => $catalogo[$codigo]['station_id'] !== $hermanosEscobarAlias['station_id'])) > 0
+                        || count(array_filter($candidatasTexto, static fn($estacion) => $estacion['station_id'] !== $hermanosEscobarAlias['station_id'])) > 0);
                 $cuentaDigitos = preg_replace('/\D+/', '', (string)($mov['cuenta'] ?? ''));
                 $conceptoVacio = trim((string)($mov['concepto'] ?? '')) === '';
                 $descripcionPraxedis = stripos((string)($mov['descripcion'] ?? ''), 'DEP EN EFECTIV') !== false
@@ -8241,9 +8267,9 @@ public function stamped_invoices_detail(): void
                         }
                     }
                 }
-                $estacionOriginal = $estacionPraxedis ?? $estacionPorReferencia ?? $estacionPorTexto ?? $estacionPorCuenta;
+                $estacionOriginal = $conflictoAliasHermanos ? null : ($estacionPraxedis ?? $estacionPorReferencia ?? $estacionPorTexto ?? $estacionPorCuenta);
                 $estatus = $estacionOriginal ? 'IDENTIFICADA'
-                    : (count($codigos) > 1 || count($candidatasTexto) > 1 || count($candidatasCuenta) > 1 ? 'ESTACION_AMBIGUA' : 'ESTACION_NO_IDENTIFICADA');
+                    : (count($codigos) > 1 || count($candidatasTexto) > 1 || count($candidatasCuenta) > 1 || $alias1000Conflictivo || $conflictoAliasHermanos ? 'ESTACION_AMBIGUA' : 'ESTACION_NO_IDENTIFICADA');
                 $corregida = isset($correcciones[(int)$mov['id']]);
                 $estacion = $correcciones[(int)$mov['id']] ?? $estacionOriginal;
                 // Una corrección válida identifica la estación para fines de
