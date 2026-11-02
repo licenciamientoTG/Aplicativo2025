@@ -11,6 +11,7 @@ sin hacer trabajo si otra instancia está activa.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -885,8 +886,21 @@ def praxedis_candidates(bank: tuple, slots: dict[tuple[date, str], dict], used_k
     return found
 
 
-def run() -> int:
+def run(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    station_filter: int | None = None,
+    dry_run: bool = False,
+) -> int:
     log("Inicio de ejecución; cargando configuración.")
+    if (start_date is None) != (end_date is None):
+        raise RuntimeError("La fecha inicial y final deben indicarse juntas.")
+    if start_date and end_date and start_date > end_date:
+        raise RuntimeError("La fecha inicial no puede ser posterior a la final.")
+    if station_filter is not None and station_filter not in COMPANY_STATIONS:
+        raise RuntimeError(f"La estación {station_filter} no está habilitada para conciliación automática.")
+    if dry_run and (start_date is None or station_filter is None):
+        raise RuntimeError("--dry-run requiere --from, --to y --station-id para limitar la vista previa.")
     load_env_file()
     log(
         "Configuración lista: "
@@ -902,23 +916,46 @@ def run() -> int:
         raise
     run_id = None
     try:
-        ensure_schema(cursor); conn.commit()
+        if dry_run:
+            required_tables = (
+                "dbo.efc_conc_analiticos_vinculos",
+                "dbo.efc_conc_analiticos_papeletas",
+                "dbo.efc_conc_partidas",
+                "dbo.efc_conc_grupos",
+                "dbo.efc_conc_transitos",
+                "dbo.efc_conc_correcciones_banco",
+            )
+            missing = [name for name in required_tables if not cursor.execute("SELECT OBJECT_ID(?, 'U')", name).fetchone()[0]]
+            if missing:
+                raise RuntimeError("Vista previa requiere el esquema bancario ya instalado; faltan: " + ", ".join(missing))
+        else:
+            ensure_schema(cursor); conn.commit()
         log("Esquema listo.")
         if not acquire_lock(cursor):
             conn.rollback(); log("Otra ejecución automática mantiene el applock; no se procesa nada."); return 0
         log("Applock adquirido.")
-        run_id = cursor.execute("INSERT dbo.efc_conc_ejecuciones_automaticas(estado) OUTPUT inserted.id VALUES('EJECUTANDO')").fetchone()[0]; conn.commit()
+        if not dry_run:
+            run_id = cursor.execute("INSERT dbo.efc_conc_ejecuciones_automaticas(estado) OUTPUT inserted.id VALUES('EJECUTANDO')").fetchone()[0]; conn.commit()
         today = date.today()
         current_month_first = today.replace(day=1)
         # Keep the last seven operational days from the prior month available
         # throughout the current month so next-month deposits can create transit.
-        first = max((current_month_first - timedelta(days=1)).replace(day=1), current_month_first - timedelta(days=7))
-        last = today
+        first = start_date or max((current_month_first - timedelta(days=1)).replace(day=1), current_month_first - timedelta(days=7))
+        last = end_date or today
+        if start_date is not None:
+            log(f"Barrido histórico limitado a turnos {first.isoformat()}–{last.isoformat()}" + (f", estación {station_filter}" if station_filter is not None else "") + (" (vista previa sin escrituras)." if dry_run else "."))
         allowed = ",".join(str(value) for value in sorted(COMPANY_STATIONS))
-        stations = cursor.execute(f"SELECT Codigo,Nombre,Estacion FROM TG.dbo.Estaciones WHERE Codigo IN ({allowed}) AND Nombre<>'NO FUNCIONA'").fetchall()
-        previous_month_included = today.day <= 4
+        station_sql = f"SELECT Codigo,Nombre,Estacion FROM TG.dbo.Estaciones WHERE Codigo IN ({allowed}) AND Nombre<>'NO FUNCIONA'"
+        if station_filter is not None:
+            station_sql += " AND Codigo=?"
+            stations = cursor.execute(station_sql, station_filter).fetchall()
+            if not stations:
+                raise RuntimeError(f"La estación {station_filter} no está activa en TG.Estaciones.")
+        else:
+            stations = cursor.execute(station_sql).fetchall()
+        previous_month_included = start_date is None and today.day <= 4
         log(
-            f"Ejecución {run_id}: ventana {first.isoformat()} a {last.isoformat()}"
+            f"{'Vista previa' if dry_run else f'Ejecución {run_id}'}: ventana {first.isoformat()} a {last.isoformat()}"
             f"{' (incluye el mes anterior, días 1–4)' if previous_month_included else ''}; "
             f"{len(stations)} estaciones."
         )
@@ -950,9 +987,10 @@ def run() -> int:
                 # a month boundary. Extra days contain only candidate shifts;
                 # the bank's actual date still determines eligibility.
                 is_praxedis = int(station_id) == 40
-                praxedis_first = min(first, (current_month_first - timedelta(days=1)).replace(day=1)) if is_praxedis else first
+                praxedis_first = min(first, (current_month_first - timedelta(days=1)).replace(day=1)) if is_praxedis and start_date is None else first
                 controlgas_first = first - timedelta(days=3) if int(station_id) in GASOMEX_STATIONS else praxedis_first - timedelta(days=3) if is_praxedis else first
-                controlgas_last = last + timedelta(days=2) if int(station_id) in GASOMEX_STATIONS or is_praxedis else last
+                extra_sequence_days = 4 if start_date is not None else 2
+                controlgas_last = last + timedelta(days=extra_sequence_days) if int(station_id) in GASOMEX_STATIONS or is_praxedis else last
                 turn_rows = fetch_station_turns(cursor, int(station_id), controlgas_first, controlgas_last)
                 source_name = "cortes Praxedis" if int(station_id) == 40 else "ControlGas"
                 log(f"Estación {station_id}: {source_name} devolvió {len(turn_rows)} registros.")
@@ -986,14 +1024,18 @@ def run() -> int:
                     try:
                         for bank in (first_bank, second_bank):
                             inferred = inferred_stations.get(int(bank[0]))
-                            if inferred:
+                            if inferred and not dry_run:
                                 save_inferred_station_correction(cursor, int(bank[0]), int(station_id), inferred[1], int(run_id))
-                        cursor.execute("EXEC dbo.usp_efc_conc_guardar_automatica_doble ?,?,?,?,?,?,?,?,?,?,?,?,?,?",
-                            station_id, cut, turn, concept, cg_amount,
-                            first_bank[0], first_bank[1], amount(first_bank[2]), first_bank[3],
-                            second_bank[0], second_bank[1], amount(second_bank[2]), second_bank[3], run_id)
-                        conn.commit(); used.update((int(first_bank[0]), int(second_bank[0]))); matched += 1
-                        log(f"Conciliación automática doble: estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}, papeleta1={targets[0]:.2f}/banco={first_bank[0]}, papeleta2={targets[1]:.2f}/banco={second_bank[0]}.")
+                        if dry_run:
+                            used.update((int(first_bank[0]), int(second_bank[0]))); matched += 1
+                            log(f"Vista previa doble: estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}, papeleta1={targets[0]:.2f}/banco={first_bank[0]}, papeleta2={targets[1]:.2f}/banco={second_bank[0]}.")
+                        else:
+                            cursor.execute("EXEC dbo.usp_efc_conc_guardar_automatica_doble ?,?,?,?,?,?,?,?,?,?,?,?,?,?",
+                                station_id, cut, turn, concept, cg_amount,
+                                first_bank[0], first_bank[1], amount(first_bank[2]), first_bank[3],
+                                second_bank[0], second_bank[1], amount(second_bank[2]), second_bank[3], run_id)
+                            conn.commit(); used.update((int(first_bank[0]), int(second_bank[0]))); matched += 1
+                            log(f"Conciliación automática doble: estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}, papeleta1={targets[0]:.2f}/banco={first_bank[0]}, papeleta2={targets[1]:.2f}/banco={second_bank[0]}.")
                     except pyodbc.Error as exc:
                         conn.rollback(); errors += 1
                         log(f"Error DB conciliando doble papeleta estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}: {error_text(exc)}")
@@ -1028,6 +1070,8 @@ def run() -> int:
                     no_sequence = ambiguous = 0
                     for bank in sorted(praxedis_bank_rows, key=lambda item: bank_candidate_order(item, 40)):
                         candidates = praxedis_candidates(bank, slots, reserved_keys)
+                        if start_date is not None:
+                            candidates = [candidate for candidate in candidates if first <= candidate["anchor"] <= last]
                         if len(candidates) != 1:
                             if candidates:
                                 ambiguous += 1
@@ -1044,9 +1088,13 @@ def run() -> int:
                         ) + "</turns>"
                         log(f"Praxedis candidato: banco={bank[0]}, lote={lot['anchor']}, fecha_banco={bank[1]}, importe_banco={amount(bank[2]):.2f}, importe_turnos={cg_total:.2f}, turnos={lot['shifts']}.")
                         try:
-                            cursor.execute("EXEC dbo.usp_efc_conc_guardar_gasomex ?,?,?,?,?,?,?,?,?", 40, lot["anchor"], payload, bank[0], bank[1], amount(bank[2]), bank[3], run_id, TOLERANCE)
-                            conn.commit(); used.add(int(bank[0])); reserved_keys.update(item["key"] for item in picked); matched += 1
-                            log(f"Conciliado lote Praxedis: fecha={lot['anchor']}, turnos={lot['shifts']}, banco={bank[0]}.")
+                            if dry_run:
+                                used.add(int(bank[0])); reserved_keys.update(item["key"] for item in picked); matched += 1
+                                log(f"Vista previa lote Praxedis: fecha={lot['anchor']}, turnos={lot['shifts']}, banco={bank[0]}.")
+                            else:
+                                cursor.execute("EXEC dbo.usp_efc_conc_guardar_gasomex ?,?,?,?,?,?,?,?,?", 40, lot["anchor"], payload, bank[0], bank[1], amount(bank[2]), bank[3], run_id, TOLERANCE)
+                                conn.commit(); used.add(int(bank[0])); reserved_keys.update(item["key"] for item in picked); matched += 1
+                                log(f"Conciliado lote Praxedis: fecha={lot['anchor']}, turnos={lot['shifts']}, banco={bank[0]}.")
                         except pyodbc.Error as exc:
                             conn.rollback(); errors += 1
                             log(f"Error DB conciliando Praxedis, banco={bank[0]}: {error_text(exc)}")
@@ -1082,6 +1130,8 @@ def run() -> int:
                     no_sequence = ambiguous = 0
                     for bank in sorted(gas_bank_rows, key=lambda item: bank_candidate_order(item, int(station_id))):
                         candidates = gasomex_candidates(bank, slots, reserved_keys, int(station_id))
+                        if start_date is not None:
+                            candidates = [candidate for candidate in candidates if first <= candidate["anchor"] <= last]
                         if len(candidates) != 1:
                             if candidates:
                                 ambiguous += 1
@@ -1100,11 +1150,15 @@ def run() -> int:
                         ) + "</turns>"
                         try:
                             inferred = inferred_stations.get(int(bank[0]))
-                            if inferred:
+                            if inferred and not dry_run:
                                 save_inferred_station_correction(cursor, int(bank[0]), int(station_id), inferred[1], int(run_id))
-                            cursor.execute("EXEC dbo.usp_efc_conc_guardar_gasomex ?,?,?,?,?,?,?,?,?", station_id, lot["anchor"], payload, bank[0], bank[1], amount(bank[2]), bank[3], run_id, TOLERANCE)
-                            conn.commit(); used.add(int(bank[0])); reserved_keys.update(item["key"] for item in picked); matched += 1
-                            log(f"Conciliada GASOMEX: estación={station_id}, lote={lot['anchor']}, bucket={lot['bucket']}, turnos={lot['shifts']}, banco={bank[0]}.")
+                            if dry_run:
+                                used.add(int(bank[0])); reserved_keys.update(item["key"] for item in picked); matched += 1
+                                log(f"Vista previa GASOMEX: estación={station_id}, lote={lot['anchor']}, bucket={lot['bucket']}, turnos={lot['shifts']}, banco={bank[0]}.")
+                            else:
+                                cursor.execute("EXEC dbo.usp_efc_conc_guardar_gasomex ?,?,?,?,?,?,?,?,?", station_id, lot["anchor"], payload, bank[0], bank[1], amount(bank[2]), bank[3], run_id, TOLERANCE)
+                                conn.commit(); used.add(int(bank[0])); reserved_keys.update(item["key"] for item in picked); matched += 1
+                                log(f"Conciliada GASOMEX: estación={station_id}, lote={lot['anchor']}, bucket={lot['bucket']}, turnos={lot['shifts']}, banco={bank[0]}.")
                         except pyodbc.Error as exc:
                             conn.rollback(); errors += 1
                             log(f"Error DB conciliando GASOMEX estación={station_id}, banco={bank[0]}: {error_text(exc)}")
@@ -1137,11 +1191,15 @@ def run() -> int:
                         bank = candidates[0]
                         try:
                             inferred = inferred_stations.get(int(bank[0]))
-                            if inferred:
+                            if inferred and not dry_run:
                                 save_inferred_station_correction(cursor, int(bank[0]), int(station_id), inferred[1], int(run_id))
-                            cursor.execute("EXEC dbo.usp_efc_conc_guardar_automatica ?,?,?,?,?,?,?,?,?,?", station_id, cut, turn, concept, cg, bank[0], bank[1], amount(bank[2]), bank[3], run_id)
-                            conn.commit(); used.add(int(bank[0])); matched += 1
-                            log(f"Conciliada: estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}, banco={bank[0]}.")
+                            if dry_run:
+                                used.add(int(bank[0])); matched += 1
+                                log(f"Vista previa: estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}, REGIO={target:.2f}, banco={bank[0]}, depósito={amount(bank[2]):.2f}.")
+                            else:
+                                cursor.execute("EXEC dbo.usp_efc_conc_guardar_automatica ?,?,?,?,?,?,?,?,?,?", station_id, cut, turn, concept, cg, bank[0], bank[1], amount(bank[2]), bank[3], run_id)
+                                conn.commit(); used.add(int(bank[0])); matched += 1
+                                log(f"Conciliada: estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}, banco={bank[0]}.")
                         except pyodbc.Error as exc:
                             conn.rollback(); errors += 1
                             log(f"Error DB conciliando estación={station_id}, fecha={cut}, turno={turn}, concepto={concept}: {error_text(exc)}")
@@ -1152,8 +1210,13 @@ def run() -> int:
                 log(f"Error {category} en estación {station_id} ({type(exc).__name__}): {error_text(exc)}")
                 details.append(f"estación {station_id}: {exc}")
             log(f"Estación {station_id} completa; acumulado: {matched} conciliadas, {skipped} omitidas, {errors} errores.")
-        cursor.execute("UPDATE dbo.efc_conc_ejecuciones_automaticas SET estado=?,fin_en=SYSDATETIME(),conciliadas=?,omitidas=?,errores=?,detalle=? WHERE id=?", "PARCIAL" if errors else "COMPLETADA", matched, skipped, errors, "\n".join(details[-100:]), run_id)
-        conn.commit(); log(f"Ejecución {run_id} finalizada: {matched} conciliadas, {skipped} omitidas, {errors} errores."); return 0
+        if dry_run:
+            conn.rollback()
+            log(f"Vista previa terminada: {matched} candidatas únicas, {skipped} omitidas/ambiguas, {errors} errores. No se guardaron conciliaciones ni correcciones.")
+        else:
+            cursor.execute("UPDATE dbo.efc_conc_ejecuciones_automaticas SET estado=?,fin_en=SYSDATETIME(),conciliadas=?,omitidas=?,errores=?,detalle=? WHERE id=?", "PARCIAL" if errors else "COMPLETADA", matched, skipped, errors, "\n".join(details[-100:]), run_id)
+            conn.commit(); log(f"Ejecución {run_id} finalizada: {matched} conciliadas, {skipped} omitidas, {errors} errores.")
+        return 0
     except Exception as exc:
         conn.rollback()
         log(f"Error DB/fatal en ejecución {run_id or '<sin id>'} ({type(exc).__name__}): {error_text(exc)}")
@@ -1171,4 +1234,21 @@ def run() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(run())
+    parser = argparse.ArgumentParser(description="Conciliación bancaria automática de efectivo.")
+    parser.add_argument("--from", dest="start_date", help="Fecha inicial de turnos (AAAA-MM-DD).")
+    parser.add_argument("--to", dest="end_date", help="Fecha final de turnos (AAAA-MM-DD).")
+    parser.add_argument("--station-id", type=int, help="Limita a una estación del catálogo automático.")
+    parser.add_argument("--dry-run", action="store_true", help="Calcula y muestra candidatos sin escribir cambios; requiere rango y estación.")
+    args = parser.parse_args()
+    try:
+        parsed_start = date.fromisoformat(args.start_date) if args.start_date else None
+        parsed_end = date.fromisoformat(args.end_date) if args.end_date else None
+    except ValueError:
+        parser.error("Las fechas deben usar el formato AAAA-MM-DD.")
+    if (parsed_start is None) != (parsed_end is None):
+        parser.error("--from y --to deben indicarse juntos.")
+    if args.station_id is not None and parsed_start is None:
+        parser.error("--station-id requiere --from y --to.")
+    if args.dry_run and (parsed_start is None or args.station_id is None):
+        parser.error("--dry-run requiere --from, --to y --station-id.")
+    raise SystemExit(run(parsed_start, parsed_end, args.station_id, args.dry_run))

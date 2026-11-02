@@ -2,6 +2,15 @@
 
 Ejecutar `python cron/efc_conc_bancaria_automatica.py` cada 10 minutos. El script busca `.env`, en este orden: junto al script, en la carpeta configurada como **Iniciar en**, y en la raíz del proyecto. Requiere las variables `EFC_CONC_DB_*` ya documentadas en `.env.example`; opcionalmente `EFC_CONC_CONTROLGAS_URL` y `EFC_CONC_CONTROLGAS_TIMEOUT`.
 
+Para reprocesar conciliaciones bancarias de una estación en un periodo operativo específico, use `--from`, `--to` y `--station-id`. Por ejemplo, para Hermanos Escobar (ID 30) en octubre de 2026, primero genere una vista previa y luego, si los candidatos son correctos, ejecute sin `--dry-run`:
+
+```powershell
+python cron/efc_conc_bancaria_automatica.py --from 2026-10-01 --to 2026-10-31 --station-id 30 --dry-run
+python cron/efc_conc_bancaria_automatica.py --from 2026-10-01 --to 2026-10-31 --station-id 30
+```
+
+El rango filtra fechas de turnos; los depósitos bancarios se buscan desde la fecha inicial hasta siete días después de la fecha final. La vista previa no crea el registro de ejecución, no cambia el esquema, no corrige estaciones ni guarda conciliaciones. Muestra candidatos únicos según la lógica actual; los procedimientos de guardado siguen validando cierres, tránsitos y reservas al aplicar. La ejecución histórica también crea tránsitos cuando el depósito pertenece al mes siguiente.
+
 El proceso toma un `sp_getapplock` y registra cada ejecución en `dbo.efc_conc_ejecuciones_automaticas`. Consulta ControlGas desde siete días antes del inicio del mes actual hasta hoy para encontrar turnos cuyo depósito llega durante el mes siguiente; el rango de depósitos bancarios también abarca hasta siete días después de hoy. Praxedis conserva una ventana ampliada que incluye todo el mes anterior para admitir cargas tardías de cortes. La última ejecución terminada (también si acaba en `ERROR`) se expone a Twig como `lastAutomaticRun`, con `finalizada_en` y `estado`.
 
 Los depósitos sin estación detectada pueden asignarse automáticamente cuando su importe coincide exactamente al centavo con el real de un vínculo REGIO activo y existe un único turno y depósito candidato dentro de la ventana normal (fecha del turno hasta siete días después). La estación inferida se guarda como corrección del depósito en la misma transacción que la conciliación. Si el importe tiene varias coincidencias posibles, se deja pendiente para revisión manual. GASOMEX conserva su conciliación por secuencias y cuentas permitidas.
