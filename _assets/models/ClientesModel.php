@@ -430,19 +430,30 @@ class ClientesModel extends Model{
     }
 
     /**
+     * Límite de filas que se traen en una sola llamada de search_contado_por_estacion().
+     * La tabla Clientes de cada estación tiene ~230k filas de tipval=0
+     * (facturación de mostrador acumulada desde 2022); traerla completa
+     * revienta la memoria de PHP (se confirmó en producción: fatal error de
+     * memoria agotada al dejar el término vacío). 5000 es holgado para
+     * cualquier búsqueda real y sigue siendo una red de seguridad, no un
+     * límite que el usuario vaya a alcanzar filtrando por nombre/RFC/código.
+     */
+    public const CONTADO_MAX_ROWS = 5000;
+
+    /**
      * Busca clientes con tipval distinto de 3 (Crédito) y 4 (Débito) en UNA
-     * estación, por nombre/RFC/código. La tabla Clientes de cada estación
-     * tiene ~230k filas de tipval=0 (facturación de mostrador acumulada desde
-     * 2022): jamás se debe traer completa, por eso el filtro y el TOP van en
-     * la consulta remota, no en PHP. Con $termino vacío, regresa los últimos
-     * 200 registrados (por logfch) en vez de filtrar por texto — útil para
-     * ver qué acaba de darse de alta en la estación.
+     * estación, por nombre/RFC/código. El filtro y el TOP van en la consulta
+     * remota, no en PHP, porque la tabla jamás se debe traer completa (ver
+     * CONTADO_MAX_ROWS). Con $termino vacío, regresa los últimos registrados
+     * (por logfch) hasta el límite.
      *
      * @return array|false false = error de conexión/consulta en la estación
      */
     public function search_contado_por_estacion(string $servidor, string $baseDatos, string $termino) : array|false {
-        $select = "SELECT TOP 200 cod, den, dom, rfc, codpos, tel, correo, tipval, logfch,
-                    CASE WHEN codest = 1 THEN 'Suspendido' WHEN codest = 0 THEN 'Activo' ELSE 'NA' END AS estatus
+        $top     = self::CONTADO_MAX_ROWS;
+        $columnas = "cod, den, dom, rfc, codpos, tel, correo, tipval, logfch,
+                    CASE WHEN codest = 1 THEN 'Suspendido' WHEN codest = 0 THEN 'Activo' ELSE 'NA' END AS estatus";
+        $select = "SELECT TOP {$top} {$columnas}
                   FROM [{$baseDatos}].dbo.Clientes
                   WHERE tipval NOT IN (3,4)";
 
@@ -1442,12 +1453,21 @@ public function get_debit_snapshot() : array|false {
 
     /** Busca clientes débito/crédito (por nombre o código) que aún no son consumo propio. */
     public function search_consumo_propio_candidates(string $q) : array|false {
-        $query = "SELECT TOP 30 c.cod, c.den, c.tipval
+        // Cada palabra debe aparecer (en cualquier orden) y -, ., , cuentan como espacio: "c financiera" encuentra "C-FINANCIERA"
+        $palabras = array_slice(preg_split('/[\s\-.,]+/u', $q, -1, PREG_SPLIT_NO_EMPTY), 0, 6);
+        $params   = [];
+        $likes    = '';
+        foreach ($palabras as $p) {
+            $likes   .= " AND REPLACE(REPLACE(REPLACE(c.den, '-', ' '), '.', ' '), ',', ' ') LIKE ?";
+            $params[] = '%' . $p . '%';
+        }
+        $params[] = $q;
+        $query = "SELECT TOP 50 c.cod, c.den, c.tipval
                   FROM [SG12].dbo.Clientes c
-                  WHERE c.tipval IN (3,4) AND (c.den LIKE ? OR CAST(c.cod AS VARCHAR(12)) = ?)
+                  WHERE c.tipval IN (3,4) AND ((1 = 1 {$likes}) OR CAST(c.cod AS VARCHAR(12)) = ?)
                     AND NOT EXISTS (SELECT 1 FROM [TG].dbo.clientes_consumo_propio cp WHERE cp.codcli = c.cod AND cp.activo = 1)
                   ORDER BY c.den";
-        return $this->sql->select($query, ['%' . $q . '%', $q]) ?: false;
+        return $this->sql->select($query, $params) ?: false;
     }
 
     /** Clasifica (o reactiva) un cliente débito/crédito como consumo propio. */

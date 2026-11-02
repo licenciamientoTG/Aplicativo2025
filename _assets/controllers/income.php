@@ -508,6 +508,7 @@ class Income{
                 'fecha'           => $r['fecha'],
                 'codcli'          => $r['codopr'],
                 'cliente'         => $r['cliente'] ?? '',
+                'saldo_linea'     => ($r['saldo_linea'] ?? null) === null ? null : round((float)$r['saldo_linea'], 2),
                 'tipo'            => trim((string)$r['tipo']),
                 'forma_pago'      => self::CONCILIATION_FORMAS_PAGO[$tags['M'] ?? ''] ?? ($tags['M'] ?? ''),
                 'ordenante'       => trim($tags['B'] ?? ''),

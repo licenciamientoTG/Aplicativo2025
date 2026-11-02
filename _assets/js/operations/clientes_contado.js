@@ -51,7 +51,7 @@ $('#btn_buscar_contado').on('click', function () {
         return;
     }
     if (termino.length > 0 && termino.length < 3) {
-        alertify.error('Escribe al menos 3 caracteres para buscar, o déjalo vacío para ver los últimos registrados');
+        alertify.error('Escribe al menos 3 caracteres para buscar, o déjalo vacío para ver todos los clientes');
         return;
     }
 
@@ -67,7 +67,11 @@ $('#btn_buscar_contado').on('click', function () {
             clientes_contado_table.clear();
             if (response.data && response.data.length > 0) {
                 clientes_contado_table.rows.add(response.data).draw();
-                alertify.success(`Se encontraron ${response.data.length} registros`);
+                if (response.truncated) {
+                    alertify.warning(`Se encontraron ${response.data.length} registros (puede haber más; afina la búsqueda para ver el resto)`);
+                } else {
+                    alertify.success(`Se encontraron ${response.data.length} registros`);
+                }
             } else {
                 clientes_contado_table.draw();
                 alertify.warning(response.error || 'No se encontraron clientes con ese criterio');
