@@ -940,7 +940,7 @@ $(function () {
 
 
   var tablaCruce = initTabla('#tablaCruce', [
-    { data: 'folios', className: 'cv-wrap', render: texto },
+    { data: 'folios', className: 'cv-mono', render: texto },
     { data: 'fecha', render: fecha },
     { data: 'clientes', className: 'cv-wrap', render: textoLineas },
     { data: 'estatus', render: badge },
@@ -1253,13 +1253,7 @@ $(function () {
       g.cobros++;
       g.monto += Number(r.monto) || 0;
       if (r.mov !== null && r.mov !== '' && g.movs.indexOf(String(r.mov)) < 0) g.movs.push(String(r.mov));
-      if (r.cliente) {
-        // Cada cliente lleva su saldo de línea (SG12.Clientes.cresdo, el de hoy; negativo = a favor)
-        var saldo = r.saldo_linea;
-        var linea = r.cliente + (saldo === null || saldo === undefined ? '' :
-          '  ·  Saldo: ' + (saldo < 0 ? '-' : '') + '$' + fmtMonto(Math.abs(saldo)));
-        if (g.clientes.indexOf(linea) < 0) g.clientes.push(linea);
-      }
+      if (r.cliente && g.clientes.indexOf(r.cliente) < 0) g.clientes.push(r.cliente);
       if (g.folios.indexOf(String(r.cobro)) < 0) g.folios.push(String(r.cobro));
       if (r.fecha && r.fecha < g.fecha) g.fecha = r.fecha;
       [['formas', r.forma_pago], ['ordenantes', r.ordenante], ['bancos_ord', r.banco_ordenante], ['facturas', r.facturas], ['uuids', r.uuid]].forEach(function (c) {
