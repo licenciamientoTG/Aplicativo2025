@@ -983,6 +983,9 @@ def run(
                     FROM dbo.efc_conc_analiticos_vinculos V JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id
                     WHERE V.estacion_id=? AND V.activo=1""", station_id).fetchall()}
                 links = {key: value for key, value in links.items() if key not in manual_pairs}
+                if start_date is not None:
+                    in_range_links = sum(1 for (day_text, _turn, _concept) in links if first.isoformat() <= day_text <= last.isoformat())
+                    log(f"Vínculos REGIO activos para turnos del rango en estación {station_id}: {in_range_links}.")
                 # Nine shifts can span parts of three operational days across
                 # a month boundary. Extra days contain only candidate shifts;
                 # the bank's actual date still determines eligibility.
@@ -1247,6 +1250,8 @@ if __name__ == "__main__":
         parser.error("Las fechas deben usar el formato AAAA-MM-DD.")
     if (parsed_start is None) != (parsed_end is None):
         parser.error("--from y --to deben indicarse juntos.")
+    if parsed_start and parsed_end and parsed_start > parsed_end:
+        parser.error("--from no puede ser posterior a --to.")
     if args.station_id is not None and parsed_start is None:
         parser.error("--station-id requiere --from y --to.")
     if args.dry_run and (parsed_start is None or args.station_id is None):
