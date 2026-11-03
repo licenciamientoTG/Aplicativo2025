@@ -502,18 +502,29 @@ class EfcConciliacionModel {
     }
 
     public function createTransits(int $stationId, array $turns, int $userId): array {
-        if (!$stationId || !$turns) throw new RuntimeException('Seleccione al menos un turno.');
+        return $this->createTransitsBatch([['station_id'=>$stationId,'turns'=>$turns]], self::stationCompany($stationId) ?? '', $userId);
+    }
+
+    public function createTransitsBatch(array $groups, string $company, int $userId): array {
+        $company = strtoupper(trim($company));
+        if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true) || !$groups) throw new RuntimeException('Empresa o turnos inválidos.');
+        $allowedStations = self::stationIds($company);
         $this->db->beginTransaction();
         try {
             $created=[];
-            foreach ($turns as $turn) {
+            foreach ($groups as $group) {
+              $stationId=(int)($group['station_id']??0); $turns=is_array($group['turns']??null)?$group['turns']:[];
+              if (!in_array($stationId,$allowedStations,true) || $stationId===40 || !$turns) throw new RuntimeException('La estación o los turnos seleccionados no pertenecen a la empresa activa o no están disponibles para tránsito.');
+              foreach ($turns as $turn) {
                 $key=trim((string)($turn['source_key']??$turn['id']??'')); $date=trim((string)($turn['date']??'')); $turnNo=trim((string)($turn['turn']??'')); $concept=trim(strtoupper((string)($turn['currency']??''))); $amount=(float)($turn['amount']??0);
                 if (!$key || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || $turnNo==='' || !in_array($concept,['MN','MORRALLA','USD'],true) || $amount<=0) throw new RuntimeException('Datos de turno inválidos.');
+                if ($key !== 'cg-'.$stationId.'-'.$date.'-'.$turnNo.'-'.$concept) throw new RuntimeException('La clave del turno no corresponde a la estación, fecha y concepto enviados.');
                 $origin=substr($date,0,7); $destination=(new DateTimeImmutable($origin.'-01'))->modify('+1 month')->format('Y-m'); $this->assertOpen($stationId,$date,$concept);
                 $check=$this->db->prepare("SELECT TOP 1 id FROM dbo.efc_conc_transitos WHERE estacion_id=? AND clave_externa=? AND estado='PENDIENTE'"); $check->execute([$stationId,$key]); if($check->fetchColumn()) throw new RuntimeException('Uno de los turnos ya tiene un tránsito activo.');
                 $group=$this->db->prepare("SELECT TOP 1 1 FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='CG' AND P.clave_externa=? AND P.activo=1 AND G.estado='ACTIVA'"); $group->execute([$key]); if($group->fetchColumn()) throw new RuntimeException('No se puede enviar a tránsito un turno ya conciliado.');
                 $ins=$this->db->prepare("INSERT dbo.efc_conc_transitos(estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,descripcion,creado_por) OUTPUT INSERTED.id VALUES(?,?,?,?,?,?,?,?,?,?)");
                 $ins->execute([$stationId,$key,$date,$origin,$destination,$turnNo,$concept,$amount,(string)($turn['description']??''),$userId]); $created[]=(int)$ins->fetchColumn();
+              }
             }
             $this->db->commit(); return $created;
         } catch(Throwable $e) { $this->db->rollBack(); throw $e; }

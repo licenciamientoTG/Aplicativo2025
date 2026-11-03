@@ -7771,6 +7771,11 @@ public function stamped_invoices_detail(): void
         try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $ids=$this->efcConciliacion->createTransits((int)($data['station_id']??0),is_array($data['turns']??null)?$data['turns']:[],(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','ids'=>$ids]); }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
+    public function efc_conc_transito_crear_lote(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $ids=$this->efcConciliacion->createTransitsBatch(is_array($data['groups']??null)?$data['groups']:[],(string)($data['empresa']??''),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','ids'=>$ids]); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
     public function efc_conc_transito_cancelar(): void {
         ob_clean(); header('Content-Type: application/json');
         try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $reconciliations=$this->efcConciliacion->cancelTransit((int)($data['id']??0),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','reconciliations'=>$reconciliations]); }
