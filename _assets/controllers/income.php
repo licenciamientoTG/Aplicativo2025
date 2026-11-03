@@ -8186,7 +8186,7 @@ public function stamped_invoices_detail(): void
             $suffixes = EfcConciliacionModel::allAccountSuffixes();
             $accountWhere = implode(' OR ', array_fill(0, count($suffixes), "RIGHT(UPPER(REPLACE(REPLACE(ISNULL(M.cuenta,''), '-', ''), ' ', '')), LEN(?)) = ?"));
             $stmt = $conn->prepare(
-                "SELECT M.id, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, ISNULL(OG.capturado, 0) AS one_goal, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled, CG_MATCH.controlgas_matches
+                "SELECT M.id, M.secuencia, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, ISNULL(OG.capturado, 0) AS one_goal, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled, CG_MATCH.controlgas_matches
                  FROM [TG].[dbo].[movimientos_bancarios] M
                  LEFT JOIN [TG].[dbo].[efc_conc_one_goal_movimientos] OG ON OG.movimiento_bancario_id=M.id
                  OUTER APPLY (
@@ -8317,6 +8317,7 @@ public function stamped_invoices_detail(): void
                 if (!$todasEstaciones && $estacion && $estacion['station_id'] !== $estacionId) continue;
                 $movimientos[] = [
                     'id'                => 'mb_' . (int)$mov['id'],
+                    'numero_movimiento' => $mov['secuencia'] ?? null,
                     'fecha'             => $fecha,
                     'banco'             => trim((string)$mov['banco']),
                     'cuenta'            => $mov['cuenta'],
