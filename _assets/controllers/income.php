@@ -7734,7 +7734,8 @@ public function stamped_invoices_detail(): void
     }
 
     public function cash_reconciliation_movements(): void {
-        echo $this->twig->render($this->route . 'cash_reconciliation_movements.html');
+        $isSuperAdmin = $this->currentUserIsSuperAdmin();
+        echo $this->twig->render($this->route . 'cash_reconciliation_movements.html', compact('isSuperAdmin'));
     }
 
     public function cash_reconciliation_papers(): void {
@@ -8086,9 +8087,32 @@ public function stamped_invoices_detail(): void
         // Compatibility: reconciliation consumers keep the historical cash
         // description filter unless they explicitly request all bank credits.
         $includeNonCash = ($_GET['include_non_cash'] ?? '') === '1';
-        $empresa = EfcConciliacionModel::normalizeCompany($_GET['empresa'] ?? 'DIAZ GAS');
+        $filtrarEmpresaValor = $_GET['filtrar_empresa'] ?? null;
+        if ($filtrarEmpresaValor !== null
+            && (!is_scalar($filtrarEmpresaValor) || !in_array((string)$filtrarEmpresaValor, ['0', '1'], true))) {
+            echo json_encode(['status' => 'error', 'message' => 'Parámetro filtrar_empresa inválido']);
+            exit;
+        }
+        $filtrarEmpresa = $filtrarEmpresaValor === '1';
+        $empresaPresente = array_key_exists('empresa', $_GET);
+        if ($filtrarEmpresa && $empresaPresente && !is_scalar($_GET['empresa'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Empresa inválida']);
+            exit;
+        }
+        $empresaSolicitada = $empresaPresente ? strtoupper(trim((string)$_GET['empresa'])) : null;
+        $empresa = EfcConciliacionModel::normalizeCompany($empresaSolicitada ?? 'DIAZ GAS');
+        $filtrarPorEmpresa = $filtrarEmpresa && $empresaPresente && $empresaSolicitada !== 'TODAS';
+        if ($filtrarPorEmpresa && !in_array($empresaSolicitada, ['DIAZ GAS', 'FORANEAS', 'GASOMEX'], true)) {
+            echo json_encode(['status' => 'error', 'message' => 'Empresa inválida']);
+            exit;
+        }
         if ($year < 2020 || $month < 1 || $month > 12 || (!$todasEstaciones && !$estacionId)) {
             echo json_encode(['status' => 'error', 'message' => 'Periodo o estación inválidos']);
+            exit;
+        }
+        if ($filtrarPorEmpresa && !$todasEstaciones
+            && EfcConciliacionModel::stationCompany($estacionId) !== $empresa) {
+            echo json_encode(['status' => 'error', 'message' => 'Estación fuera de la empresa seleccionada']);
             exit;
         }
         $periodStart = sprintf('%04d-%02d-01', $year, $month);
@@ -8277,6 +8301,12 @@ public function stamped_invoices_detail(): void
                 if ($corregida) $estatus = 'IDENTIFICADA';
                 $fecha = $mov['fecha'] instanceof DateTime ? $mov['fecha']->format('Y-m-d') : substr((string)$mov['fecha'], 0, 10);
 
+                // Company filtering follows the effective station, including
+                // manual corrections. With no concrete company (missing or
+                // TODAS), retain unidentified and ambiguous rows for review.
+                if ($filtrarPorEmpresa
+                    && (!$estacion || !in_array((int)$estacion['station_id'], EfcConciliacionModel::stationIds($empresa), true))) continue;
+
                 // Se devuelven los depósitos de la estación seleccionada y los no
                 // identificados/ambiguos: estos últimos requieren revisión humana.
                 if (!$todasEstaciones && $estacion && $estacion['station_id'] !== $estacionId) continue;
@@ -8303,7 +8333,7 @@ public function stamped_invoices_detail(): void
                     'station_normalized'=> $codigos,
                 ];
             }
-            echo json_encode(['status' => 'success', 'empresa' => $empresa, 'data' => $movimientos]);
+            echo json_encode(['status' => 'success', 'empresa' => $empresaSolicitada === 'TODAS' ? 'TODAS' : $empresa, 'data' => $movimientos]);
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => 'Error consultando depósitos bancarios: ' . $e->getMessage()]);
         }
