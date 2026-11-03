@@ -233,7 +233,10 @@ class ClientesModel extends Model{
         $codval = $tipval === 3 ? 28 : 127;
         $propio_d = $this->consumoPropioFilter($propio, 't1.codcli');
         $propio_r = $this->consumoPropioFilter($propio, 'r.codcli');
-        $query = "WITH vx AS (
+        // El FULL JOIN contra Clientes/CP en una sola consulta hacía que SQL Server eligiera un plan
+        // de minutos (222 s medidos en crédito/Diaz Gas, 1 mes). Cada parte tarda ~1-3 s por separado,
+        // así que se consultan por separado y se unen en PHP.
+        $qd = "WITH vx AS (
                     -- despachos de clientes que hoy son de otro tipo pero el corte cobró con este valor (ValesR.sec = -nrotrn)
                     SELECT DISTINCT vr.codgas, -vr.sec AS nrotrn
                     FROM [SG12].[dbo].[ValesR] vr WITH (NOLOCK)
@@ -241,63 +244,84 @@ class ClientesModel extends Model{
                     WHERE vr.fch BETWEEN ? - 1 AND ? + 1
                         AND vr.codval = ?
                         AND vc.tipval <> ?
-                ), d AS (
-                    SELECT
-                        t1.codcli,
-                        COUNT(DISTINCT EMP.cod) AS RazonesSociales,
-                        COUNT(DISTINCT t1.codgas) AS Estaciones,
-                        COUNT(*) AS Despachos,
-                        SUM(t1.can) AS Litros,
-                        SUM(t1.mto) AS Monto,
-                        MIN(t1.fchtrn) AS PrimerFch,
-                        MAX(t1.fchtrn) AS UltimoFch
-                    FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
-                    JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
-                    LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
-                    LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
-                    LEFT JOIN vx ON vx.codgas = t1.codgas AND vx.nrotrn = t1.nrotrn
-                    WHERE t1.fchtrn BETWEEN ? AND ?
-                        AND t1.codcli > 0
-                        AND (t2.tipval = ? OR vx.nrotrn IS NOT NULL)
-                        AND (? = 0 OR t1.codcli = ?)
-                        AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
-                        {$propio_d}
-                    GROUP BY t1.codcli
-                ), r AS (
-                    SELECT r.codcli, SUM(r.mto) AS MontoCortes
-                    FROM [SG12].[dbo].[ValesR] r WITH (NOLOCK)
-                    LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = r.codgas
-                    LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
-                    WHERE r.fch BETWEEN ? AND ?
-                        AND r.codval = ?
-                        AND (? = 0 OR r.codcli = ?)
-                        AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
-                        {$propio_r}
-                    GROUP BY r.codcli
                 )
                 SELECT
-                    COALESCE(d.codcli, r.codcli) AS codcli,
-                    ISNULL(c.den, '(Cliente ' + CAST(COALESCE(d.codcli, r.codcli) AS VARCHAR(12)) + ')') AS Cliente,
-                    ISNULL(d.RazonesSociales, 0) AS RazonesSociales,
-                    ISNULL(d.Estaciones, 0) AS Estaciones,
-                    ISNULL(d.Despachos, 0) AS Despachos,
-                    CAST(ISNULL(d.Litros, 0) AS decimal(18,3)) AS Litros,
-                    CAST(ISNULL(d.Monto, 0) AS decimal(18,2)) AS Monto,
-                    CAST(ISNULL(r.MontoCortes, 0) AS decimal(18,2)) AS MontoCortes,
-                    CAST(ISNULL(d.Monto, 0) - ISNULL(r.MontoCortes, 0) AS decimal(18,2)) AS Diferencia,
-                    CONVERT(VARCHAR(10), CAST(d.PrimerFch AS DATETIME) - 1, 23) AS PrimerConsumo,
-                    CONVERT(VARCHAR(10), CAST(d.UltimoFch AS DATETIME) - 1, 23) AS UltimoConsumo,
-                    ISNULL(CP.categoria, '') AS Categoria
-                FROM d
-                FULL JOIN r ON r.codcli = d.codcli
-                LEFT JOIN [SG12].[dbo].[Clientes] c ON c.cod = COALESCE(d.codcli, r.codcli)
-                LEFT JOIN [TG].dbo.clientes_consumo_propio CP ON CP.codcli = COALESCE(d.codcli, r.codcli) AND CP.activo = 1
-                ORDER BY ISNULL(d.Monto, 0) DESC";
-        return $this->sql->select($query, [
+                    t1.codcli,
+                    COUNT(DISTINCT EMP.cod) AS RazonesSociales,
+                    COUNT(DISTINCT t1.codgas) AS Estaciones,
+                    COUNT(*) AS Despachos,
+                    SUM(t1.can) AS Litros,
+                    SUM(t1.mto) AS Monto,
+                    MIN(t1.fchtrn) AS PrimerFch,
+                    MAX(t1.fchtrn) AS UltimoFch
+                FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
+                JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
+                LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
+                LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+                LEFT JOIN vx ON vx.codgas = t1.codgas AND vx.nrotrn = t1.nrotrn
+                WHERE t1.fchtrn BETWEEN ? AND ?
+                    AND t1.codcli > 0
+                    AND (t2.tipval = ? OR vx.nrotrn IS NOT NULL)
+                    AND (? = 0 OR t1.codcli = ?)
+                    AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
+                    {$propio_d}
+                GROUP BY t1.codcli";
+        $qr = "SELECT r.codcli, SUM(r.mto) AS MontoCortes
+                FROM [SG12].[dbo].[ValesR] r WITH (NOLOCK)
+                LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = r.codgas
+                LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+                WHERE r.fch BETWEEN ? AND ?
+                    AND r.codval = ?
+                    AND (? = 0 OR r.codcli = ?)
+                    AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
+                    {$propio_r}
+                GROUP BY r.codcli";
+        $d = $this->sql->select($qd, [
             $from, $until, $codval, $tipval,
             $from, $until, $tipval, $codcli, $codcli, $empresa, $empresa, $empresa,
+        ]) ?: [];
+        $r = $this->sql->select($qr, [
             $from, $until, $codval, $codcli, $codcli, $empresa, $empresa, $empresa,
-        ]) ?: false;
+        ]) ?: [];
+
+        $byCli = [];
+        foreach ($d as $x) { $byCli[(int)$x['codcli']]['d'] = $x; }
+        foreach ($r as $x) { $byCli[(int)$x['codcli']]['r'] = $x; }
+        if (!$byCli) { return false; }
+
+        $ids = implode(',', array_map('intval', array_keys($byCli)));
+        $names = [];
+        foreach ($this->sql->select("SELECT c.cod, c.den, ISNULL(CP.categoria, '') AS categoria
+                FROM [SG12].[dbo].[Clientes] c
+                LEFT JOIN [TG].dbo.clientes_consumo_propio CP ON CP.codcli = c.cod AND CP.activo = 1
+                WHERE c.cod IN ({$ids})") ?: [] as $x) { $names[(int)$x['cod']] = $x; }
+        $cats = [];
+        foreach ($this->sql->select("SELECT codcli, categoria FROM [TG].dbo.clientes_consumo_propio
+                WHERE activo = 1 AND codcli IN ({$ids})") ?: [] as $x) { $cats[(int)$x['codcli']] = (string)$x['categoria']; }
+
+        $fmt = static fn($f) => $f ? date('Y-m-d', strtotime('1900-01-01 +' . ((int)$f - 1) . ' days') ?: 0) : null;
+        $out = [];
+        foreach ($byCli as $id => $p) {
+            $dd = $p['d'] ?? null;
+            $monto = $dd ? (float)$dd['Monto'] : 0.0;
+            $cortes = isset($p['r']) ? (float)$p['r']['MontoCortes'] : 0.0;
+            $out[] = [
+                'codcli' => $id,
+                'Cliente' => $names[$id]['den'] ?? '(Cliente ' . $id . ')',
+                'RazonesSociales' => $dd ? (int)$dd['RazonesSociales'] : 0,
+                'Estaciones' => $dd ? (int)$dd['Estaciones'] : 0,
+                'Despachos' => $dd ? (int)$dd['Despachos'] : 0,
+                'Litros' => number_format($dd ? (float)$dd['Litros'] : 0, 3, '.', ''),
+                'Monto' => number_format($monto, 2, '.', ''),
+                'MontoCortes' => number_format($cortes, 2, '.', ''),
+                'Diferencia' => number_format($monto - $cortes, 2, '.', ''),
+                'PrimerConsumo' => $dd ? $fmt($dd['PrimerFch']) : null,
+                'UltimoConsumo' => $dd ? $fmt($dd['UltimoFch']) : null,
+                'Categoria' => $cats[$id] ?? '',
+            ];
+        }
+        usort($out, static fn($a, $b) => (float)$b['Monto'] <=> (float)$a['Monto']);
+        return $out;
     }
 
     /**
