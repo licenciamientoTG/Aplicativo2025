@@ -3609,13 +3609,32 @@
     } else if (type.previewKind === 'video') {
       const stage = makeElement('div', 'boards-preview-video-stage');
       const video = makeElement('video', 'boards-preview-video');
+      let blobPlaybackAttempted = false;
       video.controls = true;
       video.playsInline = true;
       video.preload = 'metadata';
       video.setAttribute('aria-label', `Vista previa de ${name}`);
-      video.addEventListener('error', () => {
-        if (previewRequest === filePreviewRequest) {
+      video.addEventListener('error', async () => {
+        if (previewRequest !== filePreviewRequest) return;
+        if (blobPlaybackAttempted) {
           showFilePreviewError('No se pudo reproducir este video en el navegador. Descárgalo para abrirlo con otra aplicación.');
+          return;
+        }
+        blobPlaybackAttempted = true;
+        const status = makeElement('p', 'boards-preview-unavailable', 'Preparando el video para reproducirlo…');
+        status.setAttribute('role', 'status');
+        stage.append(status);
+        try {
+          const blob = await fetchStoredFileBlob(file);
+          if (previewRequest !== filePreviewRequest) return;
+          status.remove();
+          filePreviewObjectUrl = URL.createObjectURL(blob);
+          video.src = filePreviewObjectUrl;
+          video.load();
+        } catch (error) {
+          if (previewRequest === filePreviewRequest) {
+            showFilePreviewError(errorMessage(error, 'No se pudo cargar el video. Descárgalo para abrirlo con otra aplicación.'));
+          }
         }
       });
       video.src = fileEndpoint(file, true);
