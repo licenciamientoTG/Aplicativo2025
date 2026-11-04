@@ -7632,6 +7632,18 @@ public function stamped_invoices_detail(): void
         exit;
     }
 
+    /** Current and projected reconciliation differences before approving a cut revision. */
+    public function efc_conc_cambios_previsualizar(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $id=(int)($_GET['id']??0);if($id<1)throw new RuntimeException('Cambio inválido.');
+            $preview=$this->efcConciliacion->previewCutChange($id);
+            $allowed=array_values(array_diff(EfcConciliacionModel::stationIds('DIAZ GAS'),[40]));if(!in_array((int)$preview['estacion_id'],$allowed,true))throw new RuntimeException('Estación fuera del alcance del monitor.');
+            echo json_encode(['status'=>'success','data'=>$preview],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
+        exit;
+    }
+
     /** Applies the latest accepted ControlGas amount to the reconciliation board. */
     public function efc_conc_cortes_aceptados(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');

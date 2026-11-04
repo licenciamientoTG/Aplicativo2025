@@ -1487,8 +1487,15 @@ $('.refresh_responsables_table').on('click', function () {
     $('#responsables_table').waitMe('hide');
 });
 
-$('#exportExcel').on('click', function () {
-    // Disparar el evento clic del botón de exportación de Excel del DataTable
+$('#exportExcel').on('click', function (e) {
+    e.preventDefault();
+    // Ventas y responsables comparten este id en vistas distintas.
+    if ($('#sales_table').length) {
+        $('#sales_table').DataTable().button(0).trigger();
+        return;
+    }
+
+    // Disparar el evento clic del botón de exportación de Excel de responsables.
     $('.responsables_table').trigger('click');
 });
 
