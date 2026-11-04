@@ -5392,15 +5392,24 @@
       } else if (type === 'numbers') {
         const values = summaryItems.map((item) => getCellValue(item, column)).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite);
         const selectedFunction = state.summaryFunctions[String(column.id)] || 'sum';
+        const functionLabels = { sum: 'Suma', average: 'Promedio', median: 'Mediana', min: 'Mínimo', max: 'Máximo', count: 'Conteo' };
+        const controls = makeElement('div', 'boards-summary-number-controls');
         const select = makeElement('select', 'boards-summary-function');
         select.dataset.summaryColumn = String(column.id);
+        select.hidden = true;
         [['sum', 'Suma'], ['average', 'Promedio'], ['median', 'Mediana'], ['min', 'Mínimo'], ['max', 'Máximo'], ['count', 'Conteo']].forEach(([value, label]) => {
           const option = makeElement('option', '', label);
           option.value = value;
           select.append(option);
         });
         select.value = selectedFunction;
-        cell.append(select);
+        const menuButton = makeElement('button', 'boards-summary-function-menu', '⋯');
+        menuButton.type = 'button';
+        menuButton.dataset.summaryFunctionToggle = String(column.id);
+        menuButton.title = `Tipo de cálculo: ${functionLabels[selectedFunction] || 'Suma'}`;
+        menuButton.setAttribute('aria-label', `Cambiar cálculo. Actual: ${functionLabels[selectedFunction] || 'Suma'}`);
+        menuButton.setAttribute('aria-expanded', 'false');
+        controls.append(select, menuButton);
         let result = '—';
         if (values.length) {
           const sorted = values.slice().sort((a, b) => a - b);
@@ -5413,7 +5422,9 @@
           };
           result = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 }).format(results[selectedFunction] ?? results.sum);
         }
-        cell.append(makeElement('span', 'boards-summary-count', result));
+        const resultLabel = makeElement('span', 'boards-summary-count', result);
+        resultLabel.classList.add('boards-summary-number-result');
+        cell.append(resultLabel, controls);
       } else if (type === 'progress') {
         const values = summaryItems.map((item) => getCellValue(item, column)).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite).map((value) => Math.max(0, Math.min(100, value)));
         const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
@@ -8709,6 +8720,21 @@
       }
     });
     els.boardTableContainer.addEventListener('click', (event) => {
+      const summaryFunctionToggle = event.target.closest('[data-summary-function-toggle]');
+      if (summaryFunctionToggle) {
+        event.preventDefault();
+        event.stopPropagation();
+        const controls = summaryFunctionToggle.closest('.boards-summary-number-controls');
+        const select = controls?.querySelector('[data-summary-column]');
+        if (select) {
+          summaryFunctionToggle.hidden = true;
+          summaryFunctionToggle.setAttribute('aria-expanded', 'true');
+          select.hidden = false;
+          select.focus();
+          select.click();
+        }
+        return;
+      }
       const menuTrigger = event.target.closest('[data-open-column-menu]');
       if (menuTrigger) {
         event.preventDefault(); event.stopPropagation();

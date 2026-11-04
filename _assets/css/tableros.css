@@ -260,7 +260,12 @@
 .boards-summary-download:disabled { cursor: wait; opacity: 1; pointer-events: auto; }
 .boards-summary-people { display: flex; align-items: center; justify-content: center; gap: 3px; }
 .boards-summary-person { display: inline-grid; width: 24px; height: 24px; place-items: center; border: 2px solid #30334f; border-radius: 50%; color: #f5f6fc; background: #6677d8; font-size: .6rem; font-weight: 700; }
-.boards-summary-function { max-width: 100%; margin-right: 6px; padding: 3px 5px; border: 1px solid #505575; border-radius: 4px; color: #e1e5f4; background: #292c49; font-size: .65rem; }
+.boards-summary-number-controls { display: inline-flex; align-items: center; vertical-align: middle; }
+.boards-summary-number-result { display: inline-block; vertical-align: middle; }
+.boards-summary-function { max-width: 100%; padding: 3px 5px; border: 1px solid #cbd6dc; border-radius: 4px; color: #40535f; background: #fff; font-size: .68rem; }
+.boards-summary-function[hidden], .boards-summary-function-menu[hidden] { display: none !important; }
+.boards-summary-function-menu { display: inline-grid; width: 20px; height: 20px; margin-left: 2px; padding: 0; place-items: center; border: 0; border-radius: 4px; color: #778995; background: transparent; font: inherit; font-size: 1.1rem; line-height: 1; cursor: pointer; }
+.boards-summary-function-menu:hover, .boards-summary-function-menu:focus-visible { color: #245f7f; background: #e9f1f5; outline: none; }
 .boards-summary-progress { width: 100%; height: 10px; overflow: hidden; border-radius: 999px; background: #798093; }
 .boards-summary-progress-fill { display: block; height: 100%; border-radius: inherit; background: #00c875; }
 .boards-summary-tags { display: flex; justify-content: center; flex-wrap: wrap; gap: 3px; }
