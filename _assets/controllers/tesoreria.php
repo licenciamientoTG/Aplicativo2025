@@ -394,8 +394,8 @@ class Tesoreria
 
         $cuentasPermitidas = $this->cuentas_permitidas();
         $bancos = self::BANCOS;
-        $soloCuentaBanorte = authorized(self::PERM_MOVIMIENTOS_BANORTE_0185322470)
-            && !authorized(self::PERM_MOVIMIENTOS);
+        $puedeImportarTodas = authorized(self::PERM_MOVIMIENTOS) && authorized(self::PERM_SUBIR_MOV);
+        $soloCuentaBanorte = authorized(self::PERM_MOVIMIENTOS_BANORTE_0185322470) && !$puedeImportarTodas;
         if ($soloCuentaBanorte) {
             $bancos = array_intersect_key($bancos, ['BANORTE' => true, 'BANORTE_TXT' => true]);
         }
@@ -1216,9 +1216,9 @@ class Tesoreria
     public function upload_movimientos(): void
     {
         header('Content-Type: application/json');
-        $tieneAccesoCompleto = authorized(self::PERM_MOVIMIENTOS);
-        $puedeImportar = ($tieneAccesoCompleto && authorized(self::PERM_SUBIR_MOV))
-            || (!$tieneAccesoCompleto && authorized(self::PERM_MOVIMIENTOS_BANORTE_0185322470));
+        $puedeImportarTodas = authorized(self::PERM_MOVIMIENTOS) && authorized(self::PERM_SUBIR_MOV);
+        $soloCuentaBanorte = authorized(self::PERM_MOVIMIENTOS_BANORTE_0185322470) && !$puedeImportarTodas;
+        $puedeImportar = $puedeImportarTodas || $soloCuentaBanorte;
         if (!$puedeImportar) {
             json_output(['success' => false, 'message' => 'No tienes permiso para importar movimientos']);
             return;
@@ -1230,8 +1230,7 @@ class Tesoreria
             json_output(['success' => false, 'message' => 'Banco no reconocido']);
             return;
         }
-        if (!authorized(self::PERM_MOVIMIENTOS) && authorized(self::PERM_MOVIMIENTOS_BANORTE_0185322470)
-            && !in_array($banco, ['BANORTE', 'BANORTE_TXT'], true)) {
+        if ($soloCuentaBanorte && !in_array($banco, ['BANORTE', 'BANORTE_TXT'], true)) {
             json_output(['success' => false, 'message' => 'Este permiso solo permite subir estados de cuenta Banorte']);
             return;
         }
@@ -1315,15 +1314,18 @@ class Tesoreria
             return;
         }
 
-        // El perfil de cuenta puede importar solo movimientos que el parser
-        // identificó en su cuenta autorizada; no confiar en el banco/cuenta
-        // elegidos desde el formulario.
-        if (!authorized(self::PERM_MOVIMIENTOS) && authorized(self::PERM_MOVIMIENTOS_BANORTE_0185322470)) {
-            foreach ($parseo['movimientos'] as $movimiento) {
-                if (trim((string)($movimiento['cuenta'] ?? '')) !== self::CUENTA_PERFIL_BANORTE_0185322470) {
-                    json_output(['success' => false, 'message' => 'El archivo contiene movimientos de una cuenta no autorizada']);
-                    return;
-                }
+        // El permiso acotado permite importar únicamente movimientos que el
+        // parser identificó en la cuenta autorizada, incluso si el usuario
+        // tiene lectura general (80). Si el archivo trae varias cuentas, se
+        // conservan solo las filas autorizadas; no confiar en el formulario.
+        if ($soloCuentaBanorte) {
+            $parseo['movimientos'] = array_values(array_filter(
+                $parseo['movimientos'],
+                fn($movimiento) => trim((string)($movimiento['cuenta'] ?? '')) === self::CUENTA_PERFIL_BANORTE_0185322470
+            ));
+            if (!$parseo['movimientos']) {
+                json_output(['success' => false, 'message' => 'El archivo no contiene movimientos de la cuenta Banorte autorizada']);
+                return;
             }
         }
 

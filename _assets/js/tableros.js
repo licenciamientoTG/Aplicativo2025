@@ -5546,19 +5546,24 @@
     if (action === 'change-type') {
       els.createColumnForm.reset();
       window.setTimeout(() => {
+        const typeSelect = document.getElementById('newColumnType');
+        if (!typeSelect) {
+          setNotice('No se encontró el selector de tipo de columna. Recarga el tablero e inténtalo de nuevo.');
+          return;
+        }
         state.columnDialogAction = { type: 'change-type', columnId: id, originalOptions: parseOptions(column.options) };
         document.getElementById('createColumnTitle').textContent = 'Cambiar tipo de columna';
         document.getElementById('columnNameField').classList.add('d-none');
         els.newColumnName.value = column.name || '';
-        els.newColumnType.value = column.type || 'text';
+        typeSelect.value = column.type || 'text';
         const labelOptions = parseOptions(column.options).map((option) => option.label);
         els.newColumnOptions.value = labelOptions.join('\n');
         if (column.type === 'rating' && column.options && typeof column.options === 'object') {
           document.getElementById('newColumnRatingDisplay').value = column.options.display || 'stars';
         }
-        els.newColumnType.dispatchEvent(new Event('change'));
+        typeSelect.dispatchEvent(new Event('change'));
         els.createColumnForm.querySelector('[type="submit"]').textContent = 'Revisar conversión';
-        openDialog(els.createColumnDialog, els.newColumnType);
+        openDialog(els.createColumnDialog, typeSelect);
       }, 0);
       return;
     }

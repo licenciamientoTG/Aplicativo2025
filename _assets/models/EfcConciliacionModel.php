@@ -303,7 +303,13 @@ class EfcConciliacionModel {
         // que el detalle muestre una sola fila por conciliación.
         $where=["G.estado='ACTIVA'"];
         $params=[];
-        if($stationId>0){$where[]='G.estacion_id=?';$params[]=$stationId;}
+        if($stationId>0){
+            $where[]='G.estacion_id=?';$params[]=$stationId;
+        } else {
+            $stations=self::stationIds('DIAZ GAS');
+            $where[]='G.estacion_id IN ('.implode(',',array_fill(0,count($stations),'?')).')';
+            $params=array_merge($params,$stations);
+        }
         if($year){$where[]='YEAR(G.fecha_operativa)=?';$params[]=$year;}
         if($month){$where[]='MONTH(G.fecha_operativa)=?';$params[]=$month;}
         if($concept&&in_array($concept,['MN','MORRALLA','USD'],true)){$where[]='G.concepto=?';$params[]=$concept;}
@@ -453,8 +459,19 @@ class EfcConciliacionModel {
         } catch(Throwable $e) { if($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
     }
 
-    public function activeTransits(int $stationId, int $year, int $month): array {
-        if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
+    public function activeTransits(int $stationId, int $year, int $month, string $company='DIAZ GAS'): array {
+        if ($year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
+        if ($stationId === 0) {
+            $company=strtoupper(trim($company));
+            if(!in_array($company,['DIAZ GAS','FORANEAS','GASOMEX'],true)) throw new RuntimeException('Empresa inválida.');
+            $all=['origin'=>[],'incoming'=>[],'next_month'=>(new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)))->modify('+1 month')->format('Y-m')];
+            foreach(self::stationIds($company) as $id) {
+                $stationTransits=$this->activeTransits($id,$year,$month);
+                $all['origin']=array_merge($all['origin'],$stationTransits['origin']);
+                $all['incoming']=array_merge($all['incoming'],$stationTransits['incoming']);
+            }
+            return $all;
+        }
         $origin = sprintf('%04d-%02d', $year, $month);
         $next = (new DateTimeImmutable($origin . '-01'))->modify('+1 month')->format('Y-m');
         // Los pendientes se muestran en origen y destino. Los conciliados se
@@ -730,10 +747,15 @@ class EfcConciliacionModel {
      * partidas fuente antes de volver a proponer excepciones en la pantalla.
      */
     public function activeGroups(int $stationId, int $year, int $month): array {
-        if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
+        if ($year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
+        if ($stationId === 0) {
+            $all=[];
+            foreach(self::stationIds('DIAZ GAS') as $id) $all=array_merge($all,$this->activeGroups($id,$year,$month));
+            return $all;
+        }
         $periodStart = sprintf('%04d-%02d-01', $year, $month);
         $periodEnd = (new DateTimeImmutable($periodStart))->modify('+1 month')->format('Y-m-d');
-        $stmt=$this->db->prepare("SELECT G.id,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,
+        $stmt=$this->db->prepare("SELECT G.id,G.estacion_id AS station_id,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,
             P.origen,P.clave_externa,P.movimiento_bancario_id,P.fecha_operacion,P.turno,P.concepto,P.importe,
             COALESCE(NULLIF(P.referencia,''),M.referencia) AS referencia,
             M.descripcion,M.descripcion_larga,M.sucursal

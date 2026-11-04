@@ -7775,7 +7775,7 @@ public function stamped_invoices_detail(): void
     }
     public function efc_conc_transitos(): void {
         ob_clean(); header('Content-Type: application/json');
-        try { $data=$this->efcConciliacion->activeTransits((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0)); echo json_encode(['status'=>'success','data'=>$data]); }
+        try { $data=$this->efcConciliacion->activeTransits((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0),(string)($_GET['empresa']??'DIAZ GAS')); echo json_encode(['status'=>'success','data'=>$data]); }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
     public function efc_conc_transito_crear(): void {
@@ -7994,14 +7994,27 @@ public function stamped_invoices_detail(): void
 
     public function efc_conc_analiticos_periodo(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
-        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->period((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0))]); }
+        try {
+            $station=(int)($_GET['estacion_id']??0); $year=(int)($_GET['year']??0); $month=(int)($_GET['month']??0);
+            $data=[]; $stations=$station>0?[$station]:EfcConciliacionModel::stationIds('DIAZ GAS');
+            foreach($stations as $id) foreach($this->efcAnaliticos->period($id,$year,$month) as $row){$row['station_id']=$id;$data[]=$row;}
+            echo json_encode(['status'=>'success','data'=>$data]);
+        }
         catch (Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
         exit;
     }
 
     public function efc_conc_analiticos_bandeja(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
-        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->workspace((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0),(string)($_GET['empresa']??''))]); }
+        try {
+            $station=(int)($_GET['estacion_id']??0); $year=(int)($_GET['year']??0); $month=(int)($_GET['month']??0);
+            $company=strtoupper(trim((string)($_GET['empresa']??($station>0?(EfcConciliacionModel::stationCompany($station)??'DIAZ GAS'):'DIAZ GAS'))));
+            if(!in_array($company,['DIAZ GAS','FORANEAS','GASOMEX'],true)) throw new RuntimeException('Empresa inválida.');
+            if($station>0 && EfcConciliacionModel::stationCompany($station)!==$company) throw new RuntimeException('Estación fuera de la empresa seleccionada.');
+            $result=['papers'=>[],'links'=>[]]; $stations=$station>0?[$station]:EfcConciliacionModel::stationIds($company);
+            foreach($stations as $id){$part=$this->efcAnaliticos->workspace($id,$year,$month,$company); foreach($part['papers'] as &$row)$row['station_id']=$id; unset($row); foreach($part['links'] as &$row)$row['station_id']=$id; unset($row); $result['papers']=array_merge($result['papers'],$part['papers']);$result['links']=array_merge($result['links'],$part['links']);}
+            echo json_encode(['status'=>'success','data'=>$result]);
+        }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
 

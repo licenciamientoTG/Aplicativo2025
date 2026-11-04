@@ -414,7 +414,7 @@
           <i class="fas fa-file-excel"></i> Exportar
         </button>
       </div>
-      {% if (authorized(114) and not authorized(80)) or (authorized(80) and authorized(81)) %}
+      {% if authorized(114) or (authorized(80) and authorized(81)) %}
       <div class="col-auto ms-auto d-flex gap-2">
         {% for cod, b in bancos %}
         <button type="button" class="btn btn-sm btn-outline-primary btn-upload-banco" data-banco="{{ cod }}"
