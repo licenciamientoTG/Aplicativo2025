@@ -463,6 +463,14 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-new-option-action:disabled { color: #b5c0c6; cursor: default; }
 .boards-new-option-action.is-remove:hover { color: #b23b45; background: #fbecee; }
 .boards-new-options-empty { margin: 0; padding: 14px 10px; border: 1px dashed #cbd7de; border-radius: 6px; color: var(--boards-muted); font-size: .76rem; text-align: center; }
+.boards-formula-field { margin-top: 14px; padding: 12px; border: 1px solid var(--boards-line); border-radius: 6px; background: #f8fafb; }
+.boards-formula-field h4 { margin: 0 0 8px; color: #334c58; font-size: .9rem; }
+.boards-formula-field textarea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.boards-formula-insertions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 10px; }
+.boards-formula-buttons { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.boards-formula-insert { min-height: 28px; padding: 4px 8px; border: 1px solid #d7e2e5; border-radius: 4px; color: #31535e; background: white; font: inherit; font-size: .72rem; cursor: pointer; }
+.boards-formula-insert:hover, .boards-formula-insert:focus-visible { border-color: #83b4b6; background: #edf6f5; outline: 2px solid transparent; }
+.boards-formula-result { display: inline-block; min-width: 40px; font-variant-numeric: tabular-nums; }
 .boards-add-column-option { display: inline-flex; min-height: 34px; align-items: center; gap: 7px; margin-top: 7px; padding: 6px 9px; border: 1px solid transparent; border-radius: 5px; color: var(--boards-petrol-dark); background: transparent; font: inherit; font-size: .78rem; font-weight: 600; cursor: pointer; }
 .boards-add-column-option:hover { border-color: #cfe0e3; background: #f3f8f8; }
 .boards-add-column-option i { font-size: .68rem; }

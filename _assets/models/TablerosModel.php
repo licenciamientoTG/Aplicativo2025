@@ -1039,6 +1039,7 @@ class TablerosModel {
             unset($column['options_json']);
         }
         unset($column);
+        $formulaColumns = array_values(array_filter($columns, static fn(array $column): bool => (string)$column['type'] === 'formula' && is_array($column['options']) && array_key_exists('formula', $column['options'])));
 
         $items = $this->all(
             'SELECT i.id, i.board_id, i.group_id, i.parent_item_id, i.name, i.sort_order, i.version,
@@ -1119,6 +1120,13 @@ class TablerosModel {
             $columnKey = (string)$person['column_id'];
             $items[$itemIndex]['cells'][$columnKey] ??= [];
             $items[$itemIndex]['cells'][$columnKey][] = (int)$person['user_id'];
+        }
+
+        foreach ($formulaColumns as $formulaColumn) {
+            foreach ($items as &$item) {
+                $item['cells'][(string)$formulaColumn['id']] = $this->evaluateConfiguredFormula((string)$formulaColumn['options']['formula'], $item['cells']);
+            }
+            unset($item);
         }
 
         $views = $this->all(
@@ -2512,6 +2520,7 @@ class TablerosModel {
         if (!is_array($options) || strlen((string)json_encode($options, JSON_UNESCAPED_UNICODE)) > 16000) {
             throw new TablerosApiException('validation', 'Las opciones de la columna no son válidas.', 422);
         }
+        if ($type === 'formula' && array_key_exists('formula', $options)) $this->validateConfiguredFormula($boardId, null, $options['formula']);
         if ($type === 'rating') {
             $display = array_key_exists('display', $options) ? $options['display'] : 'stars';
             if (!in_array($display, ['stars', 'percentage'], true)) {
@@ -2594,7 +2603,8 @@ class TablerosModel {
         if (!in_array($target, self::ALLOWED_TYPES, true)) throw new TablerosApiException('validation', 'El tipo de columna no está permitido.', 422);
         $column = $this->one('SELECT id,type,options_json,required,enforce_unique FROM tb_column WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$columnId,$boardId]);
         if (!$column) throw new TablerosApiException('not_found', 'No se encontró la columna en este tablero.', 404);
-        return $this->inspectColumnTypeChange($boardId, $column, $target);
+        $options = is_array($input['options'] ?? null) ? $input['options'] : [];
+        return $this->inspectColumnTypeChange($boardId, $column, $target, $options);
     }
 
     public function changeColumnType(int $boardId, int $userId, array $input): array {
@@ -2603,13 +2613,15 @@ class TablerosModel {
         if (!in_array($target, self::ALLOWED_TYPES, true)) throw new TablerosApiException('validation', 'El tipo de columna no está permitido.', 422);
         $options = $input['options'] ?? [];
         if (!is_array($options)) throw new TablerosApiException('validation', 'Las opciones no son válidas.', 422);
+        if ($target === 'formula' && array_key_exists('formula', $options)) $this->validateConfiguredFormula($boardId, $columnId, $options['formula']);
         return $this->transaction(function () use ($boardId,$userId,$columnId,$target,$options): array {
             $column = $this->one('SELECT id,type,options_json,required,enforce_unique FROM tb_column WITH (UPDLOCK,HOLDLOCK) WHERE id = ? AND board_id = ? AND deleted_at IS NULL', [$columnId,$boardId]);
             if (!$column) throw new TablerosApiException('not_found', 'No se encontró la columna en este tablero.', 404);
             $report = $this->inspectColumnTypeChange($boardId, $column, $target, $options);
             if ($report['invalid_count'] > 0) throw new TablerosApiException('validation', 'Hay valores que no pueden convertirse de forma segura. No se modificó la columna.', 422);
             if ($report['unique_conflict_count'] > 0) throw new TablerosApiException('conflict', 'La conversión produciría valores únicos duplicados. No se modificó la columna.', 409);
-            $cells = $this->all('SELECT c.id,c.item_id,c.value_text,c.value_number,c.value_date,c.value_datetime,c.value_boolean,c.value_json FROM tb_cell c WITH (UPDLOCK,HOLDLOCK) INNER JOIN tb_item i ON i.id=c.item_id AND i.board_id=? AND i.deleted_at IS NULL WHERE c.board_id=? AND c.column_id=? AND c.deleted_at IS NULL', [$boardId,$boardId,$columnId]);
+            $configuredFormula = $target === 'formula' && array_key_exists('formula', $options);
+            $cells = $configuredFormula ? [] : $this->all('SELECT c.id,c.item_id,c.value_text,c.value_number,c.value_date,c.value_datetime,c.value_boolean,c.value_json FROM tb_cell c WITH (UPDLOCK,HOLDLOCK) INNER JOIN tb_item i ON i.id=c.item_id AND i.board_id=? AND i.deleted_at IS NULL WHERE c.board_id=? AND c.column_id=? AND c.deleted_at IS NULL', [$boardId,$boardId,$columnId]);
             foreach ($cells as $cell) {
                 $value = $this->cellValue($cell);
                 if ($value === null || $value === '') continue;
@@ -2631,6 +2643,10 @@ class TablerosModel {
         // Side tables encode semantics beyond tb_cell and must never be orphaned by a type edit.
         $sideTableTypes = ['people','person','file','board_relation','subtasks','dependency','item_id','team','timeline','location','country','link'];
         if (in_array($source,$sideTableTypes,true) || in_array($target,$sideTableTypes,true)) throw new TablerosApiException('validation','Este tipo usa relaciones o datos auxiliares y no admite conversión automática.',422);
+        if ($target === 'formula' && array_key_exists('formula', $options)) {
+            $this->validateConfiguredFormula($boardId, (int)$column['id'], $options['formula']);
+            return ['column_id'=>(int)$column['id'],'from_type'=>$source,'to_type'=>$target,'value_count'=>0,'valid_count'=>0,'invalid_count'=>0,'invalid_examples'=>[],'unique_conflict_count'=>0,'can_commit'=>true];
+        }
         if (in_array($target, ['status','dropdown','tags'], true) && !$this->optionValues($options)) throw new TablerosApiException('validation','Configura opciones antes de convertir a un tipo con etiquetas.',422);
         $cells = $this->all('SELECT c.id,c.item_id,c.value_text,c.value_number,c.value_date,c.value_datetime,c.value_boolean,c.value_json FROM tb_item i WITH (UPDLOCK,HOLDLOCK) LEFT JOIN tb_cell c WITH (UPDLOCK,HOLDLOCK) ON c.item_id=i.id AND c.board_id=i.board_id AND c.column_id=? AND c.deleted_at IS NULL WHERE i.board_id=? AND i.deleted_at IS NULL', [$column['id'],$boardId]);
         $invalid = []; $valid = 0; $values = [];
@@ -2786,6 +2802,10 @@ class TablerosModel {
             if (!$column) {
                 throw new TablerosApiException('not_found', 'No se encontró la columna en este tablero.', 404);
             }
+            $columnOptions = $this->decodeJson($column['options_json'] ?? null, []);
+            if ((string)$column['type'] === 'formula' && is_array($columnOptions) && array_key_exists('formula', $columnOptions)) {
+                throw new TablerosApiException('validation', 'Las columnas de fórmula calculada no admiten edición directa.', 422);
+            }
             $item = $this->one(
                 'SELECT id, version FROM tb_item WHERE id = ? AND board_id = ? AND deleted_at IS NULL',
                 [$itemId, $boardId]
@@ -2855,9 +2875,10 @@ class TablerosModel {
                 'column_id' => $columnId,
                 'column_type' => (string)$column['type'],
             ]);
+            $formulaCells = $this->recalculateFormulaCells($boardId, $itemId);
             return [
                 'id' => $cellId, 'item_id' => $itemId, 'column_id' => $columnId,
-                'value' => $value, 'version' => $this->versionToken($updatedItem['version'] ?? null),
+                'value' => $value, 'version' => $this->versionToken($updatedItem['version'] ?? null), 'formula_cells' => $formulaCells,
             ];
         });
     }
@@ -3876,6 +3897,70 @@ class TablerosModel {
             }
         }
         return $values;
+    }
+
+    private function validateConfiguredFormula(int $boardId, ?int $selfId, $formula): void {
+        if (!is_string($formula) || strlen($formula) > 500) throw new TablerosApiException('validation', 'La fórmula no es válida o excede el límite permitido.', 422);
+        preg_match_all('/\{#([1-9][0-9]*)\}|(?:[0-9]+(?:\.[0-9]+)?(?:[eE][+\-]?[0-9]+)?|(?:SUM|MULTIPLY|AVERAGE|MIN|MAX|ROUND|ABS|IF)|<=|>=|==|!=|[()+\-*\/,<>])/', $formula, $m);
+        $tokens = $m[0] ?? [];
+        if (count($tokens) > 120 || trim(preg_replace('/\s+/', '', implode('', $tokens))) !== trim(preg_replace('/\s+/', '', $formula))) throw new TablerosApiException('validation', 'La fórmula contiene tokens no permitidos o excede el límite.', 422);
+        preg_match_all('/\{#([1-9][0-9]*)\}/', $formula, $refs);
+        foreach ($refs[1] as $id) {
+            if ($selfId !== null && (int)$id === $selfId) throw new TablerosApiException('validation', 'La fórmula no puede referirse a sí misma.', 422);
+            if (!$this->one("SELECT id FROM tb_column WHERE id = ? AND board_id = ? AND type = 'numbers' AND deleted_at IS NULL", [(int)$id, $boardId])) throw new TablerosApiException('validation', 'Las referencias deben apuntar a columnas numéricas del tablero.', 422);
+        }
+        // Parse with representative numeric values to validate grammar and nesting.
+        $sample = preg_replace_callback('/\{#([1-9][0-9]*)\}/', static fn() => '1', $formula);
+        try { $this->parseFormula($sample, []); } catch (Throwable $e) { throw new TablerosApiException('validation', 'La sintaxis de la fórmula no es válida.', 422); }
+    }
+
+    private function evaluateConfiguredFormula(string $formula, array $cells) {
+        if (preg_match_all('/\{#([1-9][0-9]*)\}/', $formula, $matches)) {
+            foreach ($matches[1] as $id) { $v = $cells[(string)$id] ?? null; if ($v !== null && $v !== '' && !is_numeric($v)) return null; }
+        }
+        $resolved = preg_replace_callback('/\{#([1-9][0-9]*)\}/', static fn($m) => (string)(float)($cells[$m[1]] ?? 0), $formula);
+        try { return $this->parseFormula($resolved, []); } catch (Throwable $e) { return '#ERROR'; }
+    }
+
+    private function recalculateFormulaCells(int $boardId, int $itemId): array {
+        $columns = $this->all("SELECT id, options_json FROM tb_column WHERE board_id = ? AND type = 'formula' AND deleted_at IS NULL", [$boardId]);
+        $sources = $this->all('SELECT c.column_id,c.value_number FROM tb_cell c WHERE c.board_id=? AND c.item_id=? AND c.deleted_at IS NULL', [$boardId,$itemId]);
+        $values = []; foreach ($sources as $source) $values[(string)$source['column_id']] = $source['value_number'] === null ? null : (float)$source['value_number'];
+        $out = [];
+        foreach ($columns as $column) { $opts = $this->decodeJson($column['options_json'] ?? null, []); if (is_array($opts) && array_key_exists('formula',$opts)) $out[(string)$column['id']] = $this->evaluateConfiguredFormula((string)$opts['formula'],$values); }
+        return $out;
+    }
+
+    private function parseFormula(string $expression, array $unused = []) {
+        preg_match_all('/\s*(<=|>=|==|!=|[()+\-*\/,<>]|(?:[0-9]+(?:\.[0-9]+)?(?:[eE][+\-]?[0-9]+)?)|[A-Za-z]+)/', $expression, $matches);
+        $t = $matches[1]; $i=0; if (count($t)>120) throw new RuntimeException();
+        $expr = null;
+        $primary = function(int $depth) use (&$primary,&$expr,&$t,&$i) {
+            if ($depth>20) throw new RuntimeException();
+            $x=$t[$i]??'';
+            if ($x==='+'||$x==='-') { $i++; $v=$primary($depth+1); return $x==='-'?-$v:+$v; }
+            if ($x==='(') { $i++; $v=$expr(0,$depth+1); if (($t[$i++]??'')!==')') throw new RuntimeException(); return $v; }
+            if (is_numeric($x)) {
+                // PHP may stringify finite referenced values using scientific notation.
+                if (strlen($x) > 32) throw new RuntimeException('numeric_literal_limit');
+                $number = (float)$x;
+                if (!is_finite($number)) throw new RuntimeException('non_finite_literal');
+                $i++;
+                return $number;
+            }
+            if (preg_match('/^[A-Za-z]+$/',$x)) { $name=strtoupper($x); $i++; if (($t[$i++]??'')!=='(') throw new RuntimeException(); $args=[]; if (($t[$i]??'')!==')') { do { $args[]=$expr(0,$depth+1); if (($t[$i]??'')!==',') break; $i++; } while(true); } if (($t[$i++]??'')!==')') throw new RuntimeException(); return $this->formulaFunction($name,$args); }
+            throw new RuntimeException();
+        };
+        $expr = function(int $min=0,int $depth=0) use (&$expr,$primary,&$t,&$i) { $left=$primary($depth+1); $prec=['=='=>1,'!='=>1,'<'=>1,'>'=>1,'<='=>1,'>='=>1,'+'=>2,'-'=>2,'*'=>3,'/'=>3]; while(isset($prec[$t[$i]??'']) && $prec[$t[$i]] >= $min) { $op=$t[$i++]; $right=$expr($prec[$op]+1,$depth+1); $left=match($op){'+'=>$left+$right,'-'=>$left-$right,'*'=>$left*$right,'/'=>($right==0?'#ERROR':$left/$right),'=='=>(float)$left===(float)$right?1:0,'!='=>$left!=$right?1:0,'<'=>$left<$right?1:0,'>'=>$left>$right?1:0,'<='=>$left<=$right?1:0,'>='=>$left>=$right?1:0}; if (is_float($left) && !is_finite($left)) throw new RuntimeException('non_finite_result'); } return $left; };
+        if (!$t) throw new RuntimeException(); $v=$expr(0,0); if ($i!==count($t)) throw new RuntimeException(); if (is_float($v) && !is_finite($v)) throw new RuntimeException('non_finite_result'); return $v;
+    }
+
+    private function formulaFunction(string $name, array $a) {
+        return match($name) {
+            'SUM' => count($a)>=1 ? array_sum($a) : throw new RuntimeException(), 'MULTIPLY' => count($a)>=1 ? array_product($a) : throw new RuntimeException(), 'AVERAGE' => count($a)>=1 ? array_sum($a)/count($a) : throw new RuntimeException(),
+            'MIN' => count($a)>=1 ? min($a) : throw new RuntimeException(), 'MAX' => count($a)>=1 ? max($a) : throw new RuntimeException(), 'ABS' => count($a)===1 ? abs($a[0]) : throw new RuntimeException(),
+            'ROUND' => count($a)>=1&&count($a)<=2 ? round($a[0],(int)($a[1]??0)) : throw new RuntimeException(), 'IF' => count($a)===3 ? ($a[0] ? $a[1] : $a[2]) : throw new RuntimeException(), default => throw new RuntimeException()
+        };
     }
 
     private function validFormula(string $formula): bool {

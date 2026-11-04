@@ -2291,6 +2291,13 @@
   function createCellEditor(item, column, value) {
     const type = String(column.type || 'text').toLowerCase();
     if (type === 'file') return createFileCellEditor(item, column);
+    if (type === 'formula' && typeof column.options?.formula === 'string' && column.options.formula.trim()) {
+      const result = document.createElement('span');
+      result.className = 'boards-readonly-value boards-formula-result';
+      result.textContent = displayColumnValue(column, value) || '—';
+      result.setAttribute('aria-label', `${column.name || 'Fórmula'}: ${result.textContent}`);
+      return result;
+    }
     if (!canEditBoard()) {
       if (type === 'tags') {
         const chips = makeElement('div', 'boards-tags-chips boards-tags-readonly');
@@ -5444,10 +5451,15 @@
           }
         }
       } else if (type === 'tags') {
+        const options = parseOptions(column.options);
+        const tagLabels = new Map(options.map((option) => [String(option.value), String(option.label || option.value)]));
         const tags = new Set(summaryItems.flatMap((item) => {
           const value = parseStoredValue(getCellValue(item, column));
-          if (Array.isArray(value)) return value.map((tag) => String(tag && typeof tag === 'object' ? (tag.label ?? tag.name ?? tag.value ?? '') : tag).trim()).filter(Boolean);
-          return String(value ?? '').split(',').map((tag) => tag.trim()).filter(Boolean);
+          const values = Array.isArray(value) ? value : String(value ?? '').split(',');
+          return values.map((tag) => {
+            const raw = String(tag && typeof tag === 'object' ? (tag.label ?? tag.name ?? tag.value ?? '') : tag).trim();
+            return tagLabels.get(raw) || raw;
+          }).filter(Boolean);
         }));
         const list = makeElement('div', 'boards-summary-tags');
         Array.from(tags).slice(0, 4).forEach((tag) => list.append(makeElement('span', 'boards-summary-tag', tag)));
@@ -5712,6 +5724,7 @@
         document.getElementById('columnNameField').classList.add('d-none');
         els.newColumnName.value = column.name || '';
         typeSelect.value = column.type || 'text';
+        document.getElementById('newColumnFormula').value = typeof column.options?.formula === 'string' ? column.options.formula : '';
         const labelOptions = parseOptions(column.options).map((option) => option.label);
         els.newColumnOptions.value = labelOptions.join('\n');
         if (column.type === 'rating' && column.options && typeof column.options === 'object') {
@@ -7364,6 +7377,9 @@
       item.version = result.data?.version ?? item.version;
       if (!item.cells) item.cells = {};
       item.cells[columnId] = value;
+      if (result.data?.formula_cells && typeof result.data.formula_cells === 'object' && !Array.isArray(result.data.formula_cells)) {
+        Object.assign(item.cells, result.data.formula_cells);
+      }
       editor.dataset.savedValue = JSON.stringify(value);
       editor.classList.remove('has-error');
       const editedColumn = state.columns.find((column) => String(column.id) === String(columnId));
@@ -7943,9 +7959,30 @@
       const optionsType = ['status', 'dropdown', 'tags'].includes(els.newColumnType.value);
       els.columnOptionsField.classList.toggle('d-none', !optionsType);
       document.getElementById('columnRatingField').classList.toggle('d-none', els.newColumnType.value !== 'rating');
+      const formulaField = document.getElementById('columnFormulaField');
+      const isFormula = els.newColumnType.value === 'formula';
+      formulaField.classList.toggle('d-none', !isFormula);
+      const submitButton = els.createColumnForm.querySelector('[type="submit"]');
+      if (isFormula && !state.columnDialogAction?.type) submitButton.textContent = 'Revisar fórmula';
+      else if (state.columnDialogAction?.type === 'change-type') submitButton.textContent = 'Revisar conversión';
+      else if (!state.columnDialogAction?.type) submitButton.textContent = 'Agregar columna';
+      const formulaColumns = document.getElementById('formulaColumnsList');
+      const formulaFunctions = document.getElementById('formulaFunctionsList');
+      formulaColumns.replaceChildren();
+      state.columns.filter((column) => columnType(column) === 'numbers').forEach((column) => {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'boards-formula-insert';
+        button.textContent = column.name || `Columna ${column.id}`; button.dataset.formulaInsert = `{#${column.id}}`;
+        button.setAttribute('aria-label', `Insertar referencia a ${column.name || `columna ${column.id}`}`); formulaColumns.append(button);
+      });
+      formulaFunctions.replaceChildren();
+      const formulaFunctionLabels = { SUM: 'suma', MULTIPLY: 'multiplica', AVERAGE: 'promedio', MIN: 'mínimo', MAX: 'máximo', ROUND: 'redondea', ABS: 'valor absoluto', IF: 'condición' };
+      ['SUM', 'MULTIPLY', 'AVERAGE', 'MIN', 'MAX', 'ROUND', 'ABS', 'IF'].forEach((fn) => {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'boards-formula-insert';
+        button.textContent = `${fn} · ${formulaFunctionLabels[fn]}`; button.dataset.formulaInsert = `${fn}()`; button.setAttribute('aria-label', `Insertar función ${fn}: ${formulaFunctionLabels[fn]}`); formulaFunctions.append(button);
+      });
       const help = {
         status: 'Define los estados y su orden. Cada uno tendrá un color inicial que podrás ajustar después.',
-        formula: 'La API acepta únicamente la sintaxis segura definida por el servidor.',
+        formula: 'Calcula un resultado por elemento con columnas numéricas y las funciones disponibles.',
         people: 'La celda permite buscar usuarios activos de TotalGas.',
         person: 'La celda permite asignar una persona activa de TotalGas.',
         team: 'La celda acepta texto o JSON; no hay catálogo de equipos disponible.',
@@ -7962,6 +7999,19 @@
       document.getElementById('addColumnOption').querySelector('span').textContent = els.newColumnType.value === 'status' ? 'Agregar estado' : 'Agregar opción';
       renderNewColumnOptions();
       els.columnOptionsField.querySelectorAll('.boards-new-option-name').forEach((input) => { input.disabled = !optionsType; });
+    });
+    document.getElementById('columnFormulaField').addEventListener('click', (event) => {
+      if (event.target.closest('#focusColumnFormula')) { document.getElementById('newColumnFormula').focus(); return; }
+      const button = event.target.closest('[data-formula-insert]');
+      if (!button) return;
+      const input = document.getElementById('newColumnFormula');
+      const start = input.selectionStart ?? input.value.length;
+      const end = input.selectionEnd ?? start;
+      const insertion = button.dataset.formulaInsert;
+      input.setRangeText(insertion, start, end, 'end');
+      input.focus();
+      if (insertion.endsWith('()')) input.setSelectionRange(input.selectionStart - 1, input.selectionStart - 1);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
     });
     document.getElementById('addColumnOption').addEventListener('click', () => addNewColumnOption());
     document.getElementById('newColumnOptionsList').addEventListener('input', (event) => {
@@ -7984,6 +8034,8 @@
         document.getElementById('columnNameField').classList.remove('d-none');
         document.getElementById('columnTypeField').classList.remove('d-none');
         els.newColumnOptions.value = '';
+        document.getElementById('newColumnFormula').value = '';
+        document.getElementById('columnFormulaField').classList.add('d-none');
         els.newColumnType.dispatchEvent(new Event('change'));
       }, 0);
     });
@@ -8016,6 +8068,10 @@
         } else if (type === 'rating') {
           const display = getFormValue(formData, 'rating_display') === 'percentage' ? 'percentage' : 'stars';
           options = { display, max: display === 'percentage' ? 100 : 5 };
+        } else if (type === 'formula') {
+          const formula = document.getElementById('newColumnFormula').value.trim();
+          if (!formula) throw new Error('Escribe una expresión para la fórmula.');
+          options = { formula };
         }
         const payload = { board_id: state.board.id, column_id: columnId, type, options };
         const preview = await post(apiUrl('preview_column_type_change'), payload);
@@ -8043,13 +8099,19 @@
         const display = getFormValue(formData, 'rating_display') === 'percentage' ? 'percentage' : 'stars';
         options = { display, max: display === 'percentage' ? 100 : 5 };
       }
+      if (type === 'formula') {
+        const formula = document.getElementById('newColumnFormula').value.trim();
+        if (!formula) throw new Error('Escribe una expresión para la fórmula.');
+        options = { formula };
+      }
       const result = await post(apiUrl('create_column'), { board_id: state.board.id, name, type, ...(options ? { options } : {}), ...(state.insertAfterColumnId ? { insert_after_column_id: state.insertAfterColumnId } : {}) });
       const column = result.data || {};
       state.columns.push({ id: column.id, name, type, options: options || [], required: false, sort_order: column.sort_order ?? state.columns.length });
       state.insertAfterColumnId = '';
       state.columns.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
       closeDialog(els.createColumnDialog);
-      renderActiveView();
+      if (type === 'formula') await loadBoard(state.board.id, true);
+      else renderActiveView();
       setNotice('Columna agregada.', 'success');
     });
 
