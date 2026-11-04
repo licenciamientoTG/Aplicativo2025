@@ -1325,6 +1325,9 @@
   }
 
   async function loadBoard(id, skipRoute = false) {
+    const preservedSearch = skipRoute && state.board && String(state.board.id) === String(id)
+      ? { value: els.boardSearch?.value || '', column: els.boardSearchColumn?.value || '' }
+      : null;
     resetColumnMenuState();
     document.getElementById('trashArchiveView').hidden = true;
     state.recycleMode = '';
@@ -1371,8 +1374,15 @@
       state.collapsedGroups.clear();
       state.selectedItemIds.clear();
       state.inlineAddGroupId = '';
-      els.boardSearch.value = '';
-      if (els.boardSearchColumn) els.boardSearchColumn.value = '';
+      if (preservedSearch && els.boardSearchColumn) {
+        els.boardSearchColumn.value = Array.from(els.boardSearchColumn.options)
+          .some((option) => option.value === preservedSearch.column) ? preservedSearch.column : '';
+        renderBoardSearchControl();
+        els.boardSearch.value = preservedSearch.value;
+      } else {
+        els.boardSearch.value = '';
+        if (els.boardSearchColumn) els.boardSearchColumn.value = '';
+      }
       renderWorkspace();
       showLoading(false);
       els.boardWorkspace.hidden = false;

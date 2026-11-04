@@ -2860,10 +2860,19 @@ class MovimientosBancariosModel extends Model
      * match salen con descripcion NULL y la vista las manda al grupo
      * "SIN CATÁLOGO" en vez de esconderlas tras un match difuso.
      */
-    public function get_saldos_finales(string $hasta): array
+    public function get_saldos_finales(string $hasta, ?array $cuentasPermitidas = null): array
     {
         if ($hasta === date('Y-m-d')) {
             $hasta = date('Y-m-d', strtotime($hasta . ' -1 day'));
+        }
+
+        $cuentaFilter = '';
+        $params = [$hasta];
+        if ($cuentasPermitidas !== null) {
+            if (!$cuentasPermitidas) return [];
+            $ph = implode(',', array_fill(0, count($cuentasPermitidas), '?'));
+            $cuentaFilter = " AND cuenta IN ($ph)";
+            array_push($params, ...$cuentasPermitidas);
         }
 
         $query = "SELECT t.banco, t.cuenta, t.fecha, t.saldo,
@@ -2875,12 +2884,12 @@ class MovimientosBancariosModel extends Model
                              ROW_NUMBER() OVER (PARTITION BY banco, cuenta
                                                 ORDER BY fecha DESC, id DESC) AS rn
                       FROM [TG].[dbo].[movimientos_bancarios]
-                      WHERE fecha <= ?
+                      WHERE fecha <= ?$cuentaFilter
                   ) t
                   LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] c
                          ON c.CuentaLocal = t.cuenta
                   WHERE t.rn = 1 ORDER BY t.cuenta;";
-        return $this->sql->select($query, [$hasta]) ?: [];
+        return $this->sql->select($query, $params) ?: [];
     }
 
     /**
