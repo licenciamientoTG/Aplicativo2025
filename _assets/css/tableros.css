@@ -262,10 +262,13 @@
 .boards-summary-person { display: inline-grid; width: 24px; height: 24px; place-items: center; border: 2px solid #30334f; border-radius: 50%; color: #f5f6fc; background: #6677d8; font-size: .6rem; font-weight: 700; }
 .boards-summary-number-controls { display: inline-flex; align-items: center; vertical-align: middle; }
 .boards-summary-number-result { display: inline-block; vertical-align: middle; }
-.boards-summary-function { max-width: 100%; padding: 3px 5px; border: 1px solid #cbd6dc; border-radius: 4px; color: #40535f; background: #fff; font-size: .68rem; }
-.boards-summary-function[hidden], .boards-summary-function-menu[hidden] { display: none !important; }
 .boards-summary-function-menu { display: inline-grid; width: 20px; height: 20px; margin-left: 2px; padding: 0; place-items: center; border: 0; border-radius: 4px; color: #778995; background: transparent; font: inherit; font-size: 1.1rem; line-height: 1; cursor: pointer; }
 .boards-summary-function-menu:hover, .boards-summary-function-menu:focus-visible { color: #245f7f; background: #e9f1f5; outline: none; }
+.boards-summary-function-menu-list[hidden] { display: none !important; }
+.boards-table-summary-cell:has(.boards-summary-function-menu-list:not([hidden])) { z-index: 30; }
+.boards-summary-function-menu-list { position: absolute; z-index: 31; right: 0; bottom: calc(100% + 5px); display: grid; min-width: 126px; gap: 2px; padding: 5px; border: 1px solid #d5dfe4; border-radius: 7px; background: #fff; box-shadow: 0 5px 18px rgb(28 48 58 / 20%); text-align: left; }
+.boards-summary-function-option { width: 100%; padding: 6px 9px; border: 0; border-radius: 4px; color: #40535f; background: transparent; font: inherit; font-size: .72rem; text-align: left; cursor: pointer; }
+.boards-summary-function-option:hover, .boards-summary-function-option:focus-visible, .boards-summary-function-option[aria-current="true"] { color: #174d6b; background: #edf4f7; outline: none; }
 .boards-summary-progress { width: 100%; height: 10px; overflow: hidden; border-radius: 999px; background: #798093; }
 .boards-summary-progress-fill { display: block; height: 100%; border-radius: inherit; background: #00c875; }
 .boards-summary-tags { display: flex; justify-content: center; flex-wrap: wrap; gap: 3px; }

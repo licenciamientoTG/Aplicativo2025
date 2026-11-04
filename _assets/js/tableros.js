@@ -5394,22 +5394,23 @@
         const selectedFunction = state.summaryFunctions[String(column.id)] || 'sum';
         const functionLabels = { sum: 'Suma', average: 'Promedio', median: 'Mediana', min: 'Mínimo', max: 'Máximo', count: 'Conteo' };
         const controls = makeElement('div', 'boards-summary-number-controls');
-        const select = makeElement('select', 'boards-summary-function');
-        select.dataset.summaryColumn = String(column.id);
-        select.hidden = true;
-        [['sum', 'Suma'], ['average', 'Promedio'], ['median', 'Mediana'], ['min', 'Mínimo'], ['max', 'Máximo'], ['count', 'Conteo']].forEach(([value, label]) => {
-          const option = makeElement('option', '', label);
-          option.value = value;
-          select.append(option);
-        });
-        select.value = selectedFunction;
         const menuButton = makeElement('button', 'boards-summary-function-menu', '⋯');
         menuButton.type = 'button';
         menuButton.dataset.summaryFunctionToggle = String(column.id);
         menuButton.title = `Tipo de cálculo: ${functionLabels[selectedFunction] || 'Suma'}`;
         menuButton.setAttribute('aria-label', `Cambiar cálculo. Actual: ${functionLabels[selectedFunction] || 'Suma'}`);
         menuButton.setAttribute('aria-expanded', 'false');
-        controls.append(select, menuButton);
+        const menu = makeElement('div', 'boards-summary-function-menu-list');
+        menu.hidden = true;
+        [['sum', 'Suma'], ['average', 'Promedio'], ['median', 'Mediana'], ['min', 'Mínimo'], ['max', 'Máximo'], ['count', 'Conteo']].forEach(([value, label]) => {
+          const option = makeElement('button', 'boards-summary-function-option', label);
+          option.type = 'button';
+          option.dataset.summaryFunctionOption = value;
+          option.dataset.summaryColumn = String(column.id);
+          if (value === selectedFunction) option.setAttribute('aria-current', 'true');
+          menu.append(option);
+        });
+        controls.append(menuButton, menu);
         let result = '—';
         if (values.length) {
           const sorted = values.slice().sort((a, b) => a - b);
@@ -8725,16 +8726,26 @@
         event.preventDefault();
         event.stopPropagation();
         const controls = summaryFunctionToggle.closest('.boards-summary-number-controls');
-        const select = controls?.querySelector('[data-summary-column]');
-        if (select) {
-          summaryFunctionToggle.hidden = true;
+        const menu = controls?.querySelector('.boards-summary-function-menu-list');
+        const willOpen = Boolean(menu?.hidden);
+        els.boardTableContainer.querySelectorAll('.boards-summary-function-menu-list:not([hidden])').forEach((openMenu) => { openMenu.hidden = true; });
+        els.boardTableContainer.querySelectorAll('[data-summary-function-toggle][aria-expanded="true"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+        if (menu && willOpen) {
+          menu.hidden = false;
           summaryFunctionToggle.setAttribute('aria-expanded', 'true');
-          select.hidden = false;
-          select.focus();
-          select.click();
         }
         return;
       }
+      const summaryFunctionOption = event.target.closest('[data-summary-function-option]');
+      if (summaryFunctionOption) {
+        event.preventDefault();
+        event.stopPropagation();
+        state.summaryFunctions[summaryFunctionOption.dataset.summaryColumn] = summaryFunctionOption.dataset.summaryFunctionOption;
+        renderTable();
+        return;
+      }
+      els.boardTableContainer.querySelectorAll('.boards-summary-function-menu-list:not([hidden])').forEach((menu) => { menu.hidden = true; });
+      els.boardTableContainer.querySelectorAll('[data-summary-function-toggle][aria-expanded="true"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
       const menuTrigger = event.target.closest('[data-open-column-menu]');
       if (menuTrigger) {
         event.preventDefault(); event.stopPropagation();
@@ -8781,6 +8792,10 @@
     });
     document.addEventListener('pointerdown', (event) => {
       if (!event.target.closest('.boards-column-menu, [data-open-column-menu]')) closeColumnMenus();
+      if (!event.target.closest('.boards-summary-number-controls')) {
+        els.boardTableContainer.querySelectorAll('.boards-summary-function-menu-list:not([hidden])').forEach((menu) => { menu.hidden = true; });
+        els.boardTableContainer.querySelectorAll('[data-summary-function-toggle][aria-expanded="true"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+      }
     });
     document.addEventListener('click', (event) => {
       const menuAction = event.target.closest('[data-column-menu-action]');
@@ -8923,12 +8938,6 @@
       if (form.reportValidity()) submitInlineItem(form);
     });
     els.boardTableContainer.addEventListener('change', (event) => {
-      const summarySelect = event.target.closest('[data-summary-column]');
-      if (summarySelect) {
-        state.summaryFunctions[summarySelect.dataset.summaryColumn] = summarySelect.value;
-        renderTable();
-        return;
-      }
       const itemCheckbox = event.target.closest('[data-select-item]');
       if (itemCheckbox) {
         const id = itemCheckbox.dataset.selectItem;
