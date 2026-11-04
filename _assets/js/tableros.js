@@ -2291,6 +2291,19 @@
     const type = String(column.type || 'text').toLowerCase();
     if (type === 'file') return createFileCellEditor(item, column);
     if (!canEditBoard()) {
+      if (type === 'tags') {
+        const chips = makeElement('div', 'boards-tags-chips boards-tags-readonly');
+        const values = Array.isArray(value) ? value.map(String) : [];
+        const options = parseOptions(column.options);
+        values.forEach((tag) => {
+          const entry = options.find((option) => String(option.value) === tag);
+          const chip = makeElement('span', 'boards-tags-chip', entry?.label || tag);
+          chip.style.setProperty('--tag-color', entry?.color || '#8792a2');
+          chips.append(chip);
+        });
+        if (!values.length) chips.append(makeElement('span', 'boards-tags-placeholder', '—'));
+        return chips;
+      }
       const readonly = document.createElement('span');
       readonly.className = ['status', 'dropdown'].includes(type) ? 'boards-status-readonly' : 'boards-readonly-value';
       const option = ['status', 'dropdown'].includes(type)
@@ -2462,9 +2475,10 @@
           return readonly;
         }
         const select = document.createElement('select');
-        select.className = 'boards-status-select boards-tags-select';
+        select.className = 'boards-tags-native-select';
         select.multiple = true;
-        select.size = Math.min(4, options.length);
+        select.hidden = true;
+        select.setAttribute('aria-hidden', 'true');
         options.forEach((entry) => {
           const option = document.createElement('option');
           option.value = entry.value;
@@ -2472,7 +2486,148 @@
           option.selected = selected.has(entry.value);
           select.append(option);
         });
-        return markEditor(select, item, column, 'tags');
+        const wrapper = makeElement('div', 'boards-tags-editor');
+        markEditor(wrapper, item, column, 'tags');
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'boards-tags-trigger';
+        trigger.setAttribute('aria-haspopup', 'dialog');
+        trigger.setAttribute('aria-expanded', 'false');
+        const chips = makeElement('span', 'boards-tags-chips');
+        const add = makeElement('span', 'boards-tags-add', '+');
+        add.setAttribute('aria-hidden', 'true');
+        trigger.append(chips, add);
+
+        const menu = makeElement('div', 'boards-tags-menu');
+        menu.setAttribute('role', 'dialog');
+        menu.setAttribute('aria-label', `Etiquetas de ${column.name || 'la columna'}`);
+        menu.hidden = true;
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'boards-tags-search';
+        search.placeholder = 'Buscar etiquetas…';
+        search.setAttribute('aria-label', 'Buscar etiquetas');
+        const list = makeElement('div', 'boards-tags-options');
+        list.setAttribute('role', 'group');
+        list.setAttribute('aria-label', 'Opciones de etiqueta');
+        const rows = options.map((entry) => {
+          const option = document.createElement('button');
+          option.type = 'button';
+          option.className = 'boards-tags-option';
+          option.dataset.tagSearch = String(entry.label || entry.value).toLocaleLowerCase();
+          option.dataset.tagValue = String(entry.value);
+          option.style.setProperty('--tag-color', entry.color || '#8792a2');
+          const swatch = makeElement('span', 'boards-tags-swatch');
+          swatch.setAttribute('aria-hidden', 'true');
+          const label = makeElement('span', 'boards-tags-option-label', entry.label || entry.value);
+          const check = makeElement('span', 'boards-tags-check', '✓');
+          check.setAttribute('aria-hidden', 'true');
+          option.append(swatch, label, check);
+          option.setAttribute('aria-pressed', selected.has(String(entry.value)) ? 'true' : 'false');
+          option.addEventListener('click', () => {
+            option.setAttribute('aria-pressed', option.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+          });
+          list.append(option);
+          return option;
+        });
+        search.addEventListener('input', () => {
+          const query = search.value.trim().toLocaleLowerCase();
+          rows.forEach((row) => { row.hidden = query !== '' && !row.dataset.tagSearch.includes(query); });
+        });
+        const footer = makeElement('div', 'boards-tags-footer');
+        if (canManageStructure()) {
+          const manage = makeElement('button', 'boards-tags-manage', 'Editar etiquetas');
+          manage.type = 'button';
+          manage.addEventListener('click', () => { closeMenu(); openLabelsEditor(column); });
+          footer.append(manage);
+        }
+        const actions = makeElement('div', 'boards-tags-actions');
+        const cancel = makeElement('button', 'boards-tags-cancel', 'Cancelar');
+        cancel.type = 'button';
+        cancel.addEventListener('click', () => closeMenu());
+        const apply = makeElement('button', 'boards-tags-apply', 'Aplicar');
+        apply.type = 'button';
+        apply.addEventListener('click', () => {
+          const draft = new Set(rows.filter((row) => row.getAttribute('aria-pressed') === 'true').map((row) => row.dataset.tagValue));
+          Array.from(select.options).forEach((option) => { option.selected = draft.has(option.value); });
+          updateChips();
+          closeMenu();
+          wrapper.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        actions.append(cancel, apply);
+        footer.append(actions);
+        menu.append(search, list, footer);
+
+        const updateChips = () => {
+          chips.replaceChildren();
+          const selectedValues = new Set(Array.from(select.selectedOptions, (option) => option.value));
+          const chosen = options.filter((entry) => selectedValues.has(String(entry.value)));
+          chosen.slice(0, 3).forEach((entry) => {
+            const chip = makeElement('span', 'boards-tags-chip', entry.label || entry.value);
+            chip.style.setProperty('--tag-color', entry.color || '#8792a2');
+            chips.append(chip);
+          });
+          if (chosen.length > 3) chips.append(makeElement('span', 'boards-tags-overflow', `+${chosen.length - 3}`));
+          if (!chosen.length) chips.append(makeElement('span', 'boards-tags-placeholder', 'Agregar etiquetas'));
+          trigger.setAttribute('aria-label', `${column.name || 'Etiquetas'}: ${chosen.map((entry) => entry.label || entry.value).join(', ') || 'Sin etiquetas'}`);
+        };
+        let pointerHandler = null;
+        const closeMenu = () => {
+          if (menu.hidden) return;
+          menu.hidden = true;
+          trigger.setAttribute('aria-expanded', 'false');
+          menu.classList.remove('opens-up');
+          ['position', 'z-index', 'left', 'top', 'bottom', 'width', 'max-height'].forEach((property) => menu.style.removeProperty(property));
+          window.removeEventListener('scroll', closeMenu, true);
+          window.removeEventListener('resize', closeMenu);
+          if (pointerHandler) document.removeEventListener('pointerdown', pointerHandler);
+          pointerHandler = null;
+          if (menu.parentElement !== wrapper) wrapper.append(menu);
+        };
+        const openMenu = () => {
+          rows.forEach((row) => {
+            row.setAttribute('aria-pressed', select.options[Array.from(select.options).findIndex((option) => option.value === row.dataset.tagValue)]?.selected ? 'true' : 'false');
+            row.hidden = false;
+          });
+          search.value = '';
+          document.body.append(menu);
+          menu.hidden = false;
+          trigger.setAttribute('aria-expanded', 'true');
+          const rect = trigger.getBoundingClientRect();
+          const width = Math.min(248, window.innerWidth - 16);
+          const below = window.innerHeight - rect.bottom - 12;
+          const above = rect.top - 12;
+          const height = Math.min(390, options.length * 38 + 132 + (canManageStructure() ? 36 : 0));
+          menu.style.position = 'fixed';
+          menu.style.zIndex = '10000';
+          menu.style.width = `${width}px`;
+          menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
+          if (below < height && above > below) {
+            menu.classList.add('opens-up');
+            const menuHeight = Math.min(height, above);
+            menu.style.maxHeight = `${menuHeight}px`;
+            menu.style.top = `${Math.max(8, rect.top - menuHeight - 5)}px`;
+          } else {
+            menu.style.maxHeight = `${Math.max(120, Math.min(height, below))}px`;
+            menu.style.top = `${rect.bottom + 5}px`;
+          }
+          pointerHandler = (event) => { if (!wrapper.contains(event.target) && !menu.contains(event.target)) closeMenu(); };
+          document.addEventListener('pointerdown', pointerHandler);
+          window.addEventListener('scroll', closeMenu, true);
+          window.addEventListener('resize', closeMenu);
+          search.focus({ preventScroll: true });
+        };
+        trigger.addEventListener('click', () => menu.hidden ? openMenu() : closeMenu());
+        trigger.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') closeMenu();
+          if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openMenu(); }
+        });
+        menu.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') { closeMenu(); trigger.focus(); }
+        });
+        wrapper.append(select, trigger);
+        updateChips();
+        return wrapper;
       }
       input.type = 'text';
       input.value = Array.isArray(value) ? value.join(', ') : (value == null ? '' : String(value));
@@ -7151,7 +7306,7 @@
     if (kind === 'people') {
       return Array.from(editor.querySelector('select')?.selectedOptions || [], (option) => Number(option.value)).filter(Number.isInteger);
     }
-    if (kind === 'tags') return Array.from(editor.selectedOptions || [], (option) => option.value);
+    if (kind === 'tags') return Array.from(editor.querySelector('select')?.selectedOptions || [], (option) => option.value);
     if (kind === 'tags-text') return editor.value.split(',').map((tag) => tag.trim()).filter(Boolean);
     const value = editor.value;
     if (kind === 'number') {
@@ -7224,7 +7379,7 @@
           }
         }
       }
-      if ((editedColumn && ['status', 'dropdown'].includes(columnType(editedColumn)))
+      if ((editedColumn && ['status', 'dropdown', 'numbers', 'tags'].includes(columnType(editedColumn)))
         || state.activeViewType !== 'table' || boardSearchValue().trim() || state.filters.length) {
         const activeKanbanColumn = state.activeViewType === 'kanban'
           && String(state.viewConfig.kanban_column_id || 'groups') === String(editedColumn?.id || '');
