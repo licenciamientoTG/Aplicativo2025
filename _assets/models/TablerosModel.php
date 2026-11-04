@@ -1888,7 +1888,11 @@ class TablerosModel {
         if (!in_array((string)$version['scan_status'], ['clean', 'unscanned'], true)) {
             throw new TablerosApiException('conflict', 'Esta versión no está disponible para descarga.', 409);
         }
-        $isVideo = in_array(strtolower((string)$version['content_type']), ['video/mp4', 'video/webm'], true);
+        $versionMime = strtolower(trim(explode(';', (string)$version['content_type'])[0]));
+        $versionExtension = strtolower(pathinfo((string)$version['original_name'], PATHINFO_EXTENSION));
+        $genericMime = in_array($versionMime, ['', 'application/octet-stream', 'binary/octet-stream'], true);
+        $isVideo = in_array($versionMime, ['video/mp4', 'video/webm'], true)
+            || ($genericMime && in_array($versionExtension, ['mp4', 'webm'], true));
         if (!$isVideo) $rangeHeader = null;
         $range = $rangeHeader === null ? null : $this->parseFileByteRange($rangeHeader, (int)$version['byte_size']);
         $base = [

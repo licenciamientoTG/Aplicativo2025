@@ -2842,7 +2842,7 @@
     const videoExtension = ['mp4', 'webm'].includes(extension);
     const spreadsheetExtension = ['xls', 'xlsx', 'xlsm'].includes(extension);
     const previewKind = imageMime ? 'image'
-      : (videoMime || videoExtension ? 'video'
+      : (videoMime || (genericMime && videoExtension) ? 'video'
         : (effectiveMime === 'application/pdf' ? 'pdf'
           : (['text/plain', 'text/csv'].includes(effectiveMime) ? 'text'
             : (spreadsheetExtension ? 'spreadsheet' : (['doc', 'docx'].includes(extension) ? 'document' : 'unsupported')))));
@@ -3472,6 +3472,9 @@
       button.setAttribute('aria-expanded', 'true');
       await renderFilePreviewPanel(name);
     }));
+    document.querySelector('[data-preview-download]')?.addEventListener('click', () => {
+      if (activePreviewFile) startFileDownload(activePreviewFile);
+    });
   }
 
   async function openFilePreview(file, item = null) {
@@ -3581,10 +3584,6 @@
         printWindow.document.body.append(printImage);
         printImage.addEventListener('load', () => { printWindow.focus(); printWindow.print(); }, { once: true });
       });
-      const download = addImageAction('fa-download', 'Descargar imagen', () => {
-        startFileDownload(file);
-      });
-      download.classList.add('is-download');
       image.addEventListener('pointerdown', (event) => {
         if (zoom <= 1 || event.button !== 0) return;
         dragOrigin = { x: event.clientX, y: event.clientY, panX, panY };
@@ -3614,6 +3613,11 @@
       video.playsInline = true;
       video.preload = 'metadata';
       video.setAttribute('aria-label', `Vista previa de ${name}`);
+      video.addEventListener('error', () => {
+        if (previewRequest === filePreviewRequest) {
+          showFilePreviewError('No se pudo reproducir este video en el navegador. Descárgalo para abrirlo con otra aplicación.');
+        }
+      });
       video.src = fileEndpoint(file, true);
       stage.append(video);
       els.filePreviewContent.append(stage);

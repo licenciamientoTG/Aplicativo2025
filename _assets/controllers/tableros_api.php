@@ -323,7 +323,12 @@ class tableros_api {
             $rangeHeader = ($_GET['preview'] ?? '') === '1' && isset($_SERVER['HTTP_RANGE'])
                 ? (string)$_SERVER['HTTP_RANGE'] : null;
             $file = $this->model->getFileDownload($fileId, $versionId, $rangeHeader);
-            $contentType = strtolower((string)$file['content_type']);
+            $contentType = strtolower(trim(explode(';', (string)$file['content_type'])[0]));
+            $fileExtension = strtolower(pathinfo((string)$file['name'], PATHINFO_EXTENSION));
+            $genericMime = in_array($contentType, ['', 'application/octet-stream', 'binary/octet-stream'], true);
+            $inferredVideoType = ['mp4' => 'video/mp4', 'webm' => 'video/webm'][$fileExtension] ?? null;
+            $responseContentType = $genericMime && $inferredVideoType ? $inferredVideoType : (string)$file['content_type'];
+            if ($genericMime && $inferredVideoType) $contentType = $inferredVideoType;
             $isVideo = in_array($contentType, ['video/mp4', 'video/webm'], true);
             $previewableTypes = ['application/pdf', 'image/webp', 'image/jpeg', 'image/png', 'image/gif', 'text/plain', 'text/csv', 'video/mp4', 'video/webm'];
             $inlinePreview = ($_GET['preview'] ?? '') === '1' && in_array($contentType, $previewableTypes, true);
@@ -340,7 +345,7 @@ class tableros_api {
                 if (!empty($file['temporary']) && is_file($file['path'])) @unlink($file['path']);
                 exit;
             }
-            header('Content-Type: ' . $file['content_type']);
+            header('Content-Type: ' . $responseContentType);
             header('Content-Disposition: ' . $this->contentDisposition((string)$file['name'], $inlinePreview));
             header('X-Content-Type-Options: nosniff');
             header('Cache-Control: private, no-store, max-age=0');

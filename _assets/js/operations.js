@@ -1129,127 +1129,109 @@ $('#exportExcel_readings_table').on('click', function () {
     $('.readings_table').trigger('click');
 });
 
-// Tabla de Ventas
-$('#sales_table').DataTable({
-    colReorder: true,
-    order: [0, "desc"],
-    dom: '<"top"Bf>rt<"bottom"lip>',
-    pageLength: 100,
-    responsive: true,
-    fixedColumns: {
-        left: 1,
-        right: 1
-    },
-    paging: false,
-    scrollCollapse: true,
-    scrollX: true,
-    buttons: [
-        {
+// Tablas de ventas: litros (canven) e importe en pesos (mtoven).
+function initSalesTable(selector) {
+    const $table = $(selector);
+    if (!$table.length) return;
+
+    const isAmount = $table.data('measure') === 'amount';
+    const numericRenderer = $.fn.dataTable.render.number(',', '.', isAmount ? 2 : 3, isAmount ? '$' : '');
+    const stationColumns = [
+        '02 LERDO', '03 DELICIAS', '04 PARRAL', '05 LOPEZ MATEOS', '06 GEMELA CHICA',
+        '07 GEMEL GRANDE', '08 PLUTARCO', '09 MPIO', '10 AZTECAS', '11 MISIONES',
+        '12 PTO DE PALOS', '13 MIGUEL D MAD', '14 PERMUTA', '15 ELECTROLUX',
+        '16 AERONAUTICA', '17 CUSTODIA', '18 ANAPRA', '19 INDEPENDENCI',
+        '20 TECNOLOGICO', '21 EJERCITO NAL', '22 SATELITE', '23 LAS FUENTES',
+        '24 CLARA', '25 SOLIS', '26 SANTIAGO TRO', '27 JARUDO', '28 HERMANOS ESC',
+        '29 VILLA AHUMAD', '30 EL CASTAÑO', '31 Travel Center', '32 Picachos',
+        '33 Ventanas', '34 SAN RAFAEL', '35 PUERTECITO', '36 JESUS MARIA',
+        '37 GABRIELA MIS', '38 PRAXEDIS', 'Total'
+    ];
+    const columns = [
+        { data: 'Fecha' },
+        { data: 'Producto' },
+        ...stationColumns.map(function (name) { return { data: name, render: numericRenderer }; })
+    ];
+
+    $table.DataTable({
+        colReorder: true,
+        order: [0, 'desc'],
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        pageLength: 100,
+        responsive: true,
+        fixedColumns: { left: 1, right: 1 },
+        paging: false,
+        scrollCollapse: true,
+        scrollX: true,
+        buttons: [{
             extend: 'excel',
             className: 'd-none',
-            filename: 'Reporte de ventas',
+            filename: isAmount ? 'Reporte de ventas en pesos' : 'Reporte de ventas en litros',
             exportOptions: {
                 format: {
-                    body: function (data, row, column, node) {
-                        if (column >= 2 && column <= 34) {
-                            return parseFloat(data.replace(/[^0-9.-]/g, ''));
-                        } else {
-                            return data;
+                    body: function (data, row, column) {
+                        if (column >= 2) {
+                            const value = String(data).replace(/[^0-9.-]/g, '');
+                            return value === '' ? '' : parseFloat(value);
                         }
+                        return data;
                     }
                 }
             }
-        }
-    ],
-    ajax: {
-        data: {'from': $('#sales_table').data('from'), 'until': $('#sales_table').data('until')},
-        // method: 'post',
-        url: '/operations/sales_table',
-        error: function() {
-            $('#sales_table').waitMe('hide');
-            alertify.myAlert(
-                `<div class="container text-center text-danger">
-                    <h4 class="mt-2 text-danger">¡Error!</h4>
-                </div>
-                <div class="text-dark">
-                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                </div>`
-            );
+        }],
+        ajax: {
+            data: {
+                from: $table.data('from'),
+                until: $table.data('until'),
+                measure: $table.data('measure')
+            },
+            url: '/operations/sales_table',
+            error: function () {
+                $table.removeClass('loading').waitMe('hide');
+                $table.closest('.tab-pane').removeClass('loading');
+                alertify.myAlert(
+                    `<div class="container text-center text-danger"><h4 class="mt-2 text-danger">¡Error!</h4></div>
+                     <div class="text-dark"><p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p></div>`
+                );
+            },
+            beforeSend: function () {
+                $table.addClass('loading');
+                $table.closest('.tab-pane').addClass('loading');
+            }
         },
-        beforeSend: function() {
-            $('.table-responsive').addClass('loading');
+        deferRender: true,
+        columns: columns,
+        createdRow: function (row) {
+            $(row).find('td:first-child, td:last-child').addClass('bg-primary text-light');
+            $(row).find('td:first-child').addClass('text-nowrap');
+        },
+        initComplete: function () {
+            $table.closest('.tab-pane').find('.dt-buttons').addClass('d-none');
+            $table.removeClass('loading');
+            $table.closest('.tab-pane').removeClass('loading');
+        },
+        footerCallback: function () {
+            const api = this.api();
+            api.columns(Array.from({ length: stationColumns.length }, function (_, i) { return i + 2; }))
+                .every(function () {
+                    const total = this.data().reduce(function (sum, value) {
+                        const numericValue = parseFloat(String(value).replace(/[^0-9.-]/g, ''));
+                        return sum + (Number.isFinite(numericValue) ? numericValue : 0);
+                    }, 0);
+                    $(this.footer()).html((isAmount ? '$' : '') + total.toFixed(isAmount ? 2 : 3));
+                });
         }
-    },
-    deferRender: true,
-    columns: [
-        {'data': 'Fecha'},
-        {'data': 'Producto'},
-        {'data': '02 LERDO', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '03 DELICIAS', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '04 PARRAL', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '05 LOPEZ MATEOS', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '06 GEMELA CHICA', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '07 GEMEL GRANDE', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '08 PLUTARCO', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '09 MPIO', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '10 AZTECAS', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '11 MISIONES', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '12 PTO DE PALOS', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '13 MIGUEL D MAD', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '14 PERMUTA', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '15 ELECTROLUX', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '16 AERONAUTICA', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '17 CUSTODIA', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '18 ANAPRA', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '19 INDEPENDENCI', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '20 TECNOLOGICO', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '21 EJERCITO NAL', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '22 SATELITE', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '23 LAS FUENTES', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '24 CLARA', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '25 SOLIS', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '26 SANTIAGO TRO', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '27 JARUDO', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '28 HERMANOS ESC', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '29 VILLA AHUMAD', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '30 EL CASTAÑO', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '31 Travel Center', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '32 Picachos', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '33 Ventanas', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '34 SAN RAFAEL', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '35 PUERTECITO', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '36 JESUS MARIA', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '37 GABRIELA MIS', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': '38 PRAXEDIS', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': 'Total', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-    ],
-    createdRow: function (row, data, dataIndex) {
-        let firstCell = $(row).find("td:first-child");
-        let lastCell = $(row).find("td:last-child");
-        firstCell.addClass("bg-primary text-light");
-        lastCell.addClass("bg-primary text-light");
-        // A la primera celda de cada fila le agregamos la clase text-nowrap
-        $(row).find('td:eq(0)').addClass('text-nowrap');
-    },
-    initComplete: function () {
-        $('.dt-buttons').addClass('d-none');
-        $('.table-responsive').removeClass('loading');
-    },
-    footerCallback: function (row, data, start, end, display) {
-        var api = this.api();
+    });
+}
 
-        // Calcula los totales de las columnas
-        api.columns([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35])
-            .every(function () {
-                var columnData = this.data();
-                var columnTotal = columnData.reduce(function (acc, val) {
-                    return acc + parseFloat(val.replace(/[^0-9.-]/g, ''));
-                }, 0);
-                $(this.footer()).html('$' + columnTotal.toFixed(2));
-            });
+initSalesTable('#sales_table');
+$('#sales-amount-tab').on('shown.bs.tab', function () {
+    if (!$.fn.DataTable.isDataTable('#sales_amount_table')) {
+        initSalesTable('#sales_amount_table');
+    } else {
+        $('#sales_amount_table').DataTable().columns.adjust().draw(false);
     }
 });
-
 $('#consultDispatchModal').on('show.bs.modal', function (e) {
     let modal = $(this);
 
@@ -1491,7 +1473,10 @@ $('#exportExcel').on('click', function (e) {
     e.preventDefault();
     // Ventas y responsables comparten este id en vistas distintas.
     if ($('#sales_table').length) {
-        $('#sales_table').DataTable().button(0).trigger();
+        const $activeSalesTable = $('.tab-pane.active table[id^="sales_"]');
+        if ($activeSalesTable.length) {
+            $activeSalesTable.DataTable().button(0).trigger();
+        }
         return;
     }
 
