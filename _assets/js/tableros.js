@@ -5396,7 +5396,7 @@
         const selectedFunction = state.summaryFunctions[String(column.id)] || 'sum';
         const functionLabels = { sum: 'Suma', average: 'Promedio', median: 'Mediana', min: 'Mínimo', max: 'Máximo', count: 'Conteo' };
         const controls = makeElement('div', 'boards-summary-number-controls');
-        const menuButton = makeElement('button', 'boards-summary-function-menu', '⋯');
+        const menuButton = makeElement('button', 'boards-summary-function-menu', '⋮');
         menuButton.type = 'button';
         menuButton.dataset.summaryFunctionToggle = String(column.id);
         menuButton.title = `Tipo de cálculo: ${functionLabels[selectedFunction] || 'Suma'}`;
