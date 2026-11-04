@@ -3910,7 +3910,7 @@ class TablerosModel {
             if (!$this->one("SELECT id FROM tb_column WHERE id = ? AND board_id = ? AND type = 'numbers' AND deleted_at IS NULL", [(int)$id, $boardId])) throw new TablerosApiException('validation', 'Las referencias deben apuntar a columnas numéricas del tablero.', 422);
         }
         // Parse with representative numeric values to validate grammar and nesting.
-        $sample = preg_replace_callback('/\{#([1-9][0-9]*)\}/', static fn() => '1', $formula);
+        $sample = preg_replace_callback('/\{#([1-9][0-9]*)\}/', static fn() => '(1)', $formula);
         try { $this->parseFormula($sample, []); } catch (Throwable $e) { throw new TablerosApiException('validation', 'La sintaxis de la fórmula no es válida.', 422); }
     }
 
@@ -3918,7 +3918,7 @@ class TablerosModel {
         if (preg_match_all('/\{#([1-9][0-9]*)\}/', $formula, $matches)) {
             foreach ($matches[1] as $id) { $v = $cells[(string)$id] ?? null; if ($v !== null && $v !== '' && !is_numeric($v)) return null; }
         }
-        $resolved = preg_replace_callback('/\{#([1-9][0-9]*)\}/', static fn($m) => (string)(float)($cells[$m[1]] ?? 0), $formula);
+        $resolved = preg_replace_callback('/\{#([1-9][0-9]*)\}/', static fn($m) => '(' . (string)(float)($cells[$m[1]] ?? 0) . ')', $formula);
         try { return $this->parseFormula($resolved, []); } catch (Throwable $e) { return '#ERROR'; }
     }
 

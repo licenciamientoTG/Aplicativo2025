@@ -5114,7 +5114,7 @@
     return result * direction || Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id);
   }
 
-  function orderItemsByHierarchy(items) {
+  function orderItemsByHierarchy(items, compareItems = compareColumnMenuItems) {
     const childrenByParent = new Map();
     const visibleIds = new Set(items.map((item) => String(item.id)));
     items.forEach((item) => {
@@ -5131,11 +5131,11 @@
       if (visited.has(id)) return;
       visited.add(id);
       ordered.push(item);
-      (childrenByParent.get(id) || []).slice().sort(compareColumnMenuItems).forEach(appendWithChildren);
+      (childrenByParent.get(id) || []).slice().sort(compareItems).forEach(appendWithChildren);
     };
 
     items.filter((item) => item.parent_item_id == null || !visibleIds.has(String(item.parent_item_id)))
-      .slice().sort(compareColumnMenuItems)
+      .slice().sort(compareItems)
       .forEach(appendWithChildren);
     items.forEach(appendWithChildren);
     return ordered;
@@ -5317,7 +5317,9 @@
 
   function createGroupSummaryRow(columns, groupItems) {
     const summaryTypes = new Set(['status', 'file', 'people', 'person', 'numbers', 'progress', 'timeline', 'tags', 'date']);
-    if (!columns.some((column) => summaryTypes.has(columnType(column)))) return null;
+    const hasSummary = columns.some((column) => summaryTypes.has(columnType(column))
+      || (columnType(column) === 'formula' && typeof column.options?.formula === 'string' && column.options.formula.trim()));
+    if (!hasSummary) return null;
     const summaryItems = groupItems.filter((item) => item.parent_item_id == null);
     const row = makeElement('tr', 'boards-table-summary-row');
     row.append(makeElement('td', 'boards-table-summary-label'));
@@ -5389,7 +5391,7 @@
         if (people.size > 5) list.append(makeElement('span', 'boards-summary-count', `+${people.size - 5}`));
         list.append(makeElement('span', 'boards-summary-count', `${people.size} ${people.size === 1 ? 'persona' : 'personas'}`));
         cell.append(list);
-      } else if (type === 'numbers') {
+      } else if (type === 'numbers' || (type === 'formula' && typeof column.options?.formula === 'string' && column.options.formula.trim())) {
         const values = summaryItems.map((item) => getCellValue(item, column)).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite);
         const selectedFunction = state.summaryFunctions[String(column.id)] || 'sum';
         const functionLabels = { sum: 'Suma', average: 'Promedio', median: 'Mediana', min: 'Mínimo', max: 'Máximo', count: 'Conteo' };
@@ -6232,7 +6234,13 @@
   async function exportSelectedItemsToExcel() {
     if (!state.board || !state.selectedItemIds.size) return;
     const boardName = state.board.name || 'Tablero';
-    const selected = state.items.filter((item) => state.selectedItemIds.has(String(item.id)));
+    const compareBoardOrder = (a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id);
+    const orderedItems = state.groups.flatMap((group) => orderItemsByHierarchy(
+      state.items.filter((item) => String(item.group_id) === String(group.id)), compareBoardOrder
+    ));
+    const orderedIds = new Set(orderedItems.map((item) => String(item.id)));
+    orderedItems.push(...state.items.filter((item) => !orderedIds.has(String(item.id))));
+    const selected = orderedItems.filter((item) => state.selectedItemIds.has(String(item.id)));
     if (!selected.length) return;
     const columns = state.columns.filter((column) => !['subtasks', 'dependency'].includes(columnType(column)));
     const exportColumns = [
@@ -8020,7 +8028,27 @@
       const start = input.selectionStart ?? input.value.length;
       const end = input.selectionEnd ?? start;
       const insertion = button.dataset.formulaInsert;
-      input.setRangeText(insertion, start, end, 'end');
+      let prefix = '';
+      if (insertion.startsWith('{#')) {
+        const before = input.value.slice(0, start);
+        const after = input.value.slice(end);
+        const previousIsValue = /(?:\{#\d+\}|\d+(?:\.\d+)?|\))\s*$/.test(before);
+        const nextNeedsNoSeparator = /^\s*(?:,|[+\-*/<>])/.test(after);
+        if (previousIsValue && !nextNeedsNoSeparator) {
+          let depth = 0;
+          let openParen = -1;
+          for (let index = before.length - 1; index >= 0; index -= 1) {
+            if (before[index] === ')') depth += 1;
+            else if (before[index] === '(') {
+              if (depth === 0) { openParen = index; break; }
+              depth -= 1;
+            }
+          }
+          const insideFunction = openParen >= 0 && /[A-Za-z]+\s*$/.test(before.slice(0, openParen));
+          prefix = insideFunction ? ', ' : ' + ';
+        }
+      }
+      input.setRangeText(`${prefix}${insertion}`, start, end, 'end');
       input.focus();
       if (insertion.endsWith('()')) input.setSelectionRange(input.selectionStart - 1, input.selectionStart - 1);
       input.dispatchEvent(new Event('input', { bubbles: true }));
