@@ -151,6 +151,7 @@
     shareUserSelect: document.getElementById('shareUserSelect'),
     shareUserResults: document.getElementById('shareUserResults'),
     clearShareUser: document.getElementById('clearShareUser'),
+    newColumnName: document.getElementById('newColumnName'),
     newColumnType: document.getElementById('newColumnType'),
     columnOptionsField: document.getElementById('columnOptionsField'),
     newColumnOptions: document.getElementById('newColumnOptions'),
