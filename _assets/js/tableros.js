@@ -5599,7 +5599,7 @@
     const title = makeElement('span', 'boards-column-heading-title', column.name || 'Columna');
     th.append(title);
     if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
-    const trigger = makeElement('button', 'boards-column-menu-trigger', '⋯');
+    const trigger = makeElement('button', 'boards-column-menu-trigger', '⋮');
     trigger.type = 'button';
     trigger.dataset.openColumnMenu = String(column.id);
     trigger.setAttribute('aria-label', `Acciones de la columna ${column.name || ''}`);
