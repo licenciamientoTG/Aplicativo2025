@@ -1,8 +1,6 @@
 <?php
 class InventarioUrovoModel extends Model {
     private const LOCATIONS = ['estacion', 'almacen', 'reparacion', 'perdida', 'baja_definitiva'];
-    private const CONDITIONS = ['operativa', 'dañada', 'por_diagnosticar', 'desconocida', 'extraviada'];
-
     public static function locationTypes(): array { return self::LOCATIONS; }
 
     public function hasAccess(): bool {
@@ -23,12 +21,10 @@ class InventarioUrovoModel extends Model {
                 COALESCE(a.sin_serie_count,0) AS sin_serie_count,
                 COALESCE(t.operativa,0)+COALESCE(a.operativa,0) AS operativa,
                 COALESCE(t.danada,0)+COALESCE(a.danada,0) AS danada,
-                COALESCE(t.por_diagnosticar,0)+COALESCE(a.por_diagnosticar,0) AS por_diagnosticar,
                 COALESCE(t.desconocida,0)+COALESCE(a.desconocida,0) AS desconocida,
                 COALESCE(t.extraviada,0)+COALESCE(a.extraviada,0) AS extraviada,
                 COALESCE(t.operativa,0)+COALESCE(a.operativa,0)+
                 COALESCE(t.danada,0)+COALESCE(a.danada,0)+
-                COALESCE(t.por_diagnosticar,0)+COALESCE(a.por_diagnosticar,0)+
                 COALESCE(t.desconocida,0)+COALESCE(a.desconocida,0)+
                 COALESCE(t.extraviada,0)+COALESCE(a.extraviada,0) AS total_count
             FROM [TG].[dbo].[Estaciones] s
@@ -36,7 +32,6 @@ class InventarioUrovoModel extends Model {
                 SELECT estacion_codigo,COUNT(*) AS terminales_count,
                     SUM(CASE WHEN condicion='operativa' THEN 1 ELSE 0 END) AS operativa,
                     SUM(CASE WHEN condicion='dañada' THEN 1 ELSE 0 END) AS danada,
-                    SUM(CASE WHEN condicion='por_diagnosticar' THEN 1 ELSE 0 END) AS por_diagnosticar,
                     SUM(CASE WHEN condicion='desconocida' THEN 1 ELSE 0 END) AS desconocida,
                     SUM(CASE WHEN condicion='extraviada' THEN 1 ELSE 0 END) AS extraviada
                 FROM [TG].[dbo].[inv_urovo_terminales]
@@ -47,7 +42,6 @@ class InventarioUrovoModel extends Model {
                 SELECT estacion_codigo,SUM(delta_cantidad) AS sin_serie_count,
                     SUM(CASE WHEN estado='operativa' THEN delta_cantidad ELSE 0 END) AS operativa,
                     SUM(CASE WHEN estado='dañada' THEN delta_cantidad ELSE 0 END) AS danada,
-                    SUM(CASE WHEN estado='por_diagnosticar' THEN delta_cantidad ELSE 0 END) AS por_diagnosticar,
                     SUM(CASE WHEN estado='desconocida' THEN delta_cantidad ELSE 0 END) AS desconocida,
                     SUM(CASE WHEN estado='extraviada' THEN delta_cantidad ELSE 0 END) AS extraviada
                 FROM [TG].[dbo].[inv_urovo_existencias_movimientos]
@@ -67,7 +61,6 @@ class InventarioUrovoModel extends Model {
                 'conditions'=>[
                     'operativa'=>(int)$row['operativa'],
                     'dañada'=>(int)$row['danada'],
-                    'por_diagnosticar'=>(int)$row['por_diagnosticar'],
                     'desconocida'=>(int)$row['desconocida'],
                     'extraviada'=>(int)$row['extraviada'],
                 ],

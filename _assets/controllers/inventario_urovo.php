@@ -3,7 +3,7 @@ class inventario_urovo {
     private $twig;
     private InventarioUrovoModel $model;
     private const LOCATIONS = ['estacion','almacen','reparacion','perdida','baja_definitiva'];
-    private const CONDITIONS = ['operativa','dañada','por_diagnosticar','desconocida','extraviada'];
+    private const CONDITIONS = ['operativa','dañada','desconocida','extraviada'];
 
     public function __construct($twig) { $this->twig=$twig; $this->model=new InventarioUrovoModel(); }
 
