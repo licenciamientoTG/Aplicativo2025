@@ -6,6 +6,11 @@
                 <label class="col-form-label col-form-label-sm" for="fecha">Fecha:</label>
                 <input type="date" class="form-control" id="fecha" name="fecha" value="{{ registro.fecha|default(fecha) }}" required>
             </div>
+            {% if registro.fecha_original is defined and registro.fecha_original and registro.fecha_original|slice(0, 10) != registro.fecha|slice(0, 10) %}
+            <div class="small text-warning mb-2" style="margin-top:-.5rem;" title="Fecha en que se programó originalmente; no cambia al mover la recepción">
+                Fecha original: <strong>{{ registro.fecha_original|slice(0, 10)|date('d/m/Y') }}</strong>
+            </div>
+            {% endif %}
         </div>
         <div class="col-12 col-md-4">
             <div class="mb-3" id="hora_wrapper">

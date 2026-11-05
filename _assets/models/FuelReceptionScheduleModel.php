@@ -9,13 +9,23 @@ class FuelReceptionScheduleModel extends Model {
                 s.station_code, e.Nombre AS station_nombre,
                 s.product, s.mezcla, s.litros,
                 s.carrier_id, c.nombre AS carrier_nombre,
-                s.referencia, s.notas, s.estatus
+                s.referencia, s.notas, s.estatus,
+                CONVERT(VARCHAR(10), s.fecha_original, 23) AS fecha_original,
+                mv.usuario_nombre AS movida_por, CONVERT(VARCHAR(16), mv.fecha, 120) AS movida_el
             FROM TG.dbo.fuel_reception_schedule s
             LEFT JOIN TG.dbo.Proveedores p1 ON p1.id = s.supplier_id
             LEFT JOIN SG12.dbo.Proveedores p2 ON p2.cod = p1.id_control_gas
             LEFT JOIN TG.dbo.fuel_terminals t ON t.id = s.terminal_id
             LEFT JOIN TG.dbo.fuel_carriers c ON c.id = s.carrier_id
             LEFT JOIN TG.dbo.Estaciones e ON e.Codigo = s.station_code
+            -- Último cambio de fecha (quién y cuándo) para el ícono de
+            -- 'fecha original' en la vista; solo si la fecha sí se movió.
+            OUTER APPLY (
+                SELECT TOP 1 a.usuario_nombre, a.fecha
+                FROM TG.dbo.fuel_reception_audit_log a
+                WHERE a.schedule_id = s.id AND a.accion = 'CAMBIAR_FECHA'
+                ORDER BY a.id DESC
+            ) mv
             WHERE s.fecha = ? AND s.estatus <> 'Cancelado'
             -- Desempate dentro de la misma hora: estación, producto e id, para
             -- que una línea duplicada quede justo debajo de su original.
@@ -127,19 +137,57 @@ class FuelReceptionScheduleModel extends Model {
     // confirmed 2026-09-06 against the real DB: select() requires the literal word
     // "select" in the query text and rejects this as "query mal formado". Use
     // $sql->insert(), which already returns the new id via PDO::lastInsertId().
+    // fecha_original = fecha al crear; después solo la modifica nadie (update()
+    // no la toca), así siempre dice cuándo se programó por primera vez.
+    // $data['_accion'] permite que la importación de Excel quede auditada
+    // como IMPORTAR en vez de CREAR.
     function add(array $data, int $userId): int {
         $query = "
             INSERT INTO TG.dbo.fuel_reception_schedule
-                (fecha, hora, supplier_id, terminal_id, station_code, product, mezcla, litros,
+                (fecha, fecha_original, hora, supplier_id, terminal_id, station_code, product, mezcla, litros,
                  carrier_id, referencia, notas, estatus, created_by, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Programado', ?, GETDATE())
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Programado', ?, GETDATE())
         ";
-        return (int)$this->sql->insert($query, [
-            $data['fecha'], $data['hora'] ?: null, $data['supplier_id'], $data['terminal_id'],
+        $nuevoId = (int)$this->sql->insert($query, [
+            $data['fecha'], $data['fecha'], $data['hora'] ?: null, $data['supplier_id'], $data['terminal_id'],
             $data['station_code'], $data['product'], $data['mezcla'] ?? null, $data['litros'],
             $data['carrier_id'] ?: null, $data['referencia'] ?? null, $data['notas'] ?? null,
             $userId,
         ]);
+        if ($nuevoId) {
+            $this->auditoria()->log(
+                $data['_accion'] ?? FuelReceptionAuditLogModel::ACC_CREAR,
+                $nuevoId,
+                null,
+                self::datos_auditables($data),
+                $userId
+            );
+        }
+        return $nuevoId;
+    }
+
+    private ?FuelReceptionAuditLogModel $auditoria = null;
+
+    private function auditoria(): FuelReceptionAuditLogModel {
+        return $this->auditoria ??= new FuelReceptionAuditLogModel();
+    }
+
+    /** Campos de una recepción que se guardan en la bitácora (antes/después). */
+    private const CAMPOS_AUDITABLES = [
+        'fecha', 'hora', 'supplier_id', 'terminal_id', 'station_code', 'product',
+        'mezcla', 'litros', 'carrier_id', 'referencia', 'notas',
+    ];
+
+    private static function datos_auditables(array $data): array {
+        $out = [];
+        foreach (self::CAMPOS_AUDITABLES as $campo) {
+            if (!array_key_exists($campo, $data)) {
+                continue;
+            }
+            $v = $data[$campo];
+            $out[$campo] = ($v === '' || $v === null) ? null : (string)$v;
+        }
+        return $out;
     }
 
     /**
@@ -186,6 +234,7 @@ class FuelReceptionScheduleModel extends Model {
                     'terminal_id' => $r['terminal_id'], 'station_code' => $r['station_code'],
                     'product' => $r['product'], 'mezcla' => null, 'litros' => $r['litros'],
                     'carrier_id' => $r['carrier_id'], 'referencia' => $r['referencia'], 'notas' => $r['notas'],
+                    '_accion' => FuelReceptionAuditLogModel::ACC_IMPORTAR,
                 ], $userId);
             }
             $this->sql->commit();
@@ -205,17 +254,28 @@ class FuelReceptionScheduleModel extends Model {
     function duplicate(int $id, int $userId): int {
         $query = "
             INSERT INTO TG.dbo.fuel_reception_schedule
-                (fecha, hora, supplier_id, terminal_id, station_code, product, mezcla, litros,
+                (fecha, fecha_original, hora, supplier_id, terminal_id, station_code, product, mezcla, litros,
                  carrier_id, referencia, notas, estatus, created_by, created_at)
-            SELECT fecha, hora, supplier_id, terminal_id, station_code, product, mezcla, litros,
+            SELECT fecha, fecha, hora, supplier_id, terminal_id, station_code, product, mezcla, litros,
                    carrier_id, referencia, notas, 'Programado', ?, GETDATE()
             FROM TG.dbo.fuel_reception_schedule
             WHERE id = ? AND estatus <> 'Cancelado'
         ";
-        return (int)$this->sql->insert($query, [$userId, $id]);
+        $nuevoId = (int)$this->sql->insert($query, [$userId, $id]);
+        if ($nuevoId) {
+            $this->auditoria()->log(
+                FuelReceptionAuditLogModel::ACC_DUPLICAR,
+                $nuevoId,
+                ['duplicada_de' => $id],
+                self::datos_auditables($this->get_one($nuevoId) ?? []),
+                $userId
+            );
+        }
+        return $nuevoId;
     }
 
     function update(int $id, array $data, int $userId): void {
+        $antes = $this->get_one($id);
         $query = "
             UPDATE TG.dbo.fuel_reception_schedule
             SET fecha = ?, hora = ?, supplier_id = ?, terminal_id = ?, station_code = ?,
@@ -229,15 +289,60 @@ class FuelReceptionScheduleModel extends Model {
             $data['carrier_id'] ?: null, $data['referencia'] ?? null, $data['notas'] ?? null,
             $userId, $id,
         ]);
+
+        // Auditoría: solo los campos que sí cambiaron (antes -> después).
+        // fecha_original no se toca aquí a propósito.
+        if ($antes && $antes['estatus'] !== 'Cancelado') {
+            $nuevos = self::datos_auditables($data);
+            $previos = self::datos_auditables($antes);
+            $dif = array_filter(array_keys($nuevos), function ($k) use ($nuevos, $previos) {
+                return $this->normalizar_audit($k, $nuevos[$k]) !== $this->normalizar_audit($k, $previos[$k] ?? null);
+            });
+            if ($dif) {
+                $a = $d = [];
+                foreach ($dif as $k) {
+                    $a[$k] = $previos[$k] ?? null;
+                    $d[$k] = $nuevos[$k];
+                }
+                $log = $this->auditoria();
+                $log->log(FuelReceptionAuditLogModel::ACC_EDITAR, $id, $a, $d, $userId);
+                if (isset($a['fecha'])) {
+                    $log->log(FuelReceptionAuditLogModel::ACC_CAMBIAR_FECHA, $id, ['fecha' => $a['fecha']], ['fecha' => $d['fecha']], $userId);
+                }
+            }
+        }
+    }
+
+    // Compara sin falsos cambios: fecha 'Y-m-d', hora 'HH:MM' vs 'HH:MM:SS',
+    // números como texto, '' = NULL.
+    private function normalizar_audit(string $campo, $valor): ?string {
+        if ($valor === null || $valor === '') {
+            return null;
+        }
+        $valor = (string)$valor;
+        if ($campo === 'fecha') {
+            return substr($valor, 0, 10);
+        }
+        if ($campo === 'hora' && preg_match('/^\d{2}:\d{2}/', $valor)) {
+            return substr($valor, 0, 5);
+        }
+        return $valor;
     }
 
     function cancel(int $id, int $userId): void {
+        $antes = $this->get_one($id);
         $query = "
             UPDATE TG.dbo.fuel_reception_schedule
             SET estatus = 'Cancelado', updated_by = ?, updated_at = GETDATE()
             WHERE id = ?
         ";
         $this->sql->update($query, [$userId, $id]);
+        if ($antes && $antes['estatus'] !== 'Cancelado') {
+            $this->auditoria()->log(
+                FuelReceptionAuditLogModel::ACC_CANCELAR, $id,
+                ['estatus' => $antes['estatus']], ['estatus' => 'Cancelado'], $userId
+            );
+        }
     }
 
     /**
@@ -260,6 +365,10 @@ class FuelReceptionScheduleModel extends Model {
         $this->sql->update(
             "UPDATE TG.dbo.fuel_reception_schedule SET estatus = ?, updated_by = ?, updated_at = GETDATE() WHERE id = ?",
             [$nuevo, $userId, $id]
+        );
+        $this->auditoria()->log(
+            FuelReceptionAuditLogModel::ACC_CAMBIO_ESTATUS, $id,
+            ['estatus' => $actual], ['estatus' => $nuevo], $userId
         );
         return $nuevo;
     }
@@ -284,12 +393,14 @@ class FuelReceptionScheduleModel extends Model {
         $desmarcar = $estatus === 'Programado';
         $cond = $desmarcar ? "estatus IN ('Recibido', 'NoLlego')" : "estatus NOT IN ('Cancelado', ?)";
         $extra = $desmarcar ? [] : [$estatus];
-        $rows = $this->sql->select(
-            "SELECT COUNT(*) AS n FROM TG.dbo.fuel_reception_schedule
+        // Se leen las filas que sí van a cambiar (id + estatus actual) para
+        // poder auditar una fila por recepción.
+        $afectadas = $this->sql->select(
+            "SELECT id, estatus FROM TG.dbo.fuel_reception_schedule
              WHERE id IN ($marcas) AND $cond",
             array_merge($ids, $extra)
-        );
-        $n = (int)($rows[0]['n'] ?? 0);
+        ) ?: [];
+        $n = count($afectadas);
         if ($n > 0) {
             $this->sql->update(
                 "UPDATE TG.dbo.fuel_reception_schedule
@@ -297,6 +408,13 @@ class FuelReceptionScheduleModel extends Model {
                  WHERE id IN ($marcas) AND $cond",
                 array_merge([$estatus, $userId], $ids, $extra)
             );
+            $log = $this->auditoria();
+            foreach ($afectadas as $f) {
+                $log->log(
+                    FuelReceptionAuditLogModel::ACC_CAMBIO_ESTATUS, (int)$f['id'],
+                    ['estatus' => $f['estatus']], ['estatus' => $estatus], $userId
+                );
+            }
         }
         return $n;
     }

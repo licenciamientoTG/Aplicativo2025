@@ -57,6 +57,7 @@ class Supply
     public PetrotalReconciliationModel $petrotalReconciliationModel;
     public FuelReceptionScheduleModel $fuelReceptionScheduleModel;
     public FuelReceptionInvoiceModel $fuelReceptionInvoiceModel;
+    public FuelReceptionAuditLogModel $fuelReceptionAuditLogModel;
     public FuelTerminalsModel $fuelTerminalsModel;
     public FuelCarriersModel $fuelCarriersModel;
     /**
@@ -92,6 +93,7 @@ class Supply
         $this->petrotalReconciliationModel                       = new PetrotalReconciliationModel;
         $this->fuelReceptionScheduleModel = new FuelReceptionScheduleModel();
         $this->fuelReceptionInvoiceModel = new FuelReceptionInvoiceModel();
+        $this->fuelReceptionAuditLogModel = new FuelReceptionAuditLogModel();
         $this->fuelTerminalsModel = new FuelTerminalsModel();
         $this->fuelCarriersModel = new FuelCarriersModel();
     }
@@ -3067,7 +3069,7 @@ class Supply
             return;
         }
 
-        $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
+        $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
         try {
             $id = $this->fuelReceptionScheduleModel->add($_POST, $userId);
         } catch (Exception $e) {
@@ -3113,7 +3115,7 @@ class Supply
             return;
         }
 
-        $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
+        $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
         try {
             $this->fuelReceptionScheduleModel->update($id, $_POST, $userId);
         } catch (Exception $e) {
@@ -3130,7 +3132,7 @@ class Supply
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
-        $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
+        $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
         $id = (int)($_POST['id'] ?? 0);
         $this->fuelReceptionScheduleModel->cancel($id, $userId);
         json_output(['success' => true]);
@@ -3241,7 +3243,7 @@ class Supply
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
-        $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
+        $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
         $id = (int)($_POST['id'] ?? 0);
         if ($id <= 0) {
             json_output(['success' => false, 'message' => 'Falta el id de la recepción']);
@@ -3264,7 +3266,7 @@ class Supply
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
-        $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
+        $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
         $ids = $_POST['ids'] ?? [];
         if (!is_array($ids) || !$ids) {
             json_output(['success' => false, 'message' => 'No seleccionaste ninguna recepción']);
@@ -3463,6 +3465,7 @@ class Supply
             json_output(['success' => false, 'message' => 'No se pudo vincular']);
             return;
         }
+        $this->fuelReceptionAuditLogModel->log(FuelReceptionAuditLogModel::ACC_VINCULAR_FACTURA, $scheduleId, null, ['invoice_id' => $invoiceId], $userId);
 
         json_output(['success' => true, 'invoice_id' => $invoiceId]);
     }
@@ -3574,6 +3577,7 @@ class Supply
         }
 
         $this->fuelReceptionInvoiceModel->vincular($scheduleId, $invoiceId, $userId);
+        $this->fuelReceptionAuditLogModel->log(FuelReceptionAuditLogModel::ACC_VINCULAR_FACTURA, $scheduleId, null, ['invoice_id' => $invoiceId, 'ya_existia' => (bool)$yaExistia], $userId);
 
         json_output([
             'success' => true,
@@ -3595,7 +3599,9 @@ class Supply
             json_output(['success' => false, 'message' => 'Falta el id de la recepción']);
             return;
         }
+        $facturaAnterior = $this->fuelReceptionInvoiceModel->obtenerVinculosPorScheduleId()[$scheduleId] ?? null;
         $this->fuelReceptionInvoiceModel->desvincular($scheduleId);
+        $this->fuelReceptionAuditLogModel->log(FuelReceptionAuditLogModel::ACC_DESVINCULAR_FACTURA, $scheduleId, ['invoice_id' => $facturaAnterior], null);
         json_output(['success' => true]);
     }
 

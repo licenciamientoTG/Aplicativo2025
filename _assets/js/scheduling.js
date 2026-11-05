@@ -196,6 +196,26 @@ function botonesAccion(id, invoiceId, estatus) {
     `;
 }
 
+// 'dd/mm/aaaa' desde 'aaaa-mm-dd' (o 'aaaa-mm-dd hh:mm').
+function fechaCorta(v) {
+    const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? m[3] + '/' + m[2] + '/' + m[1] : String(v || '');
+}
+
+// Ícono de "fecha original": solo aparece en recepciones que se movieron de
+// día (fecha_original distinta de fecha). Tooltip con la fecha en que se
+// programó originalmente y, si hay bitácora, quién la movió y cuándo.
+function iconoFechaOriginal(fila) {
+    const orig = String(fila.fecha_original || '').slice(0, 10);
+    if (!orig || orig === String(fila.fecha || '').slice(0, 10)) return '';
+    let titulo = 'Programada originalmente el ' + fechaCorta(orig);
+    if (fila.movida_por) {
+        titulo += ' · movida por ' + fila.movida_por;
+        if (fila.movida_el) titulo += ' el ' + fechaCorta(fila.movida_el) + ' ' + String(fila.movida_el).slice(11, 16);
+    }
+    return ' <i data-feather="calendar" class="icono-fecha-original text-warning" style="width:14px;height:14px;vertical-align:-2px;" title="' + esc(titulo) + '"></i>';
+}
+
 function formatearFilaTerminal(fila, mostrarTransportista, mostrarReferencia, mostrarNotas) {
     // data-c / data-label no cambian nada en escritorio: en celular (CSS
     // @media en scheduling.html) cada fila se dibuja como tarjeta y el
@@ -212,7 +232,7 @@ function formatearFilaTerminal(fila, mostrarTransportista, mostrarReferencia, mo
     const etiquetaHora = String(fila.supplier_id) === String(SUPPLIER_ID_MCG) ? 'Turno' : 'Hora';
     return `
         <tr data-id="${fila.id}">
-            <td data-c="hora" data-label="${etiquetaHora}">${esc(fila.hora) || '<span class="text-muted">—</span>'}</td>
+            <td data-c="hora" data-label="${etiquetaHora}">${esc(fila.hora) || '<span class="text-muted">—</span>'}${iconoFechaOriginal(fila)}</td>
             <td data-c="prod">${badgeProducto(fila.product, fila.mezcla)}</td>
             <td data-c="lit">${Number(fila.litros).toLocaleString('es-MX')} <span class="u-litros">L</span></td>
             <td data-c="est">${esc(fila.station_nombre) || '<span class="text-muted">—</span>'}</td>
@@ -307,7 +327,7 @@ function filaRapidaHtml(supplierId, terminalId, mostrarTransportista, mostrarRef
 function formatearFilaEstacion(fila) {
     return `
         <tr data-id="${fila.id}">
-            <td data-c="hora" data-label="${String(fila.supplier_id) === String(SUPPLIER_ID_MCG) ? 'Turno' : 'Hora'}">${esc(fila.hora) || '<span class="text-muted">—</span>'}</td>
+            <td data-c="hora" data-label="${String(fila.supplier_id) === String(SUPPLIER_ID_MCG) ? 'Turno' : 'Hora'}">${esc(fila.hora) || '<span class="text-muted">—</span>'}${iconoFechaOriginal(fila)}</td>
             <td data-c="prod">${badgeProducto(fila.product, fila.mezcla)}</td>
             <td data-c="lit">${Number(fila.litros).toLocaleString('es-MX')} <span class="u-litros">L</span></td>
             <td data-c="prov" data-label="Proveedor">${esc(fila.supplier_nombre) || '<span class="text-muted">—</span>'}</td>
