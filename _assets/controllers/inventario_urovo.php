@@ -28,6 +28,20 @@ class inventario_urovo {
         } catch (Throwable $e) { $this->error($e); }
     }
 
+    public function summary(): void {
+        try {
+            $this->authorize(); $this->requireMethod('GET');
+            $this->respond(['rows'=>$this->model->summary()]);
+        } catch (Throwable $e) { $this->error($e); }
+    }
+
+    public function summary_detail(int $station_id): void {
+        try {
+            $this->authorize(); $this->requireMethod('GET');
+            $this->respond($this->model->summaryDetail($station_id));
+        } catch (Throwable $e) { $this->error($e); }
+    }
+
     public function batch(): void {
         try {
             $this->authorize(); $body=$this->jsonPost(); $this->csrf();

@@ -28,6 +28,42 @@
       }).join(''));
     }
     function renderAnonymous(list) { var html = (list || []).map(function (a) { var count = val(a, ['cantidad','quantity', 'count', 'balance']); var type = val(a,['ubicacion_tipo','location_type','LocationType']); var station = val(a,['estacion_codigo','station_id','Codigo']); var model=val(a,['modelo','model']); var condition=val(a,['estado','condicion','condition']) || 'desconocida'; var provider=val(a,['proveedor','provider']); var attrs=' data-location="'+escAttr(type)+'" data-station="'+escAttr(station)+'" data-model="'+escAttr(model)+'" data-condition="'+escAttr(condition)+'" data-provider="'+escAttr(provider)+'"'; return '<div class="urovo-anon-row"><span class="urovo-status ' + (type === 'reparacion' ? 'is-repair' : '') + '">' + esc(locationText(a)) + ' · ' + esc(model || 'Modelo no indicado') + '</span><strong>' + esc(count || 0) + '</strong><div class="urovo-anon-actions"><button class="btn btn-sm btn-link js-anon-history"'+attrs+'>Historial</button><button class="btn btn-sm btn-link js-anon-adjust"'+attrs+'>Ajustar</button><button class="btn btn-sm btn-link js-individualize"'+attrs+'>Individualizar</button></div></div>'; }).join(''); $('#urovoAnonymousRows').html(html || '<p class="urovo-empty">No hay existencias sin serie registradas. Usa “Ajustar cantidad sin serie” para registrar la primera.</p>'); }
+    function renderSummaryDetail(detail) {
+      var terminals = detail.terminals || [], anonymous = detail.anonymous || [];
+      var html = '<p class="urovo-summary-total">Terminales con serie: <strong>' + esc(terminals.length) + '</strong></p>';
+      html += terminals.length ? '<div class="urovo-summary-scroll"><table class="table urovo-summary-table"><thead><tr><th>Serie / modelo</th><th>Condición</th><th>Último movimiento</th><th>Acción</th></tr></thead><tbody>' + terminals.map(function (t) {
+        var row = { id:t.id, numero_serie:t.numero_serie, modelo:t.modelo, condicion:t.condicion, ubicacion_tipo:'estacion', estacion_nombre:detail.station && detail.station.station_name, last_movement:t.last_movement };
+        return '<tr><td><strong>' + esc(t.numero_serie || 'Sin serie') + '</strong><small>' + esc(t.modelo || 'Modelo no indicado') + '</small></td><td>' + esc(conditionText(t.condicion)) + '</td><td>' + esc(t.last_movement || '—') + '</td><td><button type="button" class="btn btn-sm btn-outline-primary js-summary-history" data-id="' + escAttr(t.id) + '" data-row="' + escAttr(JSON.stringify(row)) + '">Ver historial</button></td></tr>';
+      }).join('') + '</tbody></table></div>' : '<p class="urovo-empty">No hay terminales con serie en esta estación.</p>';
+      html += '<h6 class="urovo-summary-subheading">Existencias sin serie</h6>';
+      html += anonymous.length ? '<div class="urovo-summary-anonymous">' + anonymous.map(function (a) { return '<div class="urovo-summary-anon"><span>' + esc(a.modelo || 'Modelo no indicado') + '<small>' + esc(conditionText(a.estado)) + '</small></span><strong>' + esc(a.cantidad == null ? 0 : a.cantidad) + '</strong></div>'; }).join('') + '</div>' : '<p class="urovo-summary-note">No hay existencias sin serie.</p>';
+      return html;
+    }
+    function loadSummary() {
+      var $list = $('#urovoSummaryRows');
+      $list.html('<p class="urovo-empty">Cargando resumen…</p>');
+      request('/inventario-urovo/summary/', 'GET').done(function (data) {
+        if (!data || data.success !== true || !Array.isArray(data.rows)) { $list.html('<p class="urovo-summary-error" role="alert">No fue posible cargar el resumen.</p>'); return; }
+        if (!data.rows.length) { $list.html('<p class="urovo-empty">No hay estaciones para mostrar.</p>'); return; }
+        $list.html(data.rows.map(function (r, index) {
+          var id = 'urovoSummaryDetail' + index;
+          return '<section class="urovo-summary-station"><div class="urovo-summary-station-head"><button type="button" class="urovo-summary-toggle" data-station="' + escAttr(r.station_id) + '" aria-controls="' + id + '" aria-expanded="false"><i class="fas fa-chevron-right" aria-hidden="true"></i><span>' + esc(r.station_name || 'Estación sin nombre') + '</span></button><div class="urovo-summary-counts"><span>Con serie <strong>' + esc(r.terminales_count) + '</strong></span><span>Sin serie <strong>' + esc(r.sin_serie_count) + '</strong></span><span class="urovo-summary-total-count">Total <strong>' + esc(r.total_count) + '</strong></span></div></div><div class="urovo-summary-detail" id="' + id + '" hidden></div></section>';
+        }).join(''));
+      }).fail(function () { $list.html('<p class="urovo-summary-error" role="alert">No se pudo cargar el resumen. Cierra y vuelve a abrir para intentar de nuevo.</p>'); });
+    }
+    $('#urovoSummaryOpen').on('click', function () { showModal('urovoSummaryModal'); loadSummary(); });
+    $('#urovoSummaryRows').on('click', '.urovo-summary-toggle', function () {
+      var $button = $(this), $detail = $('#' + $button.attr('aria-controls'));
+      if ($button.attr('aria-expanded') === 'true') { $button.attr('aria-expanded', 'false'); $detail.prop('hidden', true); return; }
+      $button.attr('aria-expanded', 'true'); $detail.prop('hidden', false);
+      if ($detail.data('loaded') || $detail.data('loading')) return;
+      $detail.data('loading', true).html('<p class="urovo-summary-note">Cargando detalle…</p>');
+      request('/inventario-urovo/summary/' + encodeURIComponent($button.data('station')) + '/', 'GET').done(function (detail) {
+        if (!detail || detail.success !== true) { $detail.html('<p class="urovo-summary-error" role="alert">No fue posible cargar el detalle de esta estación.</p>'); return; }
+        $detail.html(renderSummaryDetail(detail)).data('loaded', true);
+      }).fail(function () { $detail.html('<p class="urovo-summary-error" role="alert">Error al consultar el detalle. Vuelve a cerrar y desplegar esta estación para reintentar.</p>'); }).always(function () { $detail.data('loading', false); });
+    });
+    $('#urovoSummaryRows').on('click', '.js-summary-history', function () { var row = {}; try { row = JSON.parse($(this).attr('data-row') || '{}'); } catch (_) {} openDetail($(this).attr('data-id'), row); });
     function load() {
       var stationId=selectedStation(); var params = $.param({ station_id: stationId, status: $('#urovoStatus').val(), q: $('#urovoSearch').val() });
       request('/inventario-urovo/data/?' + params, 'GET').done(function (data) { if (!data || data.success !== true) { message('No fue posible cargar el inventario.', 'error'); return; } stations = data.stations || []; rows = data.rows || []; fillStations(); $('#urovoStation').val(stationId); renderRows(); renderAnonymous(data.anonymous || []); $('#urovoResultCount').text(rows.length + (rows.length === 1 ? ' terminal' : ' terminales')); }).fail(function () { $('#urovoRows').html('<tr><td colspan="5" class="urovo-empty">No se pudo cargar el inventario. Actualiza para intentar de nuevo.</td></tr>'); message('Error al consultar el inventario.', 'error'); });

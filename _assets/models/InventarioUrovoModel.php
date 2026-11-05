@@ -16,6 +16,51 @@ class InventarioUrovoModel extends Model {
         return $this->sql->select('SELECT Codigo,Nombre FROM [TG].[dbo].[Estaciones] WHERE activa=1 AND Codigo NOT IN (0,4,20) ORDER BY Nombre');
     }
 
+    /** Resumen por estación, agregando cada fuente antes de unirla para evitar multiplicar conteos. */
+    public function summary(): array {
+        return $this->sql->select("SELECT s.Codigo AS station_id,s.Nombre AS station_name,
+                COALESCE(t.terminales_count,0) AS terminales_count,
+                COALESCE(a.sin_serie_count,0) AS sin_serie_count,
+                COALESCE(t.terminales_count,0)+COALESCE(a.sin_serie_count,0) AS total_count
+            FROM [TG].[dbo].[Estaciones] s
+            LEFT JOIN (
+                SELECT estacion_codigo,COUNT(*) AS terminales_count
+                FROM [TG].[dbo].[inv_urovo_terminales]
+                WHERE ubicacion_tipo='estacion' AND estacion_codigo IS NOT NULL
+                GROUP BY estacion_codigo
+            ) t ON t.estacion_codigo=s.Codigo
+            LEFT JOIN (
+                SELECT estacion_codigo,SUM(delta_cantidad) AS sin_serie_count
+                FROM [TG].[dbo].[inv_urovo_existencias_movimientos]
+                WHERE ubicacion_tipo='estacion' AND estacion_codigo IS NOT NULL
+                GROUP BY estacion_codigo
+                HAVING SUM(delta_cantidad)>0
+            ) a ON a.estacion_codigo=s.Codigo
+            WHERE s.activa=1 AND s.Codigo NOT IN (0,4,20)
+            ORDER BY s.Nombre");
+    }
+
+    /** Detalle bajo demanda para una estación activa. */
+    public function summaryDetail(int $stationId): array {
+        $stations=$this->sql->select('SELECT Codigo AS station_id,Nombre AS station_name FROM [TG].[dbo].[Estaciones] WHERE Codigo=? AND activa=1 AND Codigo NOT IN (0,4,20)',[$stationId]);
+        if (!$stations) throw new OutOfBoundsException('Estación inválida.');
+        $terminals=$this->sql->select("SELECT t.id,t.numero_serie,t.modelo,t.condicion,
+                t.ubicacion_tipo,t.estacion_codigo,s.Nombre AS estacion_nombre,
+                lm.fecha_evento AS last_movement
+            FROM [TG].[dbo].[inv_urovo_terminales] t
+            LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=t.estacion_codigo
+            OUTER APPLY (SELECT TOP (1) h.fecha_evento FROM [TG].[dbo].[inv_urovo_movimientos] h WHERE h.terminal_id=t.id ORDER BY h.fecha_evento DESC,h.id DESC) lm
+            WHERE t.ubicacion_tipo='estacion' AND t.estacion_codigo=?
+            ORDER BY t.modelo,t.numero_serie",[$stationId]);
+        $anonymous=$this->sql->select("SELECT m.modelo,m.estado,SUM(m.delta_cantidad) AS cantidad
+            FROM [TG].[dbo].[inv_urovo_existencias_movimientos] m
+            WHERE m.ubicacion_tipo='estacion' AND m.estacion_codigo=?
+            GROUP BY m.modelo,m.estado
+            HAVING SUM(m.delta_cantidad)>0
+            ORDER BY m.modelo,m.estado",[$stationId]);
+        return ['station'=>$stations[0],'terminals'=>$terminals,'anonymous'=>$anonymous];
+    }
+
     public function anonymousHistory(array $key): array {
         return $this->sql->select("SELECT m.*,u.Nombre AS actor_nombre FROM [TG].[dbo].[inv_urovo_existencias_movimientos] m LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id=m.actor_id WHERE m.modelo=? AND m.estado=? AND m.ubicacion_tipo=? AND ISNULL(m.estacion_codigo,0)=? AND ISNULL(m.proveedor,'')=? ORDER BY m.fecha_evento DESC,m.id DESC",[$key['model'],$key['condition'],$key['location_type'],(int)($key['station_id']??0),(string)($key['provider']??'')]);
     }
