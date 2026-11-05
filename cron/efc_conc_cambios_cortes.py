@@ -131,6 +131,34 @@ def scan_station(cursor: pyodbc.Cursor, run_id: int, station: int, first: date, 
                     station, day, turn, concept,
                 )
                 continue
+            # A reversal restores the accepted amount while leaving the latest
+            # ControlGas observation intact. If this exact source revision was
+            # already approved and then reverted, do not manufacture a second
+            # pending row for the same revision. A different observed amount
+            # still follows the normal new-revision path below.
+            reverted_revision = cursor.execute(
+                "SELECT TOP 1 C.id FROM dbo.efc_conc_cortes_cambios C "
+                "WHERE C.estacion_id=? AND C.fecha_operativa=? AND C.turno=? AND C.concepto=? "
+                "AND C.estado='APROBADO' AND C.importe_nuevo=? "
+                "AND C.id=(SELECT TOP 1 C2.id FROM dbo.efc_conc_cortes_cambios C2 "
+                "WHERE C2.estacion_id=C.estacion_id AND C2.fecha_operativa=C.fecha_operativa "
+                "AND C2.turno=C.turno AND C2.concepto=C.concepto ORDER BY C2.detectado_en DESC,C2.id DESC) "
+                "AND EXISTS (SELECT 1 FROM dbo.efc_conc_bitacora R "
+                "WHERE R.accion='AJUSTE_CORTE_CONTROLGAS_REVERTIDO' "
+                "AND TRY_CONVERT(BIGINT,JSON_VALUE(R.detalle,'$.reverted_approval_id'))=C.id "
+                "AND R.id=(SELECT MAX(R2.id) FROM dbo.efc_conc_bitacora R2 "
+                "WHERE (R2.accion='AJUSTE_CORTE_CONTROLGAS' AND TRY_CONVERT(BIGINT,JSON_VALUE(R2.detalle,'$.change_id'))=C.id) "
+                "OR (R2.accion='AJUSTE_CORTE_CONTROLGAS_REVERTIDO' AND TRY_CONVERT(BIGINT,JSON_VALUE(R2.detalle,'$.reverted_approval_id'))=C.id))) "
+                "ORDER BY C.detectado_en DESC,C.id DESC",
+                station, day, turn, concept, observed,
+            ).fetchone()
+            if reverted_revision is not None:
+                cursor.execute(
+                    "UPDATE dbo.efc_conc_cortes_snapshot SET importe_observado=?,observado_en=SYSDATETIME() "
+                    "WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?",
+                    observed, station, day, turn, concept,
+                )
+                continue
             cursor.execute(
                 "UPDATE dbo.efc_conc_cortes_cambios SET estado='SUPERSEDIDO' "
                 "WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=? AND estado='PENDIENTE'",

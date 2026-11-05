@@ -18,19 +18,38 @@ class InventarioUrovoModel extends Model {
 
     /** Resumen por estación, agregando cada fuente antes de unirla para evitar multiplicar conteos. */
     public function summary(): array {
-        return $this->sql->select("SELECT s.Codigo AS station_id,s.Nombre AS station_name,
+        $rows=$this->sql->select("SELECT s.Codigo AS station_id,s.Nombre AS station_name,
                 COALESCE(t.terminales_count,0) AS terminales_count,
                 COALESCE(a.sin_serie_count,0) AS sin_serie_count,
-                COALESCE(t.terminales_count,0)+COALESCE(a.sin_serie_count,0) AS total_count
+                COALESCE(t.operativa,0)+COALESCE(a.operativa,0) AS operativa,
+                COALESCE(t.danada,0)+COALESCE(a.danada,0) AS danada,
+                COALESCE(t.por_diagnosticar,0)+COALESCE(a.por_diagnosticar,0) AS por_diagnosticar,
+                COALESCE(t.desconocida,0)+COALESCE(a.desconocida,0) AS desconocida,
+                COALESCE(t.extraviada,0)+COALESCE(a.extraviada,0) AS extraviada,
+                COALESCE(t.operativa,0)+COALESCE(a.operativa,0)+
+                COALESCE(t.danada,0)+COALESCE(a.danada,0)+
+                COALESCE(t.por_diagnosticar,0)+COALESCE(a.por_diagnosticar,0)+
+                COALESCE(t.desconocida,0)+COALESCE(a.desconocida,0)+
+                COALESCE(t.extraviada,0)+COALESCE(a.extraviada,0) AS total_count
             FROM [TG].[dbo].[Estaciones] s
             LEFT JOIN (
-                SELECT estacion_codigo,COUNT(*) AS terminales_count
+                SELECT estacion_codigo,COUNT(*) AS terminales_count,
+                    SUM(CASE WHEN condicion='operativa' THEN 1 ELSE 0 END) AS operativa,
+                    SUM(CASE WHEN condicion='dañada' THEN 1 ELSE 0 END) AS danada,
+                    SUM(CASE WHEN condicion='por_diagnosticar' THEN 1 ELSE 0 END) AS por_diagnosticar,
+                    SUM(CASE WHEN condicion='desconocida' THEN 1 ELSE 0 END) AS desconocida,
+                    SUM(CASE WHEN condicion='extraviada' THEN 1 ELSE 0 END) AS extraviada
                 FROM [TG].[dbo].[inv_urovo_terminales]
                 WHERE ubicacion_tipo='estacion' AND estacion_codigo IS NOT NULL
                 GROUP BY estacion_codigo
             ) t ON t.estacion_codigo=s.Codigo
             LEFT JOIN (
-                SELECT estacion_codigo,SUM(delta_cantidad) AS sin_serie_count
+                SELECT estacion_codigo,SUM(delta_cantidad) AS sin_serie_count,
+                    SUM(CASE WHEN estado='operativa' THEN delta_cantidad ELSE 0 END) AS operativa,
+                    SUM(CASE WHEN estado='dañada' THEN delta_cantidad ELSE 0 END) AS danada,
+                    SUM(CASE WHEN estado='por_diagnosticar' THEN delta_cantidad ELSE 0 END) AS por_diagnosticar,
+                    SUM(CASE WHEN estado='desconocida' THEN delta_cantidad ELSE 0 END) AS desconocida,
+                    SUM(CASE WHEN estado='extraviada' THEN delta_cantidad ELSE 0 END) AS extraviada
                 FROM [TG].[dbo].[inv_urovo_existencias_movimientos]
                 WHERE ubicacion_tipo='estacion' AND estacion_codigo IS NOT NULL
                 GROUP BY estacion_codigo
@@ -38,6 +57,22 @@ class InventarioUrovoModel extends Model {
             ) a ON a.estacion_codigo=s.Codigo
             WHERE s.activa=1 AND s.Codigo NOT IN (0,4,20)
             ORDER BY s.Nombre");
+        return array_map(static function(array $row): array {
+            return [
+                'station_id'=>$row['station_id'],
+                'station_name'=>$row['station_name'],
+                'terminales_count'=>(int)$row['terminales_count'],
+                'sin_serie_count'=>(int)$row['sin_serie_count'],
+                'total_count'=>(int)$row['total_count'],
+                'conditions'=>[
+                    'operativa'=>(int)$row['operativa'],
+                    'dañada'=>(int)$row['danada'],
+                    'por_diagnosticar'=>(int)$row['por_diagnosticar'],
+                    'desconocida'=>(int)$row['desconocida'],
+                    'extraviada'=>(int)$row['extraviada'],
+                ],
+            ];
+        },$rows);
     }
 
     /** Detalle bajo demanda para una estación activa. */
