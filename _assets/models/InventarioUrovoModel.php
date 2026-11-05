@@ -118,7 +118,7 @@ class InventarioUrovoModel extends Model {
     }
 
     private function terminalMove(int $id, ?array $from, array $to, ?string $oldCondition, ?string $newCondition, string $event, string $reason, int $actor): void {
-        $this->sql->insert('INSERT INTO [TG].[dbo].[inv_urovo_movimientos] (terminal_id,fecha_evento,tipo_evento,ubicacion_origen_tipo,estacion_origen_codigo,proveedor_origen,ubicacion_destino_tipo,estacion_destino_codigo,proveedor_destino,condicion_anterior,condicion_nueva,motivo,actor_id,registrado_en) VALUES (?,SYSDATETIME(),?,?,?,?,?,?,?,?,?,?,SYSDATETIME())',[$id,$event,$from['location_type']??null,$from['station_id']??null,$from['provider']??null,$to['location_type'],$to['station_id'],$to['provider'],$oldCondition,$newCondition,$reason,$actor]);
+        $this->sql->insert('INSERT INTO [TG].[dbo].[inv_urovo_movimientos] (terminal_id,fecha_evento,tipo_evento,ubicacion_origen_tipo,estacion_origen_codigo,proveedor_origen,ubicacion_destino_tipo,estacion_destino_codigo,proveedor_destino,condicion_anterior,condicion_nueva,motivo,actor_id,registrado_en) VALUES (?,SYSDATETIME(),?,?,?,?,?,?,?,?,?,?,?,SYSDATETIME())',[$id,$event,$from['location_type']??null,$from['station_id']??null,$from['provider']??null,$to['location_type'],$to['station_id'],$to['provider'],$oldCondition,$newCondition,$reason,$actor]);
     }
     private function stockMove(string $model, int $delta, array $location, string $reason, int $actor, string $condition='desconocida'): void {
         if ($delta < 0) {
