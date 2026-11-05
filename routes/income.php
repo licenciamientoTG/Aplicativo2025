@@ -30,6 +30,7 @@ return [
         route('efc_conc_cambios_previsualizar', [Income::class, 'efc_conc_cambios_previsualizar'], name: 'income.efc_conc_cambios_previsualizar', methods: ['GET'], permission: 14),
         route('efc_conc_cortes_aceptados', [Income::class, 'efc_conc_cortes_aceptados'], name: 'income.efc_conc_cortes_aceptados', methods: ['GET'], permission: 14),
         route('efc_conc_cambios_decidir', [Income::class, 'efc_conc_cambios_decidir'], name: 'income.efc_conc_cambios_decidir', methods: ['POST'], permission: 14),
+        route('efc_conc_cambios_revertir', [Income::class, 'efc_conc_cambios_revertir'], name: 'income.efc_conc_cambios_revertir', methods: ['POST'], permission: 14),
 
         // Valeras: consumo diario del corte por razón social (permiso 14 como Conciliación)
         route('valeras/', [Income::class, 'valeras'], name: 'income.valeras', methods: ['GET'], permission: 14),

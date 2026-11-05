@@ -7675,6 +7675,20 @@ public function stamped_invoices_detail(): void
         exit;
     }
 
+    /** Revert a still-current approved ControlGas cut change. */
+    public function efc_conc_cambios_revertir(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);if(!is_array($data))throw new RuntimeException('Solicitud inválida.');
+            $changeId=(int)($data['id']??0);if($changeId<1)throw new RuntimeException('Cambio inválido.');
+            $candidate=$this->efcConciliacion->pendingCutChange($changeId);if(!$candidate||$candidate['estado']!=='APROBADO')throw new RuntimeException('Solo se puede revertir un cambio APROBADO.');
+            $allowed=array_values(array_diff(EfcConciliacionModel::stationIds('DIAZ GAS'),[40]));if(!in_array((int)$candidate['estacion_id'],$allowed,true))throw new RuntimeException('Estación fuera del alcance del monitor.');
+            $result=$this->efcConciliacion->revertApprovedCutChange($changeId,(int)($_SESSION['tg_user']['Id']??0));
+            echo json_encode(['status'=>'success','data'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
+        exit;
+    }
+
     /** Normaliza valores Banorte para que la huella no dependa del formato de Excel/CSV. */
     private function normalizar_valor_huella_banorte($valor, bool $quitarDecimalEntero = false): string {
         if ($valor === null || is_array($valor) || is_object($valor)) return '';
