@@ -40,6 +40,8 @@ let ocultarVaciasEstacion = prefsGuardadas.ocultarVaciasEstacion || false;
 let ocultarVaciosTerminal = prefsGuardadas.ocultarVaciosTerminal || false;
 // Filtro por turno: no se persiste -- se reinicia a "Todos" al recargar.
 let turnoFiltroActivo = '';
+// Filtro de llegada: '' (sin filtro) | 'Recibido' | 'NoLlego' | 'Pendiente'
+let estatusFiltroActivo = '';
 // Búsqueda por nombre de estación: tampoco se persiste.
 let busquedaEstacion = '';
 
@@ -343,9 +345,16 @@ function tarjetaGrupo(titulo, subtotal, filasHtml, encabezados, colorBorde, peso
     `;
 }
 
-function filasFiltradas() {
+function categoriaLlegada(f) {
+    return (f.estatus === 'Recibido' || f.estatus === 'NoLlego') ? f.estatus : 'Pendiente';
+}
+
+// sinEstatus=true ignora el filtro de llegada (lo usa "Resumen de llegadas",
+// que si no mostraría ceros en las otras categorías al filtrar una).
+function filasFiltradas(sinEstatus) {
     return ultimasFilas.filter(function (f) {
         if (proveedorFiltroActivo && String(f.supplier_id) !== String(proveedorFiltroActivo)) return false;
+        if (!sinEstatus && estatusFiltroActivo && categoriaLlegada(f) !== estatusFiltroActivo) return false;
         // Turno (T1/T2/T3) vive en la columna hora; las filas capturadas con
         // horario real no tienen turno y quedan fuera al elegir uno.
         if (turnoFiltroActivo && String(f.hora || '').toUpperCase() !== turnoFiltroActivo) return false;
@@ -703,6 +712,10 @@ function renderResumenLlegadas(filas) {
         g[k].litros += Number(f.litros) || 0;
         g[k].filas.push(f);
     });
+    // Conteo resumido en el propio botón, visible sin abrir el card.
+    $('#cntLlegaron').text(g.Recibido.n);
+    $('#cntNoLlegaron').text(g.NoLlego.n);
+    $('#cntPendientes').text(g.Pendiente.n);
     function tarjeta(titulo, color, d) {
         const items = d.filas.slice().sort(function (a, b) {
             return String(a.supplier_nombre || '').localeCompare(String(b.supplier_nombre || ''), 'es')
@@ -938,7 +951,7 @@ function renderizarTodo() {
     const filas = filasFiltradas();
     actualizarTotalDia(filas);
     renderResumenProveedores(filas);
-    renderResumenLlegadas(filas);
+    renderResumenLlegadas(filasFiltradas(true));
     if (agrupacionActiva === 'inventarios') {
         renderPlanInventarios(filas);
     } else if (agrupacionActiva === 'estacion') {
@@ -1141,17 +1154,45 @@ $(document).ready(function () {
 
     // Clic en el botón: alterna el panel (necesario en táctil, donde no hay
     // hover). Clic fuera lo cierra.
-    $('#btnFiltroProveedor').on('click', function (e) {
+    // Aplica a los dos desplegables (proveedor y llegada).
+    $('#btnFiltroProveedor, #btnFiltroEstatus').on('click', function (e) {
         e.stopPropagation();
-        const abierto = $('#filtroProveedorWrap').toggleClass('abierto').hasClass('abierto');
+        const wrap = $(this).closest('.filtro-prov-wrap');
+        $('.filtro-prov-wrap').not(wrap).removeClass('abierto');
+        const abierto = wrap.toggleClass('abierto').hasClass('abierto');
         $(this).attr('aria-expanded', abierto);
     });
     $(document).on('click', function (e) {
-        if (!$(e.target).closest('#filtroProveedorWrap').length) {
-            $('#filtroProveedorWrap').removeClass('abierto');
-            $('#btnFiltroProveedor').attr('aria-expanded', false);
+        if (!$(e.target).closest('.filtro-prov-wrap').length) {
+            $('.filtro-prov-wrap').removeClass('abierto');
+            $('#btnFiltroProveedor, #btnFiltroEstatus').attr('aria-expanded', false);
         }
     });
+
+    const ETIQUETA_ESTATUS = { Recibido: 'Llegaron', NoLlego: 'No llegaron', Pendiente: 'Pendientes' };
+    function pintarFiltroEstatus() {
+        $('.btn-filtro-estatus').each(function () {
+            const b = $(this);
+            const activo = b.data('estatus') === estatusFiltroActivo;
+            const color = b.data('color');
+            b.toggleClass('active', activo)
+                .css({ borderColor: color, color: activo ? '#fff' : color, backgroundColor: activo ? color : '#fff' });
+        });
+        $('#btnFiltroEstatus').toggleClass('con-filtro', !!estatusFiltroActivo);
+        $('#filtroEstatusEtiqueta').text(ETIQUETA_ESTATUS[estatusFiltroActivo] || '').toggle(!!estatusFiltroActivo);
+    }
+    $(document).on('click', '.btn-filtro-estatus', function () {
+        const e = $(this).data('estatus');
+        estatusFiltroActivo = (estatusFiltroActivo === e) ? '' : e;
+        pintarFiltroEstatus();
+        renderizarTodo();
+    });
+    $('#btnQuitarFiltroEstatus').on('click', function () {
+        estatusFiltroActivo = '';
+        pintarFiltroEstatus();
+        renderizarTodo();
+    });
+    pintarFiltroEstatus();
 
     // ---- Modal "Marcar varias": recepciones del día en una sola tabla ----
     // Pestaña activa = estatus destino ('Recibido' | 'NoLlego' | 'Programado').

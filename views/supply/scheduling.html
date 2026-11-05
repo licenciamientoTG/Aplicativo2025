@@ -45,7 +45,9 @@
     @media (hover: hover) {
         .filtro-prov-wrap:hover .filtro-prov-panel { display: block; }
     }
-    #btnFiltroProveedor.con-filtro { border-color: #009559; color: #009559; }
+    #btnFiltroProveedor.con-filtro, #btnFiltroEstatus.con-filtro { border-color: #009559; color: #009559; }
+    .btn-filtro-estatus { border: 1px solid; background: #fff; text-align: left; }
+    .btn-filtro-estatus.active { color: #fff !important; }
     /* El borde por defecto de Bootstrap (rgba(0,0,0,.125)) es demasiado
        sutil para distinguir dónde termina una tarjeta de la siguiente,
        sobre todo abajo donde no hay header de color que marque el límite. */
@@ -178,7 +180,7 @@
         #btnOcultarVaciosTerminal, #btnOcultarVacias { order: 1; }
         .sch-turno { order: 2; margin-left: auto; }
         .sch-columnas { display: none !important; }
-        #filtroProveedorWrap { order: 1; }
+        #filtroProveedorWrap, #filtroEstatusWrap { order: 1; }
         .btn-filtro-proveedor { white-space: nowrap; padding: .45rem .85rem; }
         .sch-buscar { flex: 0 0 100%; max-width: 100%; }
         .sch-buscar .input-group { width: 100% !important; }
@@ -303,6 +305,11 @@
                         </button>
                     </div>
                     <div class="col-auto sch-sec">
+                        <button type="button" class="btn btn-outline-secondary" id="btnMarcarVarias" title="Marcar varias recepciones (llegaron / no llegaron / desmarcar)">
+                            <i data-feather="check-square"></i> Marcar
+                        </button>
+                    </div>
+                    <div class="col-auto sch-sec">
                         <button type="button" class="btn btn-outline-secondary" id="btnExportarExcel"title="Exportar a Excel lo que se está viendo (respeta filtros activos)">
                             <i data-feather="download"></i> Exportar
                         </button>
@@ -330,6 +337,11 @@
                     data-bs-toggle="collapse" data-bs-target="#resumenLlegadas" aria-expanded="false" aria-controls="resumenLlegadas">
                     <i data-feather="check-square" style="width:15px;height:15px;"></i>
                     Resumen de llegadas
+                    <span id="conteoLlegadasBoton" class="d-inline-flex align-items-center gap-1">
+                        <span class="badge bg-success" id="cntLlegaron" title="Llegaron">0</span>
+                        <span class="badge bg-danger" id="cntNoLlegaron" title="No llegaron">0</span>
+                        <span class="badge" id="cntPendientes" title="Pendientes" style="background:#f59e0b;">0</span>
+                    </span>
                     <i data-feather="chevron-down" class="icono-colapso" style="width:15px;height:15px;"></i>
                 </button>
                 <div class="collapse" id="resumenProveedores">
@@ -373,9 +385,23 @@
                                 </div>
                             </div>
                         </div>
-                        <button type="button" id="btnMarcarVarias" class="btn btn-outline-secondary btn-accion-icono" title="Marcar varias recepciones como recibidas">
-                            <i data-feather="check-square"></i>
-                        </button>
+                        <div id="filtroEstatusWrap" class="filtro-prov-wrap">
+                            <button type="button" id="btnFiltroEstatus" class="btn btn-outline-secondary btn-accion-icono d-inline-flex align-items-center gap-1" title="Filtrar por llegada" aria-haspopup="true" aria-expanded="false">
+                                <i data-feather="check-circle"></i>
+                                <span id="filtroEstatusEtiqueta" class="small" style="display:none;"></span>
+                            </button>
+                            <div class="filtro-prov-panel">
+                                <div class="filtro-prov-caja">
+                                    <div class="small text-muted mb-2">Llegada</div>
+                                    <div class="d-flex flex-column gap-1">
+                                        <button type="button" class="btn btn-sm btn-filtro-estatus" data-estatus="Recibido" data-color="#009559">Llegaron</button>
+                                        <button type="button" class="btn btn-sm btn-filtro-estatus" data-estatus="NoLlego" data-color="#dc3545">No llegaron</button>
+                                        <button type="button" class="btn btn-sm btn-filtro-estatus" data-estatus="Pendiente" data-color="#f59e0b">Pendientes</button>
+                                        <button type="button" class="btn btn-sm btn-link text-muted text-start px-0" id="btnQuitarFiltroEstatus">Quitar filtro</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <div class="d-flex align-items-center gap-2 sch-columnas">
                             <label class="text-muted mb-0 small">Columnas:</label>
                             <div class="btn-group btn-group-sm" role="group">
