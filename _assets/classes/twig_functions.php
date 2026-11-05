@@ -207,6 +207,17 @@ $terminal_inventory_stock_report_access = new \Twig\TwigFunction('terminal_inven
 });
 $twig->addFunction($terminal_inventory_stock_report_access);
 
+$inventario_urovo_access = new \Twig\TwigFunction('inventario_urovo_access', function () {
+    if (empty($_SESSION['tg_user']['Id']) || !class_exists('InventarioUrovoModel')) return false;
+    try {
+        return (new InventarioUrovoModel())->hasAccess();
+    } catch (Throwable $e) {
+        error_log('Twig Inventario UROVO: no fue posible validar acceso: ' . $e->getMessage());
+        return false;
+    }
+});
+$twig->addFunction($inventario_urovo_access);
+
 // Permisos de Tableros: se resuelven en TG por nombre y asignación vigente.
 $tableros_access = new \Twig\TwigFunction('tableros_access', function ($key = 'access') {
     if (empty($_SESSION['tg_user']['Id'])) {

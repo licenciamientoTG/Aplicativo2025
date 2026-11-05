@@ -376,6 +376,7 @@
             <a class="sidebar-link" href="/accounting/movimientos_bancos">Movimientos Bancos</a>
           </li>
           {% endif %}
+          {% if for_sistemas() %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/accounting/credit_notes_consumption">Notas de Crédito vs Consumos</a>
           </li>
@@ -905,7 +906,7 @@
       {% endif %}
 
 
-      {% if authorized(3) or for_sistemas() %}
+      {% if authorized(3) or for_sistemas() or inventario_urovo_access() %}
       <li class="sidebar-header">SISTEMAS</li>
       {% if authorized(22) or for_sistemas() %}
       <li class="sidebar-item">
@@ -951,7 +952,16 @@
           {% endif %}
         </ul>
       </li>
-      {% endif %} {% if authorized(4) %}
+      {% endif %}
+      {% if inventario_urovo_access() %}
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/inventario-urovo/">
+          <i data-feather="smartphone"></i>
+          <span class="align-middle">Inventario UROVO</span>
+        </a>
+      </li>
+      {% endif %}
+      {% if authorized(4) %}
       <li class="sidebar-item">
         <a class="sidebar-link" href="/it/users">
           <i data-feather="users"></i>
