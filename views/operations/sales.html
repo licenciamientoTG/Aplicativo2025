@@ -1,4 +1,24 @@
 {% extends "views/layouts/base.html" %}
+{% macro sales_table(table_id, start_date, end_date, measure) %}
+    {% set stations = ['02 LERDO', '03 DELICIAS', '04 PARRAL', '05 LOPEZ MATEOS', '06 GEMELA CHICA', '07 GEM GRANDE', '08 PLUTARCO', '09 MPIO. LIBRE', '10 AZTECAS', '11 MISIONES', '12 PTO DE PALOS', '13 MIGUEL D MAD', '14 PERMUTA', '15 ELECTROLUX', '16 AERONAUTICA', '17 CUSTODIA', '18 ANAPRA', '19 INDEPENDENCI', '20 TECNOLOGICO', '21 EJERCITO NAL', '22 SATELITE', '23 LAS FUENTES', '24 CLARA', '25 SOLIS', '26 SANTIAGO TRO', '27 JARUDO', '28 HERMANOS ESC', '29 VILLA AHUMAD', '30 EL CASTAÑO', '31 TRAVEL CENTER', '32 PICACHOS', '33 VENTANAS', '34 SAN RAFAEL', '35 PUERTECITO', '36 JESUS MARIA', '37 GABRIELA MIS', '38 PRAXEDIS', 'TOTAL'] %}
+    <table class="table table-striped table-sm table-responsive" style="font-size: x-small;" id="{{ table_id }}" data-from="{{ start_date }}" data-until="{{ end_date }}" data-measure="{{ measure }}">
+        <thead>
+            <tr>
+                <th>FECHA</th>
+                <th>PRODUCTO</th>
+                {% for station in stations %}<th>{{ station }}</th>{% endfor %}
+            </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+            <tr>
+                <th>FECHA</th>
+                <th>PRODUCTO</th>
+                {% for station in stations %}<th>{{ station }}</th>{% endfor %}
+            </tr>
+        </tfoot>
+    </table>
+{% endmacro %}
 {% block title %}Operaciones{% endblock %}
 {% block mycss %}{% endblock %}
 {% block menutitle %}Reporte de ventas{% endblock %}
@@ -108,103 +128,27 @@
                 <div class="row">
                     <div class="col-12">
                         {% if from is defined %}
-                        <div class="card">
-                            <div class="card-header">
-                                <h5 class="card-title">Ventas</h5>
+                        <ul class="nav nav-tabs mb-3" id="salesReportTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="sales-liters-tab" data-bs-toggle="tab" data-bs-target="#sales-liters-pane" type="button" role="tab" aria-controls="sales-liters-pane" aria-selected="true">Litros</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="sales-amount-tab" data-bs-toggle="tab" data-bs-target="#sales-amount-pane" type="button" role="tab" aria-controls="sales-amount-pane" aria-selected="false">Importe ($)</button>
+                            </li>
+                        </ul>
+                        <div class="tab-content">
+                            <div class="tab-pane fade show active" id="sales-liters-pane" role="tabpanel" aria-labelledby="sales-liters-tab" tabindex="0">
+                                <div class="card">
+                                    <div class="card-header"><h5 class="card-title mb-0">Ventas en litros</h5></div>
+                                    <div class="card-body p-2">{{ _self.sales_table('sales_table', from, until, 'liters') }}</div>
+                                </div>
                             </div>
-                            <table class="table table-striped table-sm table-responsive" style="font-size: x-small;" id="sales_table" data-from="{{ from }}" data-until="{{ until }}">
-                                <thead>
-                                    <tr>
-                                        <th>FECHA</th>
-                                        <th>PRODUCTO</th>
-                                        <th>02 LERDO</th>
-                                        <th>03 DELICIAS</th>
-                                        <th>04 PARRAL</th>
-                                        <th>05 LOPEZ MATEOS</th>
-                                        <th>06 GEMELA CHICA</th>
-                                        <th>07 GEM GRANDE</th>
-                                        <th>08 PLUTARCO</th>
-                                        <th>09 MPIO. LIBRE</th>
-                                        <th>10 AZTECAS</th>
-                                        <th>11 MISIONES</th>
-                                        <th>12 PTO DE PALOS</th>
-                                        <th>13 MIGUEL D MAD</th>
-                                        <th>14 PERMUTA</th>
-                                        <th>15 ELECTROLUX</th>
-                                        <th>16 AERONAUTICA</th>
-                                        <th>17 CUSTODIA</th>
-                                        <th>18 ANAPRA</th>
-                                        <th>19 INDEPENDENCI</th>
-                                        <th>20 TECNOLOGICO</th>
-                                        <th>21 EJERCITO NAL</th>
-                                        <th>22 SATELITE</th>
-                                        <th>23 LAS FUENTES</th>
-                                        <th>24 CLARA</th>
-                                        <th>25 SOLIS</th>
-                                        <th>26 SANTIAGO TRO</th>
-                                        <th>27 JARUDO</th>
-                                        <th>28 HERMANOS ESC</th>
-                                        <th>29 VILLA AHUMAD</th>
-                                        <th>30 EL CASTAÑO</th>
-                                        <th>31 TRAVEL CENTER</th>
-                                        <th>32 PICACHOS</th>
-                                        <th>33 VENTANAS</th>
-                                        <th>34 SAN RAFAEL</th>
-                                        <th>35 PUERTECITO</th>
-                                        <th>36 JESUS MARIA</th>
-                                        <th>37 GABRIELA MIS</th>
-                                        <th>38 PRAXEDIS</th>
-                                        <th>TOTAL</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-
-                                </tbody>
-                                <tfoot>
-                                <tr>
-                                    <th>FECHA</th>
-                                    <th>PRODUCTO</th>
-                                    <th>02 LERDO</th>
-                                    <th>03 DELICIAS</th>
-                                    <th>04 PARRAL</th>
-                                    <th>05 LOPEZ MATEOS</th>
-                                    <th>06 GEMELA CHICA</th>
-                                    <th>07 GEM GRANDE</th>
-                                    <th>08 PLUTARCO</th>
-                                    <th>09 MPIO. LIBRE</th>
-                                    <th>10 AZTECAS</th>
-                                    <th>11 MISIONES</th>
-                                    <th>12 PTO DE PALOS</th>
-                                    <th>13 MIGUEL D MAD</th>
-                                    <th>14 PERMUTA</th>
-                                    <th>15 ELECTROLUX</th>
-                                    <th>16 AERONAUTICA</th>
-                                    <th>17 CUSTODIA</th>
-                                    <th>18 ANAPRA</th>
-                                    <th>19 INDEPENDENCI</th>
-                                    <th>20 TECNOLOGICO</th>
-                                    <th>21 EJERCITO NAL</th>
-                                    <th>22 SATELITE</th>
-                                    <th>23 LAS FUENTES</th>
-                                    <th>24 CLARA</th>
-                                    <th>25 SOLIS</th>
-                                    <th>26 SANTIAGO TRO</th>
-                                    <th>27 JARUDO</th>
-                                    <th>28 HERMANOS ESC</th>
-                                    <th>29 VILLA AHUMAD</th>
-                                    <th>30 EL CASTAÑO</th>
-                                    <th>31 TRAVEL CENTER</th>
-                                    <th>32 PICACHOS</th>
-                                    <th>33 VENTANAS</th>
-                                    <th>34 SAN RAFAEL</th>
-                                    <th>35 PUERTECITO</th>
-                                    <th>36 JESUS MARIA</th>
-                                    <th>37 GABRIELA MIS</th>
-                                    <th>38 PRAXEDIS</th>
-                                    <th>TOTAL</th>
-                                </tr>
-                                </tfoot>
-                            </table>
+                            <div class="tab-pane fade" id="sales-amount-pane" role="tabpanel" aria-labelledby="sales-amount-tab" tabindex="0">
+                                <div class="card">
+                                    <div class="card-header"><h5 class="card-title mb-0">Ventas en pesos</h5></div>
+                                    <div class="card-body p-2">{{ _self.sales_table('sales_amount_table', from, until, 'amount') }}</div>
+                                </div>
+                            </div>
                         </div>
                         {% else %}
                         <div class="alert alert-warning alert-dismissible mt-2" role="alert">

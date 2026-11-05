@@ -7632,6 +7632,18 @@ public function stamped_invoices_detail(): void
         exit;
     }
 
+    /** Current and projected reconciliation differences before approving a cut revision. */
+    public function efc_conc_cambios_previsualizar(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $id=(int)($_GET['id']??0);if($id<1)throw new RuntimeException('Cambio inválido.');
+            $preview=$this->efcConciliacion->previewCutChange($id);
+            $allowed=array_values(array_diff(EfcConciliacionModel::stationIds('DIAZ GAS'),[40]));if(!in_array((int)$preview['estacion_id'],$allowed,true))throw new RuntimeException('Estación fuera del alcance del monitor.');
+            echo json_encode(['status'=>'success','data'=>$preview],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
+        exit;
+    }
+
     /** Applies the latest accepted ControlGas amount to the reconciliation board. */
     public function efc_conc_cortes_aceptados(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
@@ -7763,12 +7775,17 @@ public function stamped_invoices_detail(): void
     }
     public function efc_conc_transitos(): void {
         ob_clean(); header('Content-Type: application/json');
-        try { $data=$this->efcConciliacion->activeTransits((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0)); echo json_encode(['status'=>'success','data'=>$data]); }
+        try { $data=$this->efcConciliacion->activeTransits((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0),(string)($_GET['empresa']??'DIAZ GAS')); echo json_encode(['status'=>'success','data'=>$data]); }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
     public function efc_conc_transito_crear(): void {
         ob_clean(); header('Content-Type: application/json');
         try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $ids=$this->efcConciliacion->createTransits((int)($data['station_id']??0),is_array($data['turns']??null)?$data['turns']:[],(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','ids'=>$ids]); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+    public function efc_conc_transito_crear_lote(): void {
+        ob_clean(); header('Content-Type: application/json');
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $ids=$this->efcConciliacion->createTransitsBatch(is_array($data['groups']??null)?$data['groups']:[],(string)($data['empresa']??''),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','ids'=>$ids]); }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
     public function efc_conc_transito_cancelar(): void {
@@ -7977,14 +7994,27 @@ public function stamped_invoices_detail(): void
 
     public function efc_conc_analiticos_periodo(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
-        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->period((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0))]); }
+        try {
+            $station=(int)($_GET['estacion_id']??0); $year=(int)($_GET['year']??0); $month=(int)($_GET['month']??0);
+            $data=[]; $stations=$station>0?[$station]:EfcConciliacionModel::stationIds('DIAZ GAS');
+            foreach($stations as $id) foreach($this->efcAnaliticos->period($id,$year,$month) as $row){$row['station_id']=$id;$data[]=$row;}
+            echo json_encode(['status'=>'success','data'=>$data]);
+        }
         catch (Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
         exit;
     }
 
     public function efc_conc_analiticos_bandeja(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
-        try { echo json_encode(['status'=>'success','data'=>$this->efcAnaliticos->workspace((int)($_GET['estacion_id']??0),(int)($_GET['year']??0),(int)($_GET['month']??0),(string)($_GET['empresa']??''))]); }
+        try {
+            $station=(int)($_GET['estacion_id']??0); $year=(int)($_GET['year']??0); $month=(int)($_GET['month']??0);
+            $company=strtoupper(trim((string)($_GET['empresa']??($station>0?(EfcConciliacionModel::stationCompany($station)??'DIAZ GAS'):'DIAZ GAS'))));
+            if(!in_array($company,['DIAZ GAS','FORANEAS','GASOMEX'],true)) throw new RuntimeException('Empresa inválida.');
+            if($station>0 && EfcConciliacionModel::stationCompany($station)!==$company) throw new RuntimeException('Estación fuera de la empresa seleccionada.');
+            $result=['papers'=>[],'links'=>[]]; $stations=$station>0?[$station]:EfcConciliacionModel::stationIds($company);
+            foreach($stations as $id){$part=$this->efcAnaliticos->workspace($id,$year,$month,$company); foreach($part['papers'] as &$row)$row['station_id']=$id; unset($row); foreach($part['links'] as &$row)$row['station_id']=$id; unset($row); $result['papers']=array_merge($result['papers'],$part['papers']);$result['links']=array_merge($result['links'],$part['links']);}
+            echo json_encode(['status'=>'success','data'=>$result]);
+        }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
 
@@ -8181,7 +8211,7 @@ public function stamped_invoices_detail(): void
             $suffixes = EfcConciliacionModel::allAccountSuffixes();
             $accountWhere = implode(' OR ', array_fill(0, count($suffixes), "RIGHT(UPPER(REPLACE(REPLACE(ISNULL(M.cuenta,''), '-', ''), ' ', '')), LEN(?)) = ?"));
             $stmt = $conn->prepare(
-                "SELECT M.id, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, ISNULL(OG.capturado, 0) AS one_goal, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled, CG_MATCH.controlgas_matches
+                "SELECT M.id, M.secuencia, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, ISNULL(OG.capturado, 0) AS one_goal, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled, CG_MATCH.controlgas_matches
                  FROM [TG].[dbo].[movimientos_bancarios] M
                  LEFT JOIN [TG].[dbo].[efc_conc_one_goal_movimientos] OG ON OG.movimiento_bancario_id=M.id
                  OUTER APPLY (
@@ -8312,6 +8342,7 @@ public function stamped_invoices_detail(): void
                 if (!$todasEstaciones && $estacion && $estacion['station_id'] !== $estacionId) continue;
                 $movimientos[] = [
                     'id'                => 'mb_' . (int)$mov['id'],
+                    'numero_movimiento' => $mov['secuencia'] ?? null,
                     'fecha'             => $fecha,
                     'banco'             => trim((string)$mov['banco']),
                     'cuenta'            => $mov['cuenta'],

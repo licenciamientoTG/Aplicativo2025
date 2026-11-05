@@ -376,11 +376,13 @@
             <a class="sidebar-link" href="/accounting/movimientos_bancos">Movimientos Bancos</a>
           </li>
           {% endif %}
+          {% if for_sistemas() %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/accounting/credit_notes_consumption">Notas de Crédito vs Consumos</a>
           </li>
         </ul>
       </li>
+      {% endif %}
       {% endif %}
       <li class="sidebar-item">
         <a data-bs-target="#accounting_credit" data-bs-toggle="collapse" class="sidebar-link collapsed"
@@ -852,9 +854,9 @@
       {% endif %}
 
       {% if authorized(41) or authorized(79) or authorized(80) or authorized(87) or authorized(88) or authorized(89) or
-      authorized(92) %} {# Ver módulo de Tesorería #}
+      authorized(92) or authorized(114) %} {# Ver módulo de Tesorería #}
       <li class="sidebar-header">TESORERÍA</li>
-      {% if authorized(80) or authorized(87) or authorized(89) or authorized(92) %}
+      {% if authorized(80) or authorized(87) or authorized(89) or authorized(92) or authorized(114) %}
       <li class="sidebar-item">
         <a class="sidebar-link" href="/tesoreria/movimientos_bancos">
           <i data-feather="credit-card"></i>
@@ -905,7 +907,7 @@
       {% endif %}
 
 
-      {% if authorized(3) or for_sistemas() %}
+      {% if authorized(3) or for_sistemas() or inventario_urovo_access() %}
       <li class="sidebar-header">SISTEMAS</li>
       {% if authorized(22) or for_sistemas() %}
       <li class="sidebar-item">
@@ -951,7 +953,16 @@
           {% endif %}
         </ul>
       </li>
-      {% endif %} {% if authorized(4) %}
+      {% endif %}
+      {% if inventario_urovo_access() %}
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/inventario-urovo/">
+          <i data-feather="smartphone"></i>
+          <span class="align-middle">Inventario UROVO</span>
+        </a>
+      </li>
+      {% endif %}
+      {% if authorized(4) %}
       <li class="sidebar-item">
         <a class="sidebar-link" href="/it/users">
           <i data-feather="users"></i>

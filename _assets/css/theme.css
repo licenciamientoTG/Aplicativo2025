@@ -567,6 +567,28 @@ html[data-theme="light"] body #workspaceManagement .boards-visibility-identity h
 html[data-theme="light"] body #workspaceManagement .boards-visibility-identity p { color: #687987 !important; }
 html[data-theme="light"] body #workspaceManagement .boards-detail-status { color: #687987 !important; }
 
+/* Detached column pickers inherit their colors from the active page theme. */
+html[data-theme="light"] body .boards-tags-trigger { color: #344957; }
+html[data-theme="light"] body .boards-tags-trigger:hover,
+html[data-theme="light"] body .boards-tags-trigger[aria-expanded="true"] { border-color: #d7e1e5; background: #f8fafb; }
+html[data-theme="light"] body .boards-tags-chip { color: #344957; background: #f0f3f5; }
+html[data-theme="light"] body .boards-tags-overflow,
+html[data-theme="light"] body .boards-tags-placeholder { color: #71828c; }
+html[data-theme="light"] body .boards-tags-add { border-color: #d7e1e5; color: #66808d; background: #fff; }
+html[data-theme="light"] body .boards-tags-menu { border-color: #d1dce1; color: #344957; background: #fff; box-shadow: 0 10px 30px rgb(28 49 62 / 22%); color-scheme: light; }
+html[data-theme="light"] body .boards-tags-search { border-color: #d5e0e5; color: #344957; background: #fff; color-scheme: light; }
+html[data-theme="light"] body .boards-tags-option { border-color: transparent; color: #344957; background: #fff; }
+html[data-theme="light"] body .boards-tags-option:hover,
+html[data-theme="light"] body .boards-tags-option[aria-pressed="true"] { border-color: #e1e8ec; background: #f4f7f8; }
+html[data-theme="light"] body .boards-tags-footer { border-top-color: #e4eaed; }
+html[data-theme="light"] body .boards-tags-manage { color: #587483; }
+html[data-theme="light"] body .boards-tags-manage:hover { color: #166d78; }
+html[data-theme="light"] body .boards-tags-cancel { border-color: #d4dee3; color: #506673; background: #fff; }
+html[data-theme="light"] body .boards-tags-cancel:hover { background: #f4f7f8; }
+html[data-theme="light"] body .boards-status-menu { border-color: #d1dce1; background: #fff; box-shadow: 0 10px 28px rgb(28 49 62 / 22%); }
+html[data-theme="light"] body .boards-status-manage-labels { border-color: #d4dee3; color: #506673; background: #f7fafb; }
+html[data-theme="light"] body .boards-status-manage-labels:hover { border-color: #9db8c5; color: #263f4d; background: #edf4f6; }
+
 @media (max-width: 575.98px) {
   .theme-switch-item { padding: 0 .2rem; }
   .theme-switch { gap: .25rem; }

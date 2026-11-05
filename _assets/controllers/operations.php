@@ -1912,11 +1912,12 @@ class Operations{
         $data = [];
         $from   = $_GET['from'];
         $until  = $_GET['until'];
+        $amount = ($_GET['measure'] ?? 'liters') === 'amount';
 
         $sales  = [];
 
         for ($i=$from; $i <= $until; $i++) {
-            $response = $this->ventasModel->get_sales($i);
+            $response = $this->ventasModel->get_sales($i, $amount);
 
             $response[0]['Producto'] = 'Diesel Automotriz';
             $response[1]['Producto'] = 'T-Maxima Regular';

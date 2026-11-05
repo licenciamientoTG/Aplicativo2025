@@ -171,6 +171,20 @@ class EfcConciliacionModel {
         $q=$this->db->prepare("SELECT id,estacion_id,CONVERT(VARCHAR(10),fecha_operativa,23) AS fecha_operativa,turno,concepto,importe_nuevo,estado FROM dbo.efc_conc_cortes_cambios WHERE id=?");$q->execute([$changeId]);$row=$q->fetch(PDO::FETCH_ASSOC);if(!$row)return null;$row['id']=(int)$row['id'];$row['estacion_id']=(int)$row['estacion_id'];$row['importe_nuevo']=(float)$row['importe_nuevo'];return $row;
     }
 
+    /** Current reconciliation links and the projected differences for a pending cut revision. */
+    public function previewCutChange(int $changeId): array {
+        $q=$this->db->prepare("SELECT C.id,C.estacion_id,CONVERT(VARCHAR(10),C.fecha_operativa,23) fecha_operativa,C.turno,C.concepto,C.importe_anterior,C.importe_nuevo,C.estado,S.importe_aceptado FROM dbo.efc_conc_cortes_cambios C JOIN dbo.efc_conc_cortes_snapshot S ON S.estacion_id=C.estacion_id AND S.fecha_operativa=C.fecha_operativa AND S.turno=C.turno AND S.concepto=C.concepto WHERE C.id=?");$q->execute([$changeId]);$c=$q->fetch(PDO::FETCH_ASSOC);
+        if(!$c||$c['estado']!=='PENDIENTE')throw new RuntimeException('El cambio ya fue resuelto o no existe.');
+        $station=(int)$c['estacion_id'];$date=(string)$c['fecha_operativa'];$turn=(string)$c['turno'];$concept=(string)$c['concepto'];$key='cg-'.$station.'-'.$date.'-'.$turn.'-'.$concept;
+        $v=$this->db->prepare("SELECT V.papeleta_id,V.papeleta_secundaria_id,V.tipo_cambio_usd,P.remesa_numero remesa,P.real_mn,P.real_usd,P2.remesa_numero remesa2,P2.real_mn real_mn2,P2.real_usd real_usd2 FROM dbo.efc_conc_analiticos_vinculos V LEFT JOIN dbo.efc_conc_analiticos_papeletas P ON P.id=V.papeleta_id LEFT JOIN dbo.efc_conc_analiticos_papeletas P2 ON P2.id=V.papeleta_secundaria_id WHERE V.estacion_id=? AND V.fecha_cg=? AND V.turno=? AND V.concepto=? AND V.activo=1");$v->execute([$station,$date,$turn,$concept]);$link=$v->fetch(PDO::FETCH_ASSOC)?:[];
+        $g=$this->db->prepare("SELECT TOP 1 G.id,ISNULL(SUM(CASE WHEN P.origen='CG' AND P.activo=1 THEN P.importe ELSE 0 END),0) cg,ISNULL(SUM(CASE WHEN P.origen='BANCO' AND P.activo=1 THEN P.importe ELSE 0 END),0) banco FROM dbo.efc_conc_grupos G LEFT JOIN dbo.efc_conc_partidas P ON P.grupo_id=G.id WHERE G.estacion_id=? AND G.estado='ACTIVA' AND EXISTS(SELECT 1 FROM dbo.efc_conc_partidas C WHERE C.grupo_id=G.id AND C.origen='CG' AND C.activo=1 AND (C.clave_externa=? OR (C.fecha_operacion=? AND C.turno=? AND C.concepto=?))) GROUP BY G.id ORDER BY G.id DESC");$g->execute([$station,$key,$date,$turn,$concept]);$group=$g->fetch(PDO::FETCH_ASSOC)?:[];
+        $cutBefore=round((float)$c['importe_aceptado'],2);$after=round((float)$c['importe_nuevo'],2);$delta=round($after-$cutBefore,2);$before=round((float)($group['cg']??$cutBefore),2);$projected=round($before+$delta,2);$bank=round((float)($group['banco']??0),2);
+        $realMn=(float)($link['real_mn']??0)+(float)($link['real_mn2']??0);$realUsd=(float)($link['real_usd']??0)+(float)($link['real_usd2']??0);$rate=(float)($link['tipo_cambio_usd']??0);
+        $regio=$concept==='USD'&&$realUsd>0&&$rate>0?round($realUsd*$rate,2):round($realMn,2);
+        if($concept==='MN'&&$realUsd>0&&$rate>0)$regio=round($realMn+$realUsd*$rate,2);
+        return ['id'=>(int)$c['id'],'estacion_id'=>$station,'fecha_operativa'=>$date,'turno'=>$turn,'concepto'=>$concept,'importe_anterior'=>(float)$c['importe_anterior'],'importe_nuevo'=>$after,'importe_cg_actual'=>$before,'importe_cg_proyectado'=>$projected,'tiene_papeleta'=>!empty($link['papeleta_id'])||!empty($link['papeleta_secundaria_id']),'papeletas'=>implode(', ',array_filter([(string)($link['remesa']??''),(string)($link['remesa2']??'')])),'regio'=>$regio,'tiene_deposito'=>!empty($group['id'])&&$bank>0,'deposito'=>$bank,'diferencia_regio_actual'=>round($regio-$cutBefore,2),'diferencia_regio_nueva'=>round($regio-$after,2),'diferencia_deposito_actual'=>round($bank-$before,2),'diferencia_deposito_nueva'=>round($bank-$projected,2)];
+    }
+
     /** Searchable append-only change history; a new source revision supersedes the previous pending revision. */
     public function cutChangeHistory(string $from, string $to, ?int $stationId, string $status, ?int $changeId=null): array {
         $where=['C.fecha_operativa>=?','C.fecha_operativa<=?']; $params=[$from,$to];
@@ -289,7 +303,13 @@ class EfcConciliacionModel {
         // que el detalle muestre una sola fila por conciliación.
         $where=["G.estado='ACTIVA'"];
         $params=[];
-        if($stationId>0){$where[]='G.estacion_id=?';$params[]=$stationId;}
+        if($stationId>0){
+            $where[]='G.estacion_id=?';$params[]=$stationId;
+        } else {
+            $stations=self::stationIds('DIAZ GAS');
+            $where[]='G.estacion_id IN ('.implode(',',array_fill(0,count($stations),'?')).')';
+            $params=array_merge($params,$stations);
+        }
         if($year){$where[]='YEAR(G.fecha_operativa)=?';$params[]=$year;}
         if($month){$where[]='MONTH(G.fecha_operativa)=?';$params[]=$month;}
         if($concept&&in_array($concept,['MN','MORRALLA','USD'],true)){$where[]='G.concepto=?';$params[]=$concept;}
@@ -439,8 +459,19 @@ class EfcConciliacionModel {
         } catch(Throwable $e) { if($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
     }
 
-    public function activeTransits(int $stationId, int $year, int $month): array {
-        if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
+    public function activeTransits(int $stationId, int $year, int $month, string $company='DIAZ GAS'): array {
+        if ($year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
+        if ($stationId === 0) {
+            $company=strtoupper(trim($company));
+            if(!in_array($company,['DIAZ GAS','FORANEAS','GASOMEX'],true)) throw new RuntimeException('Empresa inválida.');
+            $all=['origin'=>[],'incoming'=>[],'next_month'=>(new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)))->modify('+1 month')->format('Y-m')];
+            foreach(self::stationIds($company) as $id) {
+                $stationTransits=$this->activeTransits($id,$year,$month);
+                $all['origin']=array_merge($all['origin'],$stationTransits['origin']);
+                $all['incoming']=array_merge($all['incoming'],$stationTransits['incoming']);
+            }
+            return $all;
+        }
         $origin = sprintf('%04d-%02d', $year, $month);
         $next = (new DateTimeImmutable($origin . '-01'))->modify('+1 month')->format('Y-m');
         // Los pendientes se muestran en origen y destino. Los conciliados se
@@ -502,18 +533,29 @@ class EfcConciliacionModel {
     }
 
     public function createTransits(int $stationId, array $turns, int $userId): array {
-        if (!$stationId || !$turns) throw new RuntimeException('Seleccione al menos un turno.');
+        return $this->createTransitsBatch([['station_id'=>$stationId,'turns'=>$turns]], self::stationCompany($stationId) ?? '', $userId);
+    }
+
+    public function createTransitsBatch(array $groups, string $company, int $userId): array {
+        $company = strtoupper(trim($company));
+        if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true) || !$groups) throw new RuntimeException('Empresa o turnos inválidos.');
+        $allowedStations = self::stationIds($company);
         $this->db->beginTransaction();
         try {
             $created=[];
-            foreach ($turns as $turn) {
+            foreach ($groups as $group) {
+              $stationId=(int)($group['station_id']??0); $turns=is_array($group['turns']??null)?$group['turns']:[];
+              if (!in_array($stationId,$allowedStations,true) || $stationId===40 || !$turns) throw new RuntimeException('La estación o los turnos seleccionados no pertenecen a la empresa activa o no están disponibles para tránsito.');
+              foreach ($turns as $turn) {
                 $key=trim((string)($turn['source_key']??$turn['id']??'')); $date=trim((string)($turn['date']??'')); $turnNo=trim((string)($turn['turn']??'')); $concept=trim(strtoupper((string)($turn['currency']??''))); $amount=(float)($turn['amount']??0);
                 if (!$key || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || $turnNo==='' || !in_array($concept,['MN','MORRALLA','USD'],true) || $amount<=0) throw new RuntimeException('Datos de turno inválidos.');
+                if ($key !== 'cg-'.$stationId.'-'.$date.'-'.$turnNo.'-'.$concept) throw new RuntimeException('La clave del turno no corresponde a la estación, fecha y concepto enviados.');
                 $origin=substr($date,0,7); $destination=(new DateTimeImmutable($origin.'-01'))->modify('+1 month')->format('Y-m'); $this->assertOpen($stationId,$date,$concept);
                 $check=$this->db->prepare("SELECT TOP 1 id FROM dbo.efc_conc_transitos WHERE estacion_id=? AND clave_externa=? AND estado='PENDIENTE'"); $check->execute([$stationId,$key]); if($check->fetchColumn()) throw new RuntimeException('Uno de los turnos ya tiene un tránsito activo.');
                 $group=$this->db->prepare("SELECT TOP 1 1 FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.origen='CG' AND P.clave_externa=? AND P.activo=1 AND G.estado='ACTIVA'"); $group->execute([$key]); if($group->fetchColumn()) throw new RuntimeException('No se puede enviar a tránsito un turno ya conciliado.');
                 $ins=$this->db->prepare("INSERT dbo.efc_conc_transitos(estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,descripcion,creado_por) OUTPUT INSERTED.id VALUES(?,?,?,?,?,?,?,?,?,?)");
                 $ins->execute([$stationId,$key,$date,$origin,$destination,$turnNo,$concept,$amount,(string)($turn['description']??''),$userId]); $created[]=(int)$ins->fetchColumn();
+              }
             }
             $this->db->commit(); return $created;
         } catch(Throwable $e) { $this->db->rollBack(); throw $e; }
@@ -705,10 +747,15 @@ class EfcConciliacionModel {
      * partidas fuente antes de volver a proponer excepciones en la pantalla.
      */
     public function activeGroups(int $stationId, int $year, int $month): array {
-        if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
+        if ($year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Periodo o estación inválidos.');
+        if ($stationId === 0) {
+            $all=[];
+            foreach(self::stationIds('DIAZ GAS') as $id) $all=array_merge($all,$this->activeGroups($id,$year,$month));
+            return $all;
+        }
         $periodStart = sprintf('%04d-%02d-01', $year, $month);
         $periodEnd = (new DateTimeImmutable($periodStart))->modify('+1 month')->format('Y-m-d');
-        $stmt=$this->db->prepare("SELECT G.id,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,
+        $stmt=$this->db->prepare("SELECT G.id,G.estacion_id AS station_id,G.tipo,G.total_controlgas,G.total_banorte,G.diferencia,
             P.origen,P.clave_externa,P.movimiento_bancario_id,P.fecha_operacion,P.turno,P.concepto,P.importe,
             COALESCE(NULLIF(P.referencia,''),M.referencia) AS referencia,
             M.descripcion,M.descripcion_larga,M.sucursal
@@ -724,11 +771,11 @@ class EfcConciliacionModel {
                     JOIN dbo.efc_conc_transitos T ON T.estacion_id=G.estacion_id
                         AND (TC.clave_externa=T.clave_externa OR TC.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id))
                     WHERE TC.grupo_id=G.id AND TC.origen='CG' AND TC.activo=1
-                      AND T.mes_destino=?
+                      AND (T.mes_destino=? OR T.mes_origen=?)
                 )
               )
             ORDER BY G.id,P.id");
-        $stmt->execute([$stationId,$periodStart,$periodEnd,sprintf('%04d-%02d',$year,$month)]); $groups=[];
+        $period=sprintf('%04d-%02d',$year,$month); $stmt->execute([$stationId,$periodStart,$periodEnd,$period,$period]); $groups=[];
         while($row=$stmt->fetch(PDO::FETCH_ASSOC)) {
             $id=(int)$row['id'];
             if(!isset($groups[$id])) $groups[$id]=[

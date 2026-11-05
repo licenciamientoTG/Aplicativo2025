@@ -26,6 +26,10 @@ class Tesoreria
     // Mismo patrón, con CUENTAS_PERFIL_ALIANZA: las 22 cuentas del grupo
     // Alianza Comercial (Gasomex + Clara + Jarudo) del panel de saldos.
     private const PERM_MOVIMIENTOS_ALIANZA  = 92;   // Ver Movimientos Bancos - Alianza Comercial
+    // Acceso limitado a una cuenta Banorte: permite consultar e importar
+    // estados de cuenta únicamente de esa cuenta.
+    private const PERM_MOVIMIENTOS_BANORTE_0185322470 = 114;
+    private const CUENTA_PERFIL_BANORTE_0185322470 = '0185322470';
     // Columna Comentarios de la tabla: oculta por default, solo visible y
     // editable (icono de lápiz, mismo patrón que arqueo/concentrado) para
     // quien tenga este permiso. No amplía qué cuentas se ven, solo si se
@@ -382,21 +386,28 @@ class Tesoreria
     public function movimientos_bancos(): void
     {
         if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)
-            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS) && !authorized(self::PERM_MOVIMIENTOS_ALIANZA)) {
+            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS) && !authorized(self::PERM_MOVIMIENTOS_ALIANZA)
+            && !authorized(self::PERM_MOVIMIENTOS_BANORTE_0185322470)) {
             (new Errors())->get404();
             return;
         }
 
         $cuentasPermitidas = $this->cuentas_permitidas();
+        $bancos = self::BANCOS;
+        $puedeImportarTodas = authorized(self::PERM_MOVIMIENTOS) && authorized(self::PERM_SUBIR_MOV);
+        $soloCuentaBanorte = authorized(self::PERM_MOVIMIENTOS_BANORTE_0185322470) && !$puedeImportarTodas;
+        if ($soloCuentaBanorte) {
+            $bancos = array_intersect_key($bancos, ['BANORTE' => true, 'BANORTE_TXT' => true]);
+        }
 
         echo $this->twig->render($this->route . 'movimientos_bancos.html', [
             'filtros'          => $this->filtros_movimientos($_GET),
             'cuentas'          => $this->movsModel->get_cuentas($cuentasPermitidas),
             // bancos: todos, para los botones de subida (incluye Banorte 2)
             // bancosTabla: los que tienen tab y tabla propios
-            'bancos'           => self::BANCOS,
+            'bancos'           => $bancos,
             'bancosTabla'      => self::bancos_con_tabla(),
-            'cuentasSugeridas' => $this->cuentas_sugeridas(),
+            'cuentasSugeridas' => $soloCuentaBanorte ? [] : $this->cuentas_sugeridas(),
             'puedeComentar'    => authorized(self::PERM_COMENTARIOS),
         ]);
     }
@@ -404,11 +415,12 @@ class Tesoreria
     /**
      * Restricción de cuentas para el usuario actual: null = sin restricción
      * (ve todas), array = solo esas cuentas. El permiso completo (80) siempre
-     * gana sobre el acotado (83) si el usuario tuviera ambos.
+     * gana sobre los perfiles acotados si el usuario tuviera varios.
      */
     private function cuentas_permitidas(): ?array
     {
         if (authorized(self::PERM_MOVIMIENTOS)) return null;
+        if (authorized(self::PERM_MOVIMIENTOS_BANORTE_0185322470)) return [self::CUENTA_PERFIL_BANORTE_0185322470];
         if (authorized(self::PERM_MOVIMIENTOS_CREDITO)) return self::CUENTAS_PERFIL_CREDITO;
         if (authorized(self::PERM_MOVIMIENTOS_INGRESOS)) return self::CUENTAS_PERFIL_INGRESOS;
         if (authorized(self::PERM_MOVIMIENTOS_ALIANZA)) return self::CUENTAS_PERFIL_ALIANZA;
@@ -455,7 +467,8 @@ class Tesoreria
     {
         header('Content-Type: application/json');
         if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)
-            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS) && !authorized(self::PERM_MOVIMIENTOS_ALIANZA)) {
+            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS) && !authorized(self::PERM_MOVIMIENTOS_ALIANZA)
+            && !authorized(self::PERM_MOVIMIENTOS_BANORTE_0185322470)) {
             json_output(['success' => false, 'message' => 'Sin permiso']);
             return;
         }
@@ -596,7 +609,7 @@ class Tesoreria
         // como para decidir qué cuenta marcar como atrasada respecto al corte.
         $hastaEfectivo = self::corte_efectivo($hasta);
 
-        $saldos = $this->movsModel->get_saldos_finales($hasta);
+        $saldos = $this->movsModel->get_saldos_finales($hasta, $this->cuentas_permitidas());
         $total  = 0.0;
         foreach ($saldos as $s) $total += (float)$s['saldo'];
 
@@ -839,7 +852,8 @@ class Tesoreria
     public function exportar_movimientos_cuentas(): void
     {
         if (!authorized(self::PERM_MOVIMIENTOS) && !authorized(self::PERM_MOVIMIENTOS_CREDITO)
-            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS) && !authorized(self::PERM_MOVIMIENTOS_ALIANZA)) {
+            && !authorized(self::PERM_MOVIMIENTOS_INGRESOS) && !authorized(self::PERM_MOVIMIENTOS_ALIANZA)
+            && !authorized(self::PERM_MOVIMIENTOS_BANORTE_0185322470)) {
             (new Errors())->get404();
             return;
         }
@@ -1014,7 +1028,7 @@ class Tesoreria
     {
         $hastaEfectivo = self::corte_efectivo($hasta);
         $porGrupo = $this->agrupar_por_grupo_empresarial(
-            $this->agrupar_saldos_por_empresa($this->movsModel->get_saldos_finales($hasta))
+            $this->agrupar_saldos_por_empresa($this->movsModel->get_saldos_finales($hasta, $this->cuentas_permitidas()))
         );
 
         $libro = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
@@ -1202,7 +1216,10 @@ class Tesoreria
     public function upload_movimientos(): void
     {
         header('Content-Type: application/json');
-        if (!authorized(self::PERM_MOVIMIENTOS) || !authorized(self::PERM_SUBIR_MOV)) {
+        $puedeImportarTodas = authorized(self::PERM_MOVIMIENTOS) && authorized(self::PERM_SUBIR_MOV);
+        $soloCuentaBanorte = authorized(self::PERM_MOVIMIENTOS_BANORTE_0185322470) && !$puedeImportarTodas;
+        $puedeImportar = $puedeImportarTodas || $soloCuentaBanorte;
+        if (!$puedeImportar) {
             json_output(['success' => false, 'message' => 'No tienes permiso para importar movimientos']);
             return;
         }
@@ -1211,6 +1228,10 @@ class Tesoreria
         $cfg   = self::BANCOS[$banco] ?? null;
         if ($cfg === null) {
             json_output(['success' => false, 'message' => 'Banco no reconocido']);
+            return;
+        }
+        if ($soloCuentaBanorte && !in_array($banco, ['BANORTE', 'BANORTE_TXT'], true)) {
+            json_output(['success' => false, 'message' => 'Este permiso solo permite subir estados de cuenta Banorte']);
             return;
         }
         if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['archivo']['tmp_name'])) {
@@ -1291,6 +1312,21 @@ class Tesoreria
                 'errores' => array_slice($parseo['errores'], 0, 20),
             ]);
             return;
+        }
+
+        // El permiso acotado permite importar únicamente movimientos que el
+        // parser identificó en la cuenta autorizada, incluso si el usuario
+        // tiene lectura general (80). Si el archivo trae varias cuentas, se
+        // conservan solo las filas autorizadas; no confiar en el formulario.
+        if ($soloCuentaBanorte) {
+            $parseo['movimientos'] = array_values(array_filter(
+                $parseo['movimientos'],
+                fn($movimiento) => trim((string)($movimiento['cuenta'] ?? '')) === self::CUENTA_PERFIL_BANORTE_0185322470
+            ));
+            if (!$parseo['movimientos']) {
+                json_output(['success' => false, 'message' => 'El archivo no contiene movimientos de la cuenta Banorte autorizada']);
+                return;
+            }
         }
 
         try {

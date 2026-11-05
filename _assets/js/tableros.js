@@ -151,6 +151,7 @@
     shareUserSelect: document.getElementById('shareUserSelect'),
     shareUserResults: document.getElementById('shareUserResults'),
     clearShareUser: document.getElementById('clearShareUser'),
+    newColumnName: document.getElementById('newColumnName'),
     newColumnType: document.getElementById('newColumnType'),
     columnOptionsField: document.getElementById('columnOptionsField'),
     newColumnOptions: document.getElementById('newColumnOptions'),
@@ -1325,6 +1326,9 @@
   }
 
   async function loadBoard(id, skipRoute = false) {
+    const preservedSearch = skipRoute && state.board && String(state.board.id) === String(id)
+      ? { value: els.boardSearch?.value || '', column: els.boardSearchColumn?.value || '' }
+      : null;
     resetColumnMenuState();
     document.getElementById('trashArchiveView').hidden = true;
     state.recycleMode = '';
@@ -1371,8 +1375,15 @@
       state.collapsedGroups.clear();
       state.selectedItemIds.clear();
       state.inlineAddGroupId = '';
-      els.boardSearch.value = '';
-      if (els.boardSearchColumn) els.boardSearchColumn.value = '';
+      if (preservedSearch && els.boardSearchColumn) {
+        els.boardSearchColumn.value = Array.from(els.boardSearchColumn.options)
+          .some((option) => option.value === preservedSearch.column) ? preservedSearch.column : '';
+        renderBoardSearchControl();
+        els.boardSearch.value = preservedSearch.value;
+      } else {
+        els.boardSearch.value = '';
+        if (els.boardSearchColumn) els.boardSearchColumn.value = '';
+      }
       renderWorkspace();
       showLoading(false);
       els.boardWorkspace.hidden = false;
@@ -2280,7 +2291,27 @@
   function createCellEditor(item, column, value) {
     const type = String(column.type || 'text').toLowerCase();
     if (type === 'file') return createFileCellEditor(item, column);
+    if (type === 'formula' && typeof column.options?.formula === 'string' && column.options.formula.trim()) {
+      const result = document.createElement('span');
+      result.className = 'boards-readonly-value boards-formula-result';
+      result.textContent = displayColumnValue(column, value) || '—';
+      result.setAttribute('aria-label', `${column.name || 'Fórmula'}: ${result.textContent}`);
+      return result;
+    }
     if (!canEditBoard()) {
+      if (type === 'tags') {
+        const chips = makeElement('div', 'boards-tags-chips boards-tags-readonly');
+        const values = Array.isArray(value) ? value.map(String) : [];
+        const options = parseOptions(column.options);
+        values.forEach((tag) => {
+          const entry = options.find((option) => String(option.value) === tag);
+          const chip = makeElement('span', 'boards-tags-chip', entry?.label || tag);
+          chip.style.setProperty('--tag-color', entry?.color || '#8792a2');
+          chips.append(chip);
+        });
+        if (!values.length) chips.append(makeElement('span', 'boards-tags-placeholder', '—'));
+        return chips;
+      }
       const readonly = document.createElement('span');
       readonly.className = ['status', 'dropdown'].includes(type) ? 'boards-status-readonly' : 'boards-readonly-value';
       const option = ['status', 'dropdown'].includes(type)
@@ -2452,9 +2483,10 @@
           return readonly;
         }
         const select = document.createElement('select');
-        select.className = 'boards-status-select boards-tags-select';
+        select.className = 'boards-tags-native-select';
         select.multiple = true;
-        select.size = Math.min(4, options.length);
+        select.hidden = true;
+        select.setAttribute('aria-hidden', 'true');
         options.forEach((entry) => {
           const option = document.createElement('option');
           option.value = entry.value;
@@ -2462,7 +2494,148 @@
           option.selected = selected.has(entry.value);
           select.append(option);
         });
-        return markEditor(select, item, column, 'tags');
+        const wrapper = makeElement('div', 'boards-tags-editor');
+        markEditor(wrapper, item, column, 'tags');
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'boards-tags-trigger';
+        trigger.setAttribute('aria-haspopup', 'dialog');
+        trigger.setAttribute('aria-expanded', 'false');
+        const chips = makeElement('span', 'boards-tags-chips');
+        const add = makeElement('span', 'boards-tags-add', '+');
+        add.setAttribute('aria-hidden', 'true');
+        trigger.append(chips, add);
+
+        const menu = makeElement('div', 'boards-tags-menu');
+        menu.setAttribute('role', 'dialog');
+        menu.setAttribute('aria-label', `Etiquetas de ${column.name || 'la columna'}`);
+        menu.hidden = true;
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'boards-tags-search';
+        search.placeholder = 'Buscar etiquetas…';
+        search.setAttribute('aria-label', 'Buscar etiquetas');
+        const list = makeElement('div', 'boards-tags-options');
+        list.setAttribute('role', 'group');
+        list.setAttribute('aria-label', 'Opciones de etiqueta');
+        const rows = options.map((entry) => {
+          const option = document.createElement('button');
+          option.type = 'button';
+          option.className = 'boards-tags-option';
+          option.dataset.tagSearch = String(entry.label || entry.value).toLocaleLowerCase();
+          option.dataset.tagValue = String(entry.value);
+          option.style.setProperty('--tag-color', entry.color || '#8792a2');
+          const swatch = makeElement('span', 'boards-tags-swatch');
+          swatch.setAttribute('aria-hidden', 'true');
+          const label = makeElement('span', 'boards-tags-option-label', entry.label || entry.value);
+          const check = makeElement('span', 'boards-tags-check', '✓');
+          check.setAttribute('aria-hidden', 'true');
+          option.append(swatch, label, check);
+          option.setAttribute('aria-pressed', selected.has(String(entry.value)) ? 'true' : 'false');
+          option.addEventListener('click', () => {
+            option.setAttribute('aria-pressed', option.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+          });
+          list.append(option);
+          return option;
+        });
+        search.addEventListener('input', () => {
+          const query = search.value.trim().toLocaleLowerCase();
+          rows.forEach((row) => { row.hidden = query !== '' && !row.dataset.tagSearch.includes(query); });
+        });
+        const footer = makeElement('div', 'boards-tags-footer');
+        if (canManageStructure()) {
+          const manage = makeElement('button', 'boards-tags-manage', 'Editar etiquetas');
+          manage.type = 'button';
+          manage.addEventListener('click', () => { closeMenu(); openLabelsEditor(column); });
+          footer.append(manage);
+        }
+        const actions = makeElement('div', 'boards-tags-actions');
+        const cancel = makeElement('button', 'boards-tags-cancel', 'Cancelar');
+        cancel.type = 'button';
+        cancel.addEventListener('click', () => closeMenu());
+        const apply = makeElement('button', 'boards-tags-apply', 'Aplicar');
+        apply.type = 'button';
+        apply.addEventListener('click', () => {
+          const draft = new Set(rows.filter((row) => row.getAttribute('aria-pressed') === 'true').map((row) => row.dataset.tagValue));
+          Array.from(select.options).forEach((option) => { option.selected = draft.has(option.value); });
+          updateChips();
+          closeMenu();
+          wrapper.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        actions.append(cancel, apply);
+        footer.append(actions);
+        menu.append(search, list, footer);
+
+        const updateChips = () => {
+          chips.replaceChildren();
+          const selectedValues = new Set(Array.from(select.selectedOptions, (option) => option.value));
+          const chosen = options.filter((entry) => selectedValues.has(String(entry.value)));
+          chosen.slice(0, 3).forEach((entry) => {
+            const chip = makeElement('span', 'boards-tags-chip', entry.label || entry.value);
+            chip.style.setProperty('--tag-color', entry.color || '#8792a2');
+            chips.append(chip);
+          });
+          if (chosen.length > 3) chips.append(makeElement('span', 'boards-tags-overflow', `+${chosen.length - 3}`));
+          if (!chosen.length) chips.append(makeElement('span', 'boards-tags-placeholder', 'Agregar etiquetas'));
+          trigger.setAttribute('aria-label', `${column.name || 'Etiquetas'}: ${chosen.map((entry) => entry.label || entry.value).join(', ') || 'Sin etiquetas'}`);
+        };
+        let pointerHandler = null;
+        const closeMenu = () => {
+          if (menu.hidden) return;
+          menu.hidden = true;
+          trigger.setAttribute('aria-expanded', 'false');
+          menu.classList.remove('opens-up');
+          ['position', 'z-index', 'left', 'top', 'bottom', 'width', 'max-height'].forEach((property) => menu.style.removeProperty(property));
+          window.removeEventListener('scroll', closeMenu, true);
+          window.removeEventListener('resize', closeMenu);
+          if (pointerHandler) document.removeEventListener('pointerdown', pointerHandler);
+          pointerHandler = null;
+          if (menu.parentElement !== wrapper) wrapper.append(menu);
+        };
+        const openMenu = () => {
+          rows.forEach((row) => {
+            row.setAttribute('aria-pressed', select.options[Array.from(select.options).findIndex((option) => option.value === row.dataset.tagValue)]?.selected ? 'true' : 'false');
+            row.hidden = false;
+          });
+          search.value = '';
+          document.body.append(menu);
+          menu.hidden = false;
+          trigger.setAttribute('aria-expanded', 'true');
+          const rect = trigger.getBoundingClientRect();
+          const width = Math.min(248, window.innerWidth - 16);
+          const below = window.innerHeight - rect.bottom - 12;
+          const above = rect.top - 12;
+          const height = Math.min(390, options.length * 38 + 132 + (canManageStructure() ? 36 : 0));
+          menu.style.position = 'fixed';
+          menu.style.zIndex = '10000';
+          menu.style.width = `${width}px`;
+          menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`;
+          if (below < height && above > below) {
+            menu.classList.add('opens-up');
+            const menuHeight = Math.min(height, above);
+            menu.style.maxHeight = `${menuHeight}px`;
+            menu.style.top = `${Math.max(8, rect.top - menuHeight - 5)}px`;
+          } else {
+            menu.style.maxHeight = `${Math.max(120, Math.min(height, below))}px`;
+            menu.style.top = `${rect.bottom + 5}px`;
+          }
+          pointerHandler = (event) => { if (!wrapper.contains(event.target) && !menu.contains(event.target)) closeMenu(); };
+          document.addEventListener('pointerdown', pointerHandler);
+          window.addEventListener('scroll', closeMenu, true);
+          window.addEventListener('resize', closeMenu);
+          search.focus({ preventScroll: true });
+        };
+        trigger.addEventListener('click', () => menu.hidden ? openMenu() : closeMenu());
+        trigger.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') closeMenu();
+          if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openMenu(); }
+        });
+        menu.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') { closeMenu(); trigger.focus(); }
+        });
+        wrapper.append(select, trigger);
+        updateChips();
+        return wrapper;
       }
       input.type = 'text';
       input.value = Array.isArray(value) ? value.join(', ') : (value == null ? '' : String(value));
@@ -2669,7 +2842,7 @@
     const videoExtension = ['mp4', 'webm'].includes(extension);
     const spreadsheetExtension = ['xls', 'xlsx', 'xlsm'].includes(extension);
     const previewKind = imageMime ? 'image'
-      : (videoMime || videoExtension ? 'video'
+      : (videoMime || (genericMime && videoExtension) ? 'video'
         : (effectiveMime === 'application/pdf' ? 'pdf'
           : (['text/plain', 'text/csv'].includes(effectiveMime) ? 'text'
             : (spreadsheetExtension ? 'spreadsheet' : (['doc', 'docx'].includes(extension) ? 'document' : 'unsupported')))));
@@ -3299,6 +3472,9 @@
       button.setAttribute('aria-expanded', 'true');
       await renderFilePreviewPanel(name);
     }));
+    document.querySelector('[data-preview-download]')?.addEventListener('click', () => {
+      if (activePreviewFile) startFileDownload(activePreviewFile);
+    });
   }
 
   async function openFilePreview(file, item = null) {
@@ -3408,10 +3584,6 @@
         printWindow.document.body.append(printImage);
         printImage.addEventListener('load', () => { printWindow.focus(); printWindow.print(); }, { once: true });
       });
-      const download = addImageAction('fa-download', 'Descargar imagen', () => {
-        startFileDownload(file);
-      });
-      download.classList.add('is-download');
       image.addEventListener('pointerdown', (event) => {
         if (zoom <= 1 || event.button !== 0) return;
         dragOrigin = { x: event.clientX, y: event.clientY, panX, panY };
@@ -3437,10 +3609,34 @@
     } else if (type.previewKind === 'video') {
       const stage = makeElement('div', 'boards-preview-video-stage');
       const video = makeElement('video', 'boards-preview-video');
+      let blobPlaybackAttempted = false;
       video.controls = true;
       video.playsInline = true;
       video.preload = 'metadata';
       video.setAttribute('aria-label', `Vista previa de ${name}`);
+      video.addEventListener('error', async () => {
+        if (previewRequest !== filePreviewRequest) return;
+        if (blobPlaybackAttempted) {
+          showFilePreviewError('No se pudo reproducir este video en el navegador. Descárgalo para abrirlo con otra aplicación.');
+          return;
+        }
+        blobPlaybackAttempted = true;
+        const status = makeElement('p', 'boards-preview-unavailable', 'Preparando el video para reproducirlo…');
+        status.setAttribute('role', 'status');
+        stage.append(status);
+        try {
+          const blob = await fetchStoredFileBlob(file);
+          if (previewRequest !== filePreviewRequest) return;
+          status.remove();
+          filePreviewObjectUrl = URL.createObjectURL(blob);
+          video.src = filePreviewObjectUrl;
+          video.load();
+        } catch (error) {
+          if (previewRequest === filePreviewRequest) {
+            showFilePreviewError(errorMessage(error, 'No se pudo cargar el video. Descárgalo para abrirlo con otra aplicación.'));
+          }
+        }
+      });
       video.src = fileEndpoint(file, true);
       stage.append(video);
       els.filePreviewContent.append(stage);
@@ -4941,7 +5137,7 @@
     return result * direction || Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id);
   }
 
-  function orderItemsByHierarchy(items) {
+  function orderItemsByHierarchy(items, compareItems = compareColumnMenuItems) {
     const childrenByParent = new Map();
     const visibleIds = new Set(items.map((item) => String(item.id)));
     items.forEach((item) => {
@@ -4958,11 +5154,11 @@
       if (visited.has(id)) return;
       visited.add(id);
       ordered.push(item);
-      (childrenByParent.get(id) || []).slice().sort(compareColumnMenuItems).forEach(appendWithChildren);
+      (childrenByParent.get(id) || []).slice().sort(compareItems).forEach(appendWithChildren);
     };
 
     items.filter((item) => item.parent_item_id == null || !visibleIds.has(String(item.parent_item_id)))
-      .slice().sort(compareColumnMenuItems)
+      .slice().sort(compareItems)
       .forEach(appendWithChildren);
     items.forEach(appendWithChildren);
     return ordered;
@@ -5144,7 +5340,9 @@
 
   function createGroupSummaryRow(columns, groupItems) {
     const summaryTypes = new Set(['status', 'file', 'people', 'person', 'numbers', 'progress', 'timeline', 'tags', 'date']);
-    if (!columns.some((column) => summaryTypes.has(columnType(column)))) return null;
+    const hasSummary = columns.some((column) => summaryTypes.has(columnType(column))
+      || (columnType(column) === 'formula' && typeof column.options?.formula === 'string' && column.options.formula.trim()));
+    if (!hasSummary) return null;
     const summaryItems = groupItems.filter((item) => item.parent_item_id == null);
     const row = makeElement('tr', 'boards-table-summary-row');
     row.append(makeElement('td', 'boards-table-summary-label'));
@@ -5216,18 +5414,28 @@
         if (people.size > 5) list.append(makeElement('span', 'boards-summary-count', `+${people.size - 5}`));
         list.append(makeElement('span', 'boards-summary-count', `${people.size} ${people.size === 1 ? 'persona' : 'personas'}`));
         cell.append(list);
-      } else if (type === 'numbers') {
+      } else if (type === 'numbers' || (type === 'formula' && typeof column.options?.formula === 'string' && column.options.formula.trim())) {
         const values = summaryItems.map((item) => getCellValue(item, column)).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite);
         const selectedFunction = state.summaryFunctions[String(column.id)] || 'sum';
-        const select = makeElement('select', 'boards-summary-function');
-        select.dataset.summaryColumn = String(column.id);
+        const functionLabels = { sum: 'Suma', average: 'Promedio', median: 'Mediana', min: 'Mínimo', max: 'Máximo', count: 'Conteo' };
+        const controls = makeElement('div', 'boards-summary-number-controls');
+        const menuButton = makeElement('button', 'boards-summary-function-menu', '⋮');
+        menuButton.type = 'button';
+        menuButton.dataset.summaryFunctionToggle = String(column.id);
+        menuButton.title = `Tipo de cálculo: ${functionLabels[selectedFunction] || 'Suma'}`;
+        menuButton.setAttribute('aria-label', `Cambiar cálculo. Actual: ${functionLabels[selectedFunction] || 'Suma'}`);
+        menuButton.setAttribute('aria-expanded', 'false');
+        const menu = makeElement('div', 'boards-summary-function-menu-list');
+        menu.hidden = true;
         [['sum', 'Suma'], ['average', 'Promedio'], ['median', 'Mediana'], ['min', 'Mínimo'], ['max', 'Máximo'], ['count', 'Conteo']].forEach(([value, label]) => {
-          const option = makeElement('option', '', label);
-          option.value = value;
-          select.append(option);
+          const option = makeElement('button', 'boards-summary-function-option', label);
+          option.type = 'button';
+          option.dataset.summaryFunctionOption = value;
+          option.dataset.summaryColumn = String(column.id);
+          if (value === selectedFunction) option.setAttribute('aria-current', 'true');
+          menu.append(option);
         });
-        select.value = selectedFunction;
-        cell.append(select);
+        controls.append(menuButton, menu);
         let result = '—';
         if (values.length) {
           const sorted = values.slice().sort((a, b) => a - b);
@@ -5240,7 +5448,9 @@
           };
           result = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 }).format(results[selectedFunction] ?? results.sum);
         }
-        cell.append(makeElement('span', 'boards-summary-count', result));
+        const resultLabel = makeElement('span', 'boards-summary-count', result);
+        resultLabel.classList.add('boards-summary-number-result');
+        cell.append(resultLabel, controls);
       } else if (type === 'progress') {
         const values = summaryItems.map((item) => getCellValue(item, column)).filter((value) => value !== null && value !== undefined && value !== '').map(Number).filter(Number.isFinite).map((value) => Math.max(0, Math.min(100, value)));
         const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
@@ -5278,10 +5488,15 @@
           }
         }
       } else if (type === 'tags') {
+        const options = parseOptions(column.options);
+        const tagLabels = new Map(options.map((option) => [String(option.value), String(option.label || option.value)]));
         const tags = new Set(summaryItems.flatMap((item) => {
           const value = parseStoredValue(getCellValue(item, column));
-          if (Array.isArray(value)) return value.map((tag) => String(tag && typeof tag === 'object' ? (tag.label ?? tag.name ?? tag.value ?? '') : tag).trim()).filter(Boolean);
-          return String(value ?? '').split(',').map((tag) => tag.trim()).filter(Boolean);
+          const values = Array.isArray(value) ? value : String(value ?? '').split(',');
+          return values.map((tag) => {
+            const raw = String(tag && typeof tag === 'object' ? (tag.label ?? tag.name ?? tag.value ?? '') : tag).trim();
+            return tagLabels.get(raw) || raw;
+          }).filter(Boolean);
         }));
         const list = makeElement('div', 'boards-summary-tags');
         Array.from(tags).slice(0, 4).forEach((tag) => list.append(makeElement('span', 'boards-summary-tag', tag)));
@@ -5407,7 +5622,7 @@
     const title = makeElement('span', 'boards-column-heading-title', column.name || 'Columna');
     th.append(title);
     if (column.required) th.append(makeElement('span', 'boards-required-label', 'Requerido'));
-    const trigger = makeElement('button', 'boards-column-menu-trigger', '⋯');
+    const trigger = makeElement('button', 'boards-column-menu-trigger', '⋮');
     trigger.type = 'button';
     trigger.dataset.openColumnMenu = String(column.id);
     trigger.setAttribute('aria-label', `Acciones de la columna ${column.name || ''}`);
@@ -5536,19 +5751,25 @@
     if (action === 'change-type') {
       els.createColumnForm.reset();
       window.setTimeout(() => {
+        const typeSelect = document.getElementById('newColumnType');
+        if (!typeSelect) {
+          setNotice('No se encontró el selector de tipo de columna. Recarga el tablero e inténtalo de nuevo.');
+          return;
+        }
         state.columnDialogAction = { type: 'change-type', columnId: id, originalOptions: parseOptions(column.options) };
         document.getElementById('createColumnTitle').textContent = 'Cambiar tipo de columna';
         document.getElementById('columnNameField').classList.add('d-none');
         els.newColumnName.value = column.name || '';
-        els.newColumnType.value = column.type || 'text';
+        typeSelect.value = column.type || 'text';
+        document.getElementById('newColumnFormula').value = typeof column.options?.formula === 'string' ? column.options.formula : '';
         const labelOptions = parseOptions(column.options).map((option) => option.label);
         els.newColumnOptions.value = labelOptions.join('\n');
         if (column.type === 'rating' && column.options && typeof column.options === 'object') {
           document.getElementById('newColumnRatingDisplay').value = column.options.display || 'stars';
         }
-        els.newColumnType.dispatchEvent(new Event('change'));
+        typeSelect.dispatchEvent(new Event('change'));
         els.createColumnForm.querySelector('[type="submit"]').textContent = 'Revisar conversión';
-        openDialog(els.createColumnDialog, els.newColumnType);
+        openDialog(els.createColumnDialog, typeSelect);
       }, 0);
       return;
     }
@@ -6036,7 +6257,13 @@
   async function exportSelectedItemsToExcel() {
     if (!state.board || !state.selectedItemIds.size) return;
     const boardName = state.board.name || 'Tablero';
-    const selected = state.items.filter((item) => state.selectedItemIds.has(String(item.id)));
+    const compareBoardOrder = (a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id);
+    const orderedItems = state.groups.flatMap((group) => orderItemsByHierarchy(
+      state.items.filter((item) => String(item.group_id) === String(group.id)), compareBoardOrder
+    ));
+    const orderedIds = new Set(orderedItems.map((item) => String(item.id)));
+    orderedItems.push(...state.items.filter((item) => !orderedIds.has(String(item.id))));
+    const selected = orderedItems.filter((item) => state.selectedItemIds.has(String(item.id)));
     if (!selected.length) return;
     const columns = state.columns.filter((column) => !['subtasks', 'dependency'].includes(columnType(column)));
     const exportColumns = [
@@ -7136,7 +7363,7 @@
     if (kind === 'people') {
       return Array.from(editor.querySelector('select')?.selectedOptions || [], (option) => Number(option.value)).filter(Number.isInteger);
     }
-    if (kind === 'tags') return Array.from(editor.selectedOptions || [], (option) => option.value);
+    if (kind === 'tags') return Array.from(editor.querySelector('select')?.selectedOptions || [], (option) => option.value);
     if (kind === 'tags-text') return editor.value.split(',').map((tag) => tag.trim()).filter(Boolean);
     const value = editor.value;
     if (kind === 'number') {
@@ -7193,6 +7420,9 @@
       item.version = result.data?.version ?? item.version;
       if (!item.cells) item.cells = {};
       item.cells[columnId] = value;
+      if (result.data?.formula_cells && typeof result.data.formula_cells === 'object' && !Array.isArray(result.data.formula_cells)) {
+        Object.assign(item.cells, result.data.formula_cells);
+      }
       editor.dataset.savedValue = JSON.stringify(value);
       editor.classList.remove('has-error');
       const editedColumn = state.columns.find((column) => String(column.id) === String(columnId));
@@ -7209,7 +7439,7 @@
           }
         }
       }
-      if ((editedColumn && ['status', 'dropdown'].includes(columnType(editedColumn)))
+      if ((editedColumn && ['status', 'dropdown', 'numbers', 'tags'].includes(columnType(editedColumn)))
         || state.activeViewType !== 'table' || boardSearchValue().trim() || state.filters.length) {
         const activeKanbanColumn = state.activeViewType === 'kanban'
           && String(state.viewConfig.kanban_column_id || 'groups') === String(editedColumn?.id || '');
@@ -7772,9 +8002,30 @@
       const optionsType = ['status', 'dropdown', 'tags'].includes(els.newColumnType.value);
       els.columnOptionsField.classList.toggle('d-none', !optionsType);
       document.getElementById('columnRatingField').classList.toggle('d-none', els.newColumnType.value !== 'rating');
+      const formulaField = document.getElementById('columnFormulaField');
+      const isFormula = els.newColumnType.value === 'formula';
+      formulaField.classList.toggle('d-none', !isFormula);
+      const submitButton = els.createColumnForm.querySelector('[type="submit"]');
+      if (isFormula && !state.columnDialogAction?.type) submitButton.textContent = 'Revisar fórmula';
+      else if (state.columnDialogAction?.type === 'change-type') submitButton.textContent = 'Revisar conversión';
+      else if (!state.columnDialogAction?.type) submitButton.textContent = 'Agregar columna';
+      const formulaColumns = document.getElementById('formulaColumnsList');
+      const formulaFunctions = document.getElementById('formulaFunctionsList');
+      formulaColumns.replaceChildren();
+      state.columns.filter((column) => columnType(column) === 'numbers').forEach((column) => {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'boards-formula-insert';
+        button.textContent = column.name || `Columna ${column.id}`; button.dataset.formulaInsert = `{#${column.id}}`;
+        button.setAttribute('aria-label', `Insertar referencia a ${column.name || `columna ${column.id}`}`); formulaColumns.append(button);
+      });
+      formulaFunctions.replaceChildren();
+      const formulaFunctionLabels = { SUM: 'suma', MULTIPLY: 'multiplica', AVERAGE: 'promedio', MIN: 'mínimo', MAX: 'máximo', ROUND: 'redondea', ABS: 'valor absoluto', IF: 'condición' };
+      ['SUM', 'MULTIPLY', 'AVERAGE', 'MIN', 'MAX', 'ROUND', 'ABS', 'IF'].forEach((fn) => {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'boards-formula-insert';
+        button.textContent = `${fn} · ${formulaFunctionLabels[fn]}`; button.dataset.formulaInsert = `${fn}()`; button.setAttribute('aria-label', `Insertar función ${fn}: ${formulaFunctionLabels[fn]}`); formulaFunctions.append(button);
+      });
       const help = {
         status: 'Define los estados y su orden. Cada uno tendrá un color inicial que podrás ajustar después.',
-        formula: 'La API acepta únicamente la sintaxis segura definida por el servidor.',
+        formula: 'Calcula un resultado por elemento con columnas numéricas y las funciones disponibles.',
         people: 'La celda permite buscar usuarios activos de TotalGas.',
         person: 'La celda permite asignar una persona activa de TotalGas.',
         team: 'La celda acepta texto o JSON; no hay catálogo de equipos disponible.',
@@ -7791,6 +8042,39 @@
       document.getElementById('addColumnOption').querySelector('span').textContent = els.newColumnType.value === 'status' ? 'Agregar estado' : 'Agregar opción';
       renderNewColumnOptions();
       els.columnOptionsField.querySelectorAll('.boards-new-option-name').forEach((input) => { input.disabled = !optionsType; });
+    });
+    document.getElementById('columnFormulaField').addEventListener('click', (event) => {
+      if (event.target.closest('#focusColumnFormula')) { document.getElementById('newColumnFormula').focus(); return; }
+      const button = event.target.closest('[data-formula-insert]');
+      if (!button) return;
+      const input = document.getElementById('newColumnFormula');
+      const start = input.selectionStart ?? input.value.length;
+      const end = input.selectionEnd ?? start;
+      const insertion = button.dataset.formulaInsert;
+      let prefix = '';
+      if (insertion.startsWith('{#')) {
+        const before = input.value.slice(0, start);
+        const after = input.value.slice(end);
+        const previousIsValue = /(?:\{#\d+\}|\d+(?:\.\d+)?|\))\s*$/.test(before);
+        const nextNeedsNoSeparator = /^\s*(?:,|[+\-*/<>])/.test(after);
+        if (previousIsValue && !nextNeedsNoSeparator) {
+          let depth = 0;
+          let openParen = -1;
+          for (let index = before.length - 1; index >= 0; index -= 1) {
+            if (before[index] === ')') depth += 1;
+            else if (before[index] === '(') {
+              if (depth === 0) { openParen = index; break; }
+              depth -= 1;
+            }
+          }
+          const insideFunction = openParen >= 0 && /[A-Za-z]+\s*$/.test(before.slice(0, openParen));
+          prefix = insideFunction ? ', ' : ' + ';
+        }
+      }
+      input.setRangeText(`${prefix}${insertion}`, start, end, 'end');
+      input.focus();
+      if (insertion.endsWith('()')) input.setSelectionRange(input.selectionStart - 1, input.selectionStart - 1);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
     });
     document.getElementById('addColumnOption').addEventListener('click', () => addNewColumnOption());
     document.getElementById('newColumnOptionsList').addEventListener('input', (event) => {
@@ -7813,6 +8097,8 @@
         document.getElementById('columnNameField').classList.remove('d-none');
         document.getElementById('columnTypeField').classList.remove('d-none');
         els.newColumnOptions.value = '';
+        document.getElementById('newColumnFormula').value = '';
+        document.getElementById('columnFormulaField').classList.add('d-none');
         els.newColumnType.dispatchEvent(new Event('change'));
       }, 0);
     });
@@ -7845,6 +8131,10 @@
         } else if (type === 'rating') {
           const display = getFormValue(formData, 'rating_display') === 'percentage' ? 'percentage' : 'stars';
           options = { display, max: display === 'percentage' ? 100 : 5 };
+        } else if (type === 'formula') {
+          const formula = document.getElementById('newColumnFormula').value.trim();
+          if (!formula) throw new Error('Escribe una expresión para la fórmula.');
+          options = { formula };
         }
         const payload = { board_id: state.board.id, column_id: columnId, type, options };
         const preview = await post(apiUrl('preview_column_type_change'), payload);
@@ -7872,13 +8162,19 @@
         const display = getFormValue(formData, 'rating_display') === 'percentage' ? 'percentage' : 'stars';
         options = { display, max: display === 'percentage' ? 100 : 5 };
       }
+      if (type === 'formula') {
+        const formula = document.getElementById('newColumnFormula').value.trim();
+        if (!formula) throw new Error('Escribe una expresión para la fórmula.');
+        options = { formula };
+      }
       const result = await post(apiUrl('create_column'), { board_id: state.board.id, name, type, ...(options ? { options } : {}), ...(state.insertAfterColumnId ? { insert_after_column_id: state.insertAfterColumnId } : {}) });
       const column = result.data || {};
       state.columns.push({ id: column.id, name, type, options: options || [], required: false, sort_order: column.sort_order ?? state.columns.length });
       state.insertAfterColumnId = '';
       state.columns.sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
       closeDialog(els.createColumnDialog);
-      renderActiveView();
+      if (type === 'formula') await loadBoard(state.board.id, true);
+      else renderActiveView();
       setNotice('Columna agregada.', 'success');
     });
 
@@ -8476,6 +8772,31 @@
       }
     });
     els.boardTableContainer.addEventListener('click', (event) => {
+      const summaryFunctionToggle = event.target.closest('[data-summary-function-toggle]');
+      if (summaryFunctionToggle) {
+        event.preventDefault();
+        event.stopPropagation();
+        const controls = summaryFunctionToggle.closest('.boards-summary-number-controls');
+        const menu = controls?.querySelector('.boards-summary-function-menu-list');
+        const willOpen = Boolean(menu?.hidden);
+        els.boardTableContainer.querySelectorAll('.boards-summary-function-menu-list:not([hidden])').forEach((openMenu) => { openMenu.hidden = true; });
+        els.boardTableContainer.querySelectorAll('[data-summary-function-toggle][aria-expanded="true"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+        if (menu && willOpen) {
+          menu.hidden = false;
+          summaryFunctionToggle.setAttribute('aria-expanded', 'true');
+        }
+        return;
+      }
+      const summaryFunctionOption = event.target.closest('[data-summary-function-option]');
+      if (summaryFunctionOption) {
+        event.preventDefault();
+        event.stopPropagation();
+        state.summaryFunctions[summaryFunctionOption.dataset.summaryColumn] = summaryFunctionOption.dataset.summaryFunctionOption;
+        renderTable();
+        return;
+      }
+      els.boardTableContainer.querySelectorAll('.boards-summary-function-menu-list:not([hidden])').forEach((menu) => { menu.hidden = true; });
+      els.boardTableContainer.querySelectorAll('[data-summary-function-toggle][aria-expanded="true"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
       const menuTrigger = event.target.closest('[data-open-column-menu]');
       if (menuTrigger) {
         event.preventDefault(); event.stopPropagation();
@@ -8522,6 +8843,10 @@
     });
     document.addEventListener('pointerdown', (event) => {
       if (!event.target.closest('.boards-column-menu, [data-open-column-menu]')) closeColumnMenus();
+      if (!event.target.closest('.boards-summary-number-controls')) {
+        els.boardTableContainer.querySelectorAll('.boards-summary-function-menu-list:not([hidden])').forEach((menu) => { menu.hidden = true; });
+        els.boardTableContainer.querySelectorAll('[data-summary-function-toggle][aria-expanded="true"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+      }
     });
     document.addEventListener('click', (event) => {
       const menuAction = event.target.closest('[data-column-menu-action]');
@@ -8664,12 +8989,6 @@
       if (form.reportValidity()) submitInlineItem(form);
     });
     els.boardTableContainer.addEventListener('change', (event) => {
-      const summarySelect = event.target.closest('[data-summary-column]');
-      if (summarySelect) {
-        state.summaryFunctions[summarySelect.dataset.summaryColumn] = summarySelect.value;
-        renderTable();
-        return;
-      }
       const itemCheckbox = event.target.closest('[data-select-item]');
       if (itemCheckbox) {
         const id = itemCheckbox.dataset.selectItem;

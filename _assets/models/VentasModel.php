@@ -13,8 +13,9 @@ class VentasModel extends Model
     public $fchsyn;
     private $conn;
 
-    function get_sales($fch): array|false
+    function get_sales($fch, bool $amount = false): array|false
     {
+        $salesColumn = $amount ? 'mtoven' : 'canven';
         $query = "
             SELECT
                 Fecha,
@@ -64,7 +65,7 @@ class VentasModel extends Model
                         WHEN T1.codprd IN (2, 179, 192) THEN 'T-Maxima Regular'
                         WHEN T1.codprd IN (3, 180, 193) THEN 'T-Super Premium'
                     END AS Producto,
-                    SUM(T1.canven) AS VentasReales
+                    SUM(T1.{$salesColumn}) AS VentasReales
                 FROM
                     [SG12].[dbo].[Ventas] t1
                         LEFT JOIN [SG12].[dbo].[Islas] t2 ON t1.codisl = t2.cod
