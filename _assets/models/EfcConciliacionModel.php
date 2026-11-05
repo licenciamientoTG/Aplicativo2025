@@ -771,11 +771,11 @@ class EfcConciliacionModel {
                     JOIN dbo.efc_conc_transitos T ON T.estacion_id=G.estacion_id
                         AND (TC.clave_externa=T.clave_externa OR TC.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id))
                     WHERE TC.grupo_id=G.id AND TC.origen='CG' AND TC.activo=1
-                      AND T.mes_destino=?
+                      AND (T.mes_destino=? OR T.mes_origen=?)
                 )
               )
             ORDER BY G.id,P.id");
-        $stmt->execute([$stationId,$periodStart,$periodEnd,sprintf('%04d-%02d',$year,$month)]); $groups=[];
+        $period=sprintf('%04d-%02d',$year,$month); $stmt->execute([$stationId,$periodStart,$periodEnd,$period,$period]); $groups=[];
         while($row=$stmt->fetch(PDO::FETCH_ASSOC)) {
             $id=(int)$row['id'];
             if(!isset($groups[$id])) $groups[$id]=[
