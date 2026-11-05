@@ -48,9 +48,13 @@
         var grandTotal = data.rows.reduce(function (sum, r) { return sum + (Number(r.total_count) || 0); }, 0);
         var conditions = ['operativa', 'dañada', 'por_diagnosticar', 'desconocida', 'extraviada'];
         var conditionNames = { operativa:'Operativa', dañada:'Dañada', por_diagnosticar:'Por diagnosticar', desconocida:'Desconocida', extraviada:'Extraviada' };
-        $list.html('<div class="urovo-summary-grand-total"><span>Total de UROVO ubicados en estaciones</span><strong>' + esc(grandTotal) + '</strong></div>' + data.rows.map(function (r, index) {
+        var grandConditions = conditions.map(function (condition) {
+          var total = data.rows.reduce(function (sum, r) { return sum + (Number((r.conditions || {})[condition]) || 0); }, 0);
+          return '<article class="urovo-summary-condition-card is-' + escAttr(condition) + '"><span>' + esc(conditionNames[condition]) + '</span><strong>' + esc(total) + '</strong></article>';
+        }).join('');
+        $list.html('<section class="urovo-summary-overview" aria-label="Total general de UROVO en estaciones"><div class="urovo-summary-grand-total"><span>Total de UROVO en estaciones</span><strong>' + esc(grandTotal) + '</strong></div><div class="urovo-summary-condition-grid" aria-label="Total por condición">' + grandConditions + '</div></section>' + data.rows.map(function (r, index) {
           var id = 'urovoSummaryDetail' + index;
-          var breakdown = conditions.map(function (condition) { var counts = r.conditions || {}; return '<span>' + esc(conditionNames[condition]) + ' <strong>' + esc(counts[condition] == null ? 0 : counts[condition]) + '</strong></span>'; }).join('');
+          var breakdown = conditions.map(function (condition) { var counts = r.conditions || {}; return '<span class="urovo-condition-count is-' + escAttr(condition) + '"><span>' + esc(conditionNames[condition]) + '</span><strong>' + esc(counts[condition] == null ? 0 : counts[condition]) + '</strong></span>'; }).join('');
           return '<section class="urovo-summary-station"><div class="urovo-summary-station-head"><button type="button" class="urovo-summary-toggle" data-station="' + escAttr(r.station_id) + '" aria-controls="' + id + '" aria-expanded="false"><i class="fas fa-chevron-right" aria-hidden="true"></i><span>' + esc(r.station_name || 'Estación sin nombre') + '</span></button><div class="urovo-summary-counts"><span class="urovo-summary-total-count">Total <strong>' + esc(r.total_count) + '</strong></span><div class="urovo-summary-condition-counts" aria-label="Conteo por condición">' + breakdown + '</div></div></div><div class="urovo-summary-detail" id="' + id + '" hidden></div></section>';
         }).join(''));
       }).fail(function () { $list.html('<p class="urovo-summary-error" role="alert">No se pudo cargar el resumen. Cierra y vuelve a abrir para intentar de nuevo.</p>'); });
