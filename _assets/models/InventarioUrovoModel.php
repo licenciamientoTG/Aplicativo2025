@@ -1,7 +1,7 @@
 <?php
 class InventarioUrovoModel extends Model {
     private const LOCATIONS = ['estacion', 'almacen', 'reparacion', 'perdida', 'baja_definitiva'];
-    private const CONDITIONS = ['operativa', 'dañada', 'por_diagnosticar', 'desconocida'];
+    private const CONDITIONS = ['operativa', 'dañada', 'por_diagnosticar', 'desconocida', 'extraviada'];
 
     public static function locationTypes(): array { return self::LOCATIONS; }
 
@@ -40,7 +40,7 @@ class InventarioUrovoModel extends Model {
         if ($source !== null) {
             $sourceModel=mb_strtoupper(trim((string)$source['model']),'UTF-8');
             foreach ($items as $item) {
-                $itemModel=mb_strtoupper(trim((string)($item['model']??'No especificado')),'UTF-8');
+                $itemModel=mb_strtoupper(trim((string)($item['model']??'I9000S')),'UTF-8');
                 if ($itemModel!==$sourceModel) throw new InvalidArgumentException('El modelo de cada terminal debe coincidir con la existencia anónima seleccionada.');
             }
         }
@@ -55,7 +55,7 @@ class InventarioUrovoModel extends Model {
                 if ($source!==null) {
                     $this->stockMove($source['model'],-1,$source,'individualized',$actor,$source['condition']);
                 }
-                $id=$this->sql->insert('INSERT INTO [TG].[dbo].[inv_urovo_terminales] (numero_serie,numero_serie_normalizado,modelo,ip,mac,imei,fecha_compra,fin_garantia,condicion,accesorios,notas,ubicacion_tipo,estacion_codigo,proveedor,creado_por,creado_en,actualizado_por,actualizado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,SYSDATETIME(),?,SYSDATETIME())', [$serial,$normalized,$item['model']?:'No especificado',$item['ip']?:null,$item['mac']?:null,$item['imei']?:null,$item['purchase_date']?:null,$item['warranty_until']?:null,$item['condition']?:'desconocida',$item['accessories']?:null,$item['notes']?:null,$location['location_type'],$location['station_id'],$location['provider'],$actor,$actor]);
+                $id=$this->sql->insert('INSERT INTO [TG].[dbo].[inv_urovo_terminales] (numero_serie,numero_serie_normalizado,modelo,ip,mac,imei,fecha_compra,fin_garantia,condicion,accesorios,notas,ubicacion_tipo,estacion_codigo,proveedor,creado_por,creado_en,actualizado_por,actualizado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,SYSDATETIME(),?,SYSDATETIME())', [$serial,$normalized,$item['model']?:'I9000S',$item['ip']?:null,$item['mac']?:null,$item['imei']?:null,$item['purchase_date']?:null,$item['warranty_until']?:null,$item['condition']?:'desconocida',$item['accessories']?:null,$item['notes']?:null,$location['location_type'],$location['station_id'],$location['provider'],$actor,$actor]);
                 if (!$id) throw new RuntimeException('No se pudo guardar el terminal.');
                 $eventSource=$source===null?null:['location_type'=>$source['location_type'],'station_id'=>$source['station_id'],'provider'=>$source['provider']];
                 $this->terminalMove((int)$id,$eventSource,$location,$source['condition']??null,(string)($item['condition']??'desconocida'),$source===null?'alta':'asignacion',$source===null?'alta':'Individualizada desde existencia anónima.',$actor);
@@ -73,7 +73,7 @@ class InventarioUrovoModel extends Model {
 
     public function adjustAnonymous(array $data, array $location, int $actor): void {
         $this->sql->beginTransaction();
-        try { $this->stockMove((string)($data['model']??'No especificado'),(int)$data['delta'],$location,(string)$data['reason'],$actor,(string)($data['condition']??'desconocida')); $this->sql->commit(); }
+        try { $this->stockMove((string)($data['model']??'I9000S'),(int)$data['delta'],$location,(string)$data['reason'],$actor,(string)($data['condition']??'desconocida')); $this->sql->commit(); }
         catch (Throwable $e) { $this->sql->rollBack(); throw $e; }
     }
 
@@ -102,7 +102,7 @@ class InventarioUrovoModel extends Model {
             $fields=['modelo'=>'model','ip'=>'ip','mac'=>'mac','imei'=>'imei','fecha_compra'=>'purchase_date','fin_garantia'=>'warranty_until','condicion'=>'condition','accesorios'=>'accessories','notas'=>'notes'];
             $set=[]; $params=[]; $diff=[];
             foreach ($fields as $column=>$key) {
-                $value=$changes[$key]; if ($column==='modelo') $value=$value?:'No especificado'; if ($column==='condicion') $value=$value?:'desconocida';
+                $value=$changes[$key]; if ($column==='modelo') $value=$value?:'I9000S'; if ($column==='condicion') $value=$value?:'desconocida';
                 $prior=$old[$column]??null; if ((string)($prior??'')!==(string)($value??'')) $diff[$column]=['from'=>$prior,'to'=>$value];
                 $set[]="[$column]=?"; $params[]=$value;
             }
@@ -125,6 +125,6 @@ class InventarioUrovoModel extends Model {
             $rows=$this->sql->select("SELECT SUM(delta_cantidad) AS cantidad FROM [TG].[dbo].[inv_urovo_existencias_movimientos] WITH (UPDLOCK,HOLDLOCK) WHERE modelo=? AND ubicacion_tipo=? AND ISNULL(estacion_codigo,0)=? AND estado=? AND ISNULL(proveedor,'')=?",[$model,$location['location_type'],(int)($location['station_id']??0),$condition,(string)($location['provider']??'')]);
             if ((int)($rows[0]['cantidad']??0)<abs($delta)) throw new DomainException('La cantidad anónima disponible es insuficiente.');
         }
-        $this->sql->insert('INSERT INTO [TG].[dbo].[inv_urovo_existencias_movimientos] (fecha_evento,modelo,delta_cantidad,ubicacion_tipo,estacion_codigo,estado,proveedor,motivo,actor_id,registrado_en) VALUES (SYSDATETIME(),?,?,?,?,?,?,?,?,SYSDATETIME())',[$model?:'No especificado',$delta,$location['location_type'],$location['station_id'],$condition,$location['provider'],$reason,$actor]);
+        $this->sql->insert('INSERT INTO [TG].[dbo].[inv_urovo_existencias_movimientos] (fecha_evento,modelo,delta_cantidad,ubicacion_tipo,estacion_codigo,estado,proveedor,motivo,actor_id,registrado_en) VALUES (SYSDATETIME(),?,?,?,?,?,?,?,?,SYSDATETIME())',[$model?:'I9000S',$delta,$location['location_type'],$location['station_id'],$condition,$location['provider'],$reason,$actor]);
     }
 }

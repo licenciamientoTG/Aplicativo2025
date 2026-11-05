@@ -17,7 +17,7 @@ class EfcAnaliticosModel {
     /** Evidencia informativa; no altera conciliaciones ni fuentes operativas. */
     public function evidence(int $stationId, string $date, ?float $cgAmount, ?float $bankAmount): array {
         if (!$stationId || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) throw new RuntimeException('Estación o fecha inválida.');
-        $stmt = $this->db->prepare("SELECT TOP 8 P.id,COALESCE(C.fecha_efectiva,P.fecha_reportada) AS fecha_reportada,P.hora_original,P.remesa_numero,P.cuenta_mn_original,P.dice_contener_mn,P.real_mn,P.diferencia_mn,P.dice_contener_usd,P.real_usd,P.diferencia_usd,I.nombre_archivo FROM dbo.efc_conc_analiticos_papeletas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id LEFT JOIN dbo.efc_conc_analiticos_correcciones_fecha C ON C.papeleta_id=P.id AND C.activo=1 LEFT JOIN dbo.efc_conc_analiticos_correcciones_estacion S ON S.papeleta_id=P.id AND S.activo=1 WHERE COALESCE(S.estacion_corregida_id,P.estacion_id)=? AND COALESCE(C.fecha_efectiva,P.fecha_reportada) BETWEEN DATEADD(day,-7,?) AND DATEADD(day,7,?) AND I.estado='IMPORTADA' ORDER BY ABS(DATEDIFF(day,COALESCE(C.fecha_efectiva,P.fecha_reportada),?)),P.id DESC");
+        $stmt = $this->db->prepare("SELECT TOP 8 P.id,P.effective_date AS fecha_reportada,P.effective_time AS hora_original,P.effective_remittance AS remesa_numero,P.effective_account AS cuenta_mn_original,P.effective_declared_mn AS dice_contener_mn,P.effective_real_mn AS real_mn,P.effective_difference_mn AS diferencia_mn,P.effective_declared_usd AS dice_contener_usd,P.effective_real_usd AS real_usd,P.effective_difference_usd AS diferencia_usd,I.nombre_archivo FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id WHERE P.effective_station_id=? AND P.effective_date BETWEEN DATEADD(day,-7,?) AND DATEADD(day,7,?) AND I.estado='IMPORTADA' ORDER BY ABS(DATEDIFF(day,P.effective_date,?)),P.id DESC");
         $stmt->execute([$stationId,$date,$date,$date]);
         $items=[];
         while ($row=$stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -34,7 +34,7 @@ class EfcAnaliticosModel {
     /** Papeletas del periodo para el modo informativo CG vs Analíticos. */
     public function period(int $stationId, int $year, int $month): array {
         if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Estación o periodo inválidos.');
-        $stmt=$this->db->prepare("SELECT P.id,P.importacion_id,COALESCE(C.fecha_efectiva,P.fecha_reportada) AS fecha_reportada,P.hora_original,P.remesa_numero,P.cuenta_mn_original,P.dice_contener_mn,P.real_mn,P.diferencia_mn,P.dice_contener_usd,P.real_usd,P.diferencia_usd,I.nombre_archivo FROM dbo.efc_conc_analiticos_papeletas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id LEFT JOIN dbo.efc_conc_analiticos_correcciones_fecha C ON C.papeleta_id=P.id AND C.activo=1 LEFT JOIN dbo.efc_conc_analiticos_correcciones_estacion S ON S.papeleta_id=P.id AND S.activo=1 WHERE COALESCE(S.estacion_corregida_id,P.estacion_id)=? AND YEAR(COALESCE(C.fecha_efectiva,P.fecha_reportada))=? AND MONTH(COALESCE(C.fecha_efectiva,P.fecha_reportada))=? AND I.estado='IMPORTADA' ORDER BY COALESCE(C.fecha_efectiva,P.fecha_reportada),P.id");
+        $stmt=$this->db->prepare("SELECT P.id,P.importacion_id,P.effective_date AS fecha_reportada,P.effective_time AS hora_original,P.effective_remittance AS remesa_numero,P.effective_account AS cuenta_mn_original,P.effective_declared_mn AS dice_contener_mn,P.effective_real_mn AS real_mn,P.effective_difference_mn AS diferencia_mn,P.effective_declared_usd AS dice_contener_usd,P.effective_real_usd AS real_usd,P.effective_difference_usd AS diferencia_usd,I.nombre_archivo FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id WHERE P.effective_station_id=? AND YEAR(P.effective_date)=? AND MONTH(P.effective_date)=? AND I.estado='IMPORTADA' ORDER BY P.effective_date,P.id");
         $stmt->execute([$stationId,$year,$month]); $out=[];
         while($row=$stmt->fetch(PDO::FETCH_ASSOC)) $out[]=['id'=>(int)$row['id'],'importation_id'=>(int)$row['importacion_id'],'date'=>$this->dateValue($row['fecha_reportada']),'time'=>$row['hora_original'],'remittance'=>$this->normaliseRemittance($row['remesa_numero']),'account'=>$row['cuenta_mn_original'],'declared_mn'=>(float)($row['dice_contener_mn']??0),'real_mn'=>(float)($row['real_mn']??0),'difference_mn'=>(float)($row['diferencia_mn']??0),'declared_usd'=>(float)($row['dice_contener_usd']??0),'real_usd'=>(float)($row['real_usd']??0),'difference_usd'=>(float)($row['diferencia_usd']??0),'file'=>$row['nombre_archivo']];
         return $out;
@@ -56,8 +56,8 @@ class EfcAnaliticosModel {
         $period=sprintf('%04d-%02d',$year,$month);
         $gasomex=strtoupper(trim((string)$company))==='GASOMEX';
         $range=$gasomex
-            ? "COALESCE(C.fecha_efectiva,P.fecha_reportada)>=DATEADD(day,-2,DATEFROMPARTS(?, ?, 1)) AND COALESCE(C.fecha_efectiva,P.fecha_reportada)<DATEADD(day,2,EOMONTH(DATEFROMPARTS(?, ?, 1)))"
-            : "COALESCE(C.fecha_efectiva,P.fecha_reportada)>=DATEFROMPARTS(?, ?, 1) AND COALESCE(C.fecha_efectiva,P.fecha_reportada)<DATEADD(day,2,EOMONTH(DATEFROMPARTS(?, ?, 1)))";
+            ? "P.effective_date>=DATEADD(day,-2,DATEFROMPARTS(?, ?, 1)) AND P.effective_date<DATEADD(day,2,EOMONTH(DATEFROMPARTS(?, ?, 1)))"
+            : "P.effective_date>=DATEFROMPARTS(?, ?, 1) AND P.effective_date<DATEADD(day,2,EOMONTH(DATEFROMPARTS(?, ?, 1)))";
         $linkRange=$gasomex
             ? "V.fecha_cg>=DATEADD(day,-2,DATEFROMPARTS(?, ?, 1)) AND V.fecha_cg<DATEADD(day,2,EOMONTH(DATEFROMPARTS(?, ?, 1)))"
             : "YEAR(V.fecha_cg)=? AND MONTH(V.fecha_cg)=?";
@@ -65,8 +65,8 @@ class EfcAnaliticosModel {
         // Un tránsito sigue siendo el turno de su mes de origen. Al abrir el
         // mes receptor traemos además su papeleta y vínculo originales, sin
         // duplicarlos ni alterar la fecha persistida del vínculo.
-        $papers=$this->db->prepare("SELECT P.id,P.importacion_id,P.fecha_reportada AS fecha_original,C.fecha_efectiva,P.hora_original,P.remesa_numero,P.cuenta_mn_original,P.dice_contener_mn,P.real_mn,P.dice_contener_usd,P.real_usd,CASE WHEN EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos AV WHERE (AV.papeleta_id=P.id OR AV.papeleta_secundaria_id=P.id) AND AV.activo=1) THEN 1 ELSE 0 END AS vinculada,I.nombre_archivo FROM dbo.efc_conc_analiticos_papeletas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id LEFT JOIN dbo.efc_conc_analiticos_correcciones_fecha C ON C.papeleta_id=P.id AND C.activo=1 LEFT JOIN dbo.efc_conc_analiticos_correcciones_estacion S ON S.papeleta_id=P.id AND S.activo=1 WHERE COALESCE(S.estacion_corregida_id,P.estacion_id)=? AND I.estado='IMPORTADA' AND (($range) OR EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos R WHERE (R.papeleta_id=P.id OR R.papeleta_secundaria_id=P.id) AND R.activo=1 AND R.estacion_id=COALESCE(S.estacion_corregida_id,P.estacion_id) AND ($paperLinkRange)) OR EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos V JOIN dbo.efc_conc_transitos T ON T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto WHERE (V.papeleta_id=P.id OR V.papeleta_secundaria_id=P.id) AND V.activo=1 AND T.estacion_id=? AND T.mes_destino=? AND T.estado IN ('PENDIENTE','CONCILIADO'))) ORDER BY P.id DESC");
-        $papers->execute(array_merge([$stationId,$year,$month,$year,$month],$gasomex?[$year,$month,$year,$month]:[$year,$month],[$stationId,$period])); $items=[];
+        $papers=$this->db->prepare("SELECT P.id,P.importacion_id,P.source_date AS fecha_original,P.effective_date AS fecha_efectiva,P.effective_time AS hora_original,P.effective_remittance AS remesa_numero,P.effective_account AS cuenta_mn_original,P.effective_declared_mn AS dice_contener_mn,P.effective_real_mn AS real_mn,P.effective_declared_usd AS dice_contener_usd,P.effective_real_usd AS real_usd,CASE WHEN EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos AV WHERE (AV.papeleta_id=P.id OR AV.papeleta_secundaria_id=P.id) AND AV.activo=1) THEN 1 ELSE 0 END AS vinculada,I.nombre_archivo FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id WHERE (P.effective_station_id=? OR EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos AV WHERE (AV.papeleta_id=P.id OR AV.papeleta_secundaria_id=P.id) AND AV.estacion_id=? AND AV.activo=1)) AND I.estado='IMPORTADA' AND ((($range)) OR EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos R WHERE (R.papeleta_id=P.id OR R.papeleta_secundaria_id=P.id) AND R.activo=1 AND R.estacion_id=? AND ($paperLinkRange)) OR EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos V JOIN dbo.efc_conc_transitos T ON T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto WHERE (V.papeleta_id=P.id OR V.papeleta_secundaria_id=P.id) AND V.activo=1 AND T.estacion_id=? AND T.mes_destino=? AND T.estado IN ('PENDIENTE','CONCILIADO'))) ORDER BY P.id DESC");
+        $papers->execute(array_merge([$stationId,$stationId,$year,$month,$year,$month],[$stationId],$gasomex?[$year,$month,$year,$month]:[$year,$month],[$stationId,$period])); $items=[];
         while($row=$papers->fetch(PDO::FETCH_ASSOC)) $items[]=['id'=>(int)$row['id'],'importation_id'=>(int)$row['importacion_id'],'date'=>$this->dateValue($row['fecha_efectiva'] ?: $row['fecha_original']),'original_date'=>$this->dateValue($row['fecha_original']),'effective_date'=>$row['fecha_efectiva']?$this->dateValue($row['fecha_efectiva']):null,'time'=>$row['hora_original'],'remittance'=>$this->normaliseRemittance($row['remesa_numero']),'account'=>$row['cuenta_mn_original'],'declared_mn'=>(float)($row['dice_contener_mn']??0),'real_mn'=>(float)($row['real_mn']??0),'declared_usd'=>(float)($row['dice_contener_usd']??0),'real_usd'=>(float)($row['real_usd']??0),'linked'=>(bool)$row['vinculada'],'file'=>$row['nombre_archivo']];
         $links=$this->db->prepare("SELECT V.id,V.papeleta_id,V.papeleta_secundaria_id,V.fecha_cg,V.turno,V.concepto,V.importe_cg,V.criterio,V.tipo_cambio_usd AS exchange_rate FROM dbo.efc_conc_analiticos_vinculos V WHERE V.estacion_id=? AND V.activo=1 AND (($linkRange) OR EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WHERE T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto AND T.mes_destino=? AND T.estado IN ('PENDIENTE','CONCILIADO')))");
         $links->execute($gasomex?[$stationId,$year,$month,$year,$month,$period]:[$stationId,$year,$month,$period]);
@@ -89,39 +89,118 @@ class EfcAnaliticosModel {
         if ($stationId > 0 && !in_array($stationId,$stationIds,true)) throw new RuntimeException('Estación fuera de la empresa seleccionada.');
         $stationMarks=implode(',',array_fill(0,count($stationIds),'?'));
         $sql = "SELECT P.id,P.importacion_id,P.fecha_reportada AS fecha_original,C.id AS correccion_id,C.fecha_efectiva,C.usuario_id AS correccion_usuario,C.creado_en AS correccion_creada,
-                       P.remesa_numero,P.cuenta_mn_original,P.dice_contener_mn,P.real_mn,P.dice_contener_usd,P.real_usd,P.estacion_id AS estacion_original_id,S.id AS estacion_correccion_id,S.estacion_corregida_id,E.Nombre AS estacion_nombre,EOriginal.Nombre AS estacion_original_nombre,I.nombre_archivo,
+                       D.id AS datos_correccion_id,D.usuario_id AS datos_correccion_usuario,D.creado_en AS datos_correccion_creada,COALESCE(D.fecha_efectiva,C.fecha_efectiva,P.fecha_reportada) fecha_actual,D.fecha_efectiva AS datos_fecha,D.hora_efectiva hora_actual,COALESCE(D.remesa_efectiva,P.remesa_numero) remesa_actual,COALESCE(D.cuenta_efectiva,P.cuenta_mn_original) cuenta_actual,
+                       COALESCE(D.declarado_mn,P.dice_contener_mn) declarado_mn_actual,COALESCE(D.real_mn,P.real_mn) real_mn_actual,COALESCE(D.declarado_usd,P.dice_contener_usd) declarado_usd_actual,COALESCE(D.real_usd,P.real_usd) real_usd_actual,
+                       COALESCE(D.estacion_id,S.estacion_corregida_id,P.estacion_id) estacion_actual,
+                       P.hora_original,P.remesa_numero,P.cuenta_mn_original,P.dice_contener_mn,P.real_mn,P.dice_contener_usd,P.real_usd,P.estacion_id AS estacion_original_id,S.id AS estacion_correccion_id,S.estacion_corregida_id,E.Nombre AS estacion_nombre,EOriginal.Nombre AS estacion_original_nombre,I.nombre_archivo,
+                       P.creado_en AS creado_en,P.creado_por,COALESCE(Creador.Nombre,Creador.Usuario,CASE WHEN P.creado_por IS NOT NULL THEN CONCAT('Usuario ',P.creado_por) END) creador_nombre,ISNULL(P.captura_manual,0) captura_manual,
                        CASE WHEN EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos V WHERE (V.papeleta_id=P.id OR V.papeleta_secundaria_id=P.id) AND V.activo=1) THEN 1 ELSE 0 END AS vinculada
                 FROM dbo.efc_conc_analiticos_papeletas P
                 JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id
                 LEFT JOIN dbo.efc_conc_analiticos_correcciones_fecha C ON C.papeleta_id=P.id AND C.activo=1
                 LEFT JOIN dbo.efc_conc_analiticos_correcciones_estacion S ON S.papeleta_id=P.id AND S.activo=1
-                LEFT JOIN TG.dbo.Estaciones E ON E.Codigo=COALESCE(S.estacion_corregida_id,P.estacion_id)
+                LEFT JOIN dbo.efc_conc_analiticos_correcciones_datos D ON D.papeleta_id=P.id AND D.activo=1
+                LEFT JOIN TG.dbo.Usuario Creador ON Creador.Id=P.creado_por
+                LEFT JOIN TG.dbo.Estaciones E ON E.Codigo=COALESCE(D.estacion_id,S.estacion_corregida_id,P.estacion_id)
                 LEFT JOIN TG.dbo.Estaciones EOriginal ON EOriginal.Codigo=P.estacion_id
                 WHERE I.estado='IMPORTADA'
-                  AND YEAR(COALESCE(C.fecha_efectiva,P.fecha_reportada))=?
-                  AND MONTH(COALESCE(C.fecha_efectiva,P.fecha_reportada))=?
-                  AND COALESCE(S.estacion_corregida_id,P.estacion_id) IN ($stationMarks)";
+                  AND YEAR(COALESCE(D.fecha_efectiva,C.fecha_efectiva,P.fecha_reportada))=?
+                  AND MONTH(COALESCE(D.fecha_efectiva,C.fecha_efectiva,P.fecha_reportada))=?
+                  AND COALESCE(D.estacion_id,S.estacion_corregida_id,P.estacion_id) IN ($stationMarks)";
         $params=array_merge([$year,$month],$stationIds);
-        if ($stationId > 0) { $sql .= ' AND COALESCE(S.estacion_corregida_id,P.estacion_id)=?'; $params[]=$stationId; }
-        $sql .= ' ORDER BY COALESCE(C.fecha_efectiva,P.fecha_reportada) DESC,P.id DESC';
+        if ($stationId > 0) { $sql .= ' AND COALESCE(D.estacion_id,S.estacion_corregida_id,P.estacion_id)=?'; $params[]=$stationId; }
+        $sql .= ' ORDER BY COALESCE(D.fecha_efectiva,C.fecha_efectiva,P.fecha_reportada) DESC,P.id DESC';
         $stmt=$this->db->prepare($sql); $stmt->execute($params); $items=[];
         while($row=$stmt->fetch(PDO::FETCH_ASSOC)) {
+            $originalDate=$this->dateValue($row['fecha_original']); $effectiveDate=$this->dateValue($row['fecha_actual']);
+            $effectiveStation=(int)($row['estacion_actual'] ?: $row['estacion_original_id']); $originalStation=(int)$row['estacion_original_id'];
             $items[]=[
                 'id'=>(int)$row['id'], 'importation_id'=>(int)$row['importacion_id'],
-                'original_date'=>$this->dateValue($row['fecha_original']),
-                'effective_date'=>$row['fecha_efectiva']?$this->dateValue($row['fecha_efectiva']):null,
-                'date'=>$this->dateValue($row['fecha_efectiva'] ?: $row['fecha_original']),
-                'remittance'=>$this->normaliseRemittance($row['remesa_numero']),
-                'account'=>$row['cuenta_mn_original'], 'station_id'=>(int)($row['estacion_corregida_id'] ?: $row['estacion_original_id']), 'original_station_id'=>(int)$row['estacion_original_id'], 'station'=>$row['estacion_nombre'], 'original_station'=>$row['estacion_original_nombre'],
-                'declared_mn'=>(float)($row['dice_contener_mn']??0), 'real_mn'=>(float)($row['real_mn']??0),
-                'declared_usd'=>(float)($row['dice_contener_usd']??0), 'real_usd'=>(float)($row['real_usd']??0),
+                'original_date'=>$originalDate,
+                'effective_date'=>$effectiveDate!==$originalDate?$effectiveDate:null,
+                'date'=>$effectiveDate, 'time'=>$row['hora_actual']??$row['hora_original'],
+                'remittance'=>$this->normaliseRemittance($row['remesa_actual']),
+                'account'=>$row['cuenta_actual'], 'station_id'=>$effectiveStation, 'original_station_id'=>$originalStation, 'station'=>$row['estacion_nombre'], 'original_station'=>$row['estacion_original_nombre'],
+                'declared_mn'=>(float)($row['declarado_mn_actual']??0), 'real_mn'=>(float)($row['real_mn_actual']??0),
+                'declared_usd'=>(float)($row['declarado_usd_actual']??0), 'real_usd'=>(float)($row['real_usd_actual']??0),
+                'difference_mn'=>round((float)($row['real_mn_actual']??0)-(float)($row['declarado_mn_actual']??0),2), 'difference_usd'=>round((float)($row['real_usd_actual']??0)-(float)($row['declarado_usd_actual']??0),2),
                 'file'=>$row['nombre_archivo'], 'correction_id'=>$row['correccion_id']?(int)$row['correccion_id']:null,
-                'correction_user'=>$row['correccion_usuario']?(int)$row['correccion_usuario']:null,
-                'correction_at'=>$row['correccion_creada']?$this->dateTimeValue($row['correccion_creada']):null,
-                'station_corrected'=>(bool)$row['estacion_correccion_id'], 'linked'=>(bool)$row['vinculada']
+                'correction_user'=>($row['datos_correccion_usuario']??$row['correccion_usuario'])?(int)($row['datos_correccion_usuario']??$row['correccion_usuario']):null,
+                'correction_at'=>($row['datos_correccion_creada']??$row['correccion_creada'])?$this->dateTimeValue($row['datos_correccion_creada']??$row['correccion_creada']):null,
+                'station_corrected'=>$effectiveStation!==$originalStation || (bool)$row['estacion_correccion_id'], 'data_corrected'=>(bool)$row['datos_correccion_id'], 'linked'=>(bool)$row['vinculada'],
+                'created_at'=>$this->dateTimeValue($row['creado_en']), 'created_by'=>$row['creador_nombre']?:null, 'manually_created'=>(bool)$row['captura_manual']
             ];
         }
         return $items;
+    }
+
+    public function createManagedPaper(array $data, int $userId): int {
+        $values=$this->validateManagedPaper($data);
+        if ($userId<1) throw new RuntimeException('No se pudo identificar al usuario de sesión.');
+        $company=strtoupper(trim((string)($data['empresa']??'DIAZ GAS')));
+        if (!in_array($company,['DIAZ GAS','FORANEAS','GASOMEX'],true)) throw new RuntimeException('Empresa inválida.');
+        if (!in_array($values['station_id'],EfcConciliacionModel::stationIds($company),true)) throw new RuntimeException('La estación no pertenece a la empresa seleccionada.');
+        $this->db->beginTransaction();
+        try {
+            $payload=json_encode($values,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+            $import=$this->db->prepare("INSERT dbo.efc_conc_analiticos_importaciones(hash_archivo,nombre_archivo,archivo,version_lector,estado,total_papeletas,total_errores) OUTPUT INSERTED.id VALUES(?,N'Captura manual',CONVERT(VARBINARY(MAX),''),'MANUAL','IMPORTADA',1,0)");
+            $import->execute([hash('sha256','manual:'.bin2hex(random_bytes(32)))]); $importId=(int)$import->fetchColumn();
+            $station=$this->db->prepare('SELECT Nombre FROM TG.dbo.Estaciones WHERE Codigo=?'); $station->execute([$values['station_id']]); $stationName=(string)$station->fetchColumn();
+            $insert=$this->db->prepare("INSERT dbo.efc_conc_analiticos_papeletas(importacion_id,hoja,fila_origen,fecha_reportada,fecha_original,hora_original,estacion_original,estacion_nombre_original,estacion_id,estado_estacion,cuenta_mn_original,remesa_numero,dice_contener_mn,real_mn,diferencia_mn,dice_contener_usd,real_usd,diferencia_usd,datos_originales,creado_por,captura_manual) OUTPUT INSERTED.id VALUES(?,N'Captura manual',1,?, ?, ?, ?, ?, ?,'IDENTIFICADA',?,?,?,?,?,?,?, ?, ?,?,1)");
+            $insert->execute([$importId,$values['date'],$values['date'],$values['time'],$stationName,$stationName,$values['station_id'],$values['account'],$values['remittance'],$values['declared_mn'],$values['real_mn'],$values['real_mn']-$values['declared_mn'],$values['declared_usd'],$values['real_usd'],$values['real_usd']-$values['declared_usd'],$payload,$userId]);
+            $id=(int)$insert->fetchColumn();
+            $this->insertPaperAudit($id,'CREACION',null,$values,$userId);
+            $this->db->commit(); return $id;
+        } catch(Throwable $e) { if($this->db->inTransaction())$this->db->rollBack(); throw $e; }
+    }
+
+    public function updateManagedPaper(int $id, array $data, int $userId): void {
+        if($id<1||$userId<1) throw new RuntimeException('Papeleta o usuario inválido.');
+        $this->db->beginTransaction();
+        try {
+            $q=$this->db->prepare("SELECT P.*,C.fecha_efectiva,S.estacion_corregida_id,D.fecha_efectiva AS datos_fecha,D.hora_efectiva,D.estacion_id AS datos_estacion,D.remesa_efectiva,D.cuenta_efectiva,D.declarado_mn,D.real_mn AS datos_real_mn,D.declarado_usd,D.real_usd AS datos_real_usd FROM dbo.efc_conc_analiticos_papeletas P WITH (UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id LEFT JOIN dbo.efc_conc_analiticos_correcciones_fecha C ON C.papeleta_id=P.id AND C.activo=1 LEFT JOIN dbo.efc_conc_analiticos_correcciones_estacion S ON S.papeleta_id=P.id AND S.activo=1 LEFT JOIN dbo.efc_conc_analiticos_correcciones_datos D ON D.papeleta_id=P.id AND D.activo=1 WHERE P.id=? AND I.estado='IMPORTADA'");
+            $q->execute([$id]); $row=$q->fetch(PDO::FETCH_ASSOC); if(!$row)throw new RuntimeException('Papeleta no encontrada.');
+            $activeLinks=$this->db->prepare("SELECT id,estacion_id,fecha_cg,turno,concepto FROM dbo.efc_conc_analiticos_vinculos WITH (UPDLOCK,HOLDLOCK) WHERE activo=1 AND (papeleta_id=? OR papeleta_secundaria_id=?)");
+            $activeLinks->execute([$id,$id]); $paperLinks=$activeLinks->fetchAll(PDO::FETCH_ASSOC);
+            if($paperLinks && empty($data['confirm_linked'])) throw new RuntimeException('La papeleta tiene vínculos activos y requiere confirmación explícita para editarse.');
+            foreach($paperLinks as $link) $this->assertLinkEditable($link);
+            $old=$this->managedValuesFromRow($row); $merged=array_merge($old,is_array($data['fields']??null)?$data['fields']:$data); $new=$this->validateManagedPaper($merged);
+            if(EfcConciliacionModel::stationCompany($new['station_id'])===null) throw new RuntimeException('Estación inválida.');
+            if($old===$new){$this->db->commit();return;}
+            $this->db->prepare('UPDATE dbo.efc_conc_analiticos_correcciones_datos SET activo=0 WHERE papeleta_id=? AND activo=1')->execute([$id]);
+            $s=$this->db->prepare('INSERT dbo.efc_conc_analiticos_correcciones_datos(papeleta_id,fecha_efectiva,hora_efectiva,estacion_id,remesa_efectiva,cuenta_efectiva,declarado_mn,real_mn,declarado_usd,real_usd,usuario_id,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)');
+            $s->execute([$id,$new['date'],$new['time'],$new['station_id'],$new['remittance'],$new['account'],$new['declared_mn'],$new['real_mn'],$new['declared_usd'],$new['real_usd'],$userId]);
+            $this->insertPaperAudit($id,'EDICION',$old,$new,$userId); $this->db->commit();
+        } catch(Throwable $e) { if($this->db->inTransaction())$this->db->rollBack(); throw $e; }
+    }
+
+    public function managedPaperHistory(int $id): array {
+        $p=$this->db->prepare("SELECT P.creado_por,COALESCE(P.creado_en,I.creado_en) creado_en,ISNULL(P.captura_manual,0) captura_manual,COALESCE(U.Nombre,U.Usuario) creador FROM dbo.efc_conc_analiticos_papeletas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id LEFT JOIN TG.dbo.Usuario U ON U.Id=P.creado_por WHERE P.id=?"); $p->execute([$id]); $created=$p->fetch(PDO::FETCH_ASSOC); if(!$created)throw new RuntimeException('Papeleta no encontrada.');
+        $q=$this->db->prepare('SELECT A.operacion,A.valores_anteriores,A.valores_nuevos,A.usuario_id,A.creado_en,COALESCE(U.Nombre,U.Usuario) usuario_nombre FROM dbo.efc_conc_analiticos_papeletas_auditoria A LEFT JOIN TG.dbo.Usuario U ON U.Id=A.usuario_id WHERE A.papeleta_id=? ORDER BY A.creado_en,A.id'); $q->execute([$id]); $entries=[];
+        while($r=$q->fetch(PDO::FETCH_ASSOC))$entries[]=['operation'=>$r['operacion'],'old_values'=>$r['valores_anteriores']?json_decode($r['valores_anteriores'],true):null,'new_values'=>json_decode($r['valores_nuevos'],true),'user_id'=>$r['usuario_id']?(int)$r['usuario_id']:null,'user_name'=>$r['usuario_nombre'],'created_at'=>$this->dateTimeValue($r['creado_en'])];
+        return ['created_at'=>$this->dateTimeValue($created['creado_en']),'created_by'=>$created['creador']?:($created['creado_por']?'Usuario '.$created['creado_por']:'Sistema'),'manually_created'=>(bool)$created['captura_manual'],'entries'=>$entries];
+    }
+
+    private function validateManagedPaper(array $data): array {
+        $date=trim((string)($data['date']??'')); $time=trim((string)($data['time']??'')); $station=(int)($data['station_id']??0);
+        $parsed=DateTime::createFromFormat('!Y-m-d',$date);
+        if(!$parsed||$parsed->format('Y-m-d')!==$date)throw new RuntimeException('Capture una fecha válida.');
+        if(strlen($time)>100)throw new RuntimeException('La hora excede la longitud permitida.');
+        $stationQ=$this->db->prepare('SELECT 1 FROM TG.dbo.Estaciones WHERE Codigo=? AND Codigo<>0');$stationQ->execute([$station]);if($station<1||!$stationQ->fetchColumn())throw new RuntimeException('Seleccione una estación válida.');
+        $num=static function($key)use($data){$v=$data[$key]??0;if($v===''||$v===null)return 0.0;if(!is_numeric($v)||!is_finite((float)$v)||(float)$v<0||(float)$v>9999999999999999.99)throw new RuntimeException('Los importes deben ser números válidos dentro del rango permitido.');return round((float)$v,2);};
+        $remittance=trim((string)($data['remittance']??'')); $account=trim((string)($data['account']??''));
+        $remittanceLength=preg_match_all('/./us',$remittance); $accountLength=preg_match_all('/./us',$account);
+        if($remittanceLength===false||$remittanceLength>100||$accountLength===false||$accountLength>100)throw new RuntimeException('La remesa o cuenta excede la longitud permitida.');
+        return ['date'=>$date,'time'=>$time,'station_id'=>$station,'remittance'=>$remittance,'account'=>$account,'declared_mn'=>$num('declared_mn'),'real_mn'=>$num('real_mn'),'declared_usd'=>$num('declared_usd'),'real_usd'=>$num('real_usd')];
+    }
+
+    private function managedValuesFromRow(array $r): array {
+        return ['date'=>$this->dateValue($r['datos_fecha']??$r['fecha_efectiva']??$r['fecha_reportada']),'time'=>(string)($r['hora_efectiva']??$r['hora_original']??''),'station_id'=>(int)($r['datos_estacion']??$r['estacion_corregida_id']??$r['estacion_id']??0),'remittance'=>(string)($r['remesa_efectiva']??$r['remesa_numero']??''),'account'=>(string)($r['cuenta_efectiva']??$r['cuenta_mn_original']??''),'declared_mn'=>round((float)($r['declarado_mn']??$r['dice_contener_mn']??0),2),'real_mn'=>round((float)($r['datos_real_mn']??$r['real_mn']??0),2),'declared_usd'=>round((float)($r['declarado_usd']??$r['dice_contener_usd']??0),2),'real_usd'=>round((float)($r['datos_real_usd']??$r['real_usd']??0),2)];
+    }
+
+    private function insertPaperAudit(int $id,string $operation,?array $old,?array $new,int $userId): void {
+        $s=$this->db->prepare('INSERT dbo.efc_conc_analiticos_papeletas_auditoria(papeleta_id,operacion,valores_anteriores,valores_nuevos,usuario_id) VALUES(?,?,?,?,?)');
+        $s->execute([$id,$operation,$old?json_encode($old,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES):null,$new?json_encode($new,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES):null,$userId]);
     }
 
     /** Aplica una misma fecha efectiva a varias papeletas, dejando historial. */
@@ -217,7 +296,7 @@ class EfcAnaliticosModel {
     }
 
     private function assertPaperAvailable(int $paper,int $station): void {
-        $q=$this->db->prepare("SELECT P.id FROM dbo.efc_conc_analiticos_papeletas P WITH (UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id LEFT JOIN dbo.efc_conc_analiticos_correcciones_estacion S WITH (UPDLOCK,HOLDLOCK) ON S.papeleta_id=P.id AND S.activo=1 WHERE P.id=? AND COALESCE(S.estacion_corregida_id,P.estacion_id)=? AND I.estado='IMPORTADA'");
+        $q=$this->db->prepare("SELECT P.id FROM dbo.efc_conc_analiticos_papeletas P WITH (UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id LEFT JOIN dbo.efc_conc_analiticos_correcciones_estacion S WITH (UPDLOCK,HOLDLOCK) ON S.papeleta_id=P.id AND S.activo=1 LEFT JOIN dbo.efc_conc_analiticos_correcciones_datos D WITH (UPDLOCK,HOLDLOCK) ON D.papeleta_id=P.id AND D.activo=1 WHERE P.id=? AND COALESCE(D.estacion_id,S.estacion_corregida_id,P.estacion_id)=? AND I.estado='IMPORTADA'");
         $q->execute([$paper,$station]); if(!$q->fetchColumn()) throw new RuntimeException('La papeleta no está importada o no pertenece a la estación efectiva.');
         $q=$this->db->prepare("SELECT id FROM dbo.efc_conc_analiticos_vinculos WITH (UPDLOCK,HOLDLOCK) WHERE activo=1 AND (papeleta_id=? OR papeleta_secundaria_id=?)");
         $q->execute([$paper,$paper]); if($q->fetchColumn()) throw new RuntimeException('La papeleta ya está asociada a un turno.');
@@ -293,7 +372,14 @@ class EfcAnaliticosModel {
         $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_analiticos_corr_fecha_activa') CREATE UNIQUE INDEX UX_efc_conc_analiticos_corr_fecha_activa ON dbo.efc_conc_analiticos_correcciones_fecha(papeleta_id) WHERE activo=1";
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_analiticos_correcciones_estacion','U') IS NULL CREATE TABLE dbo.efc_conc_analiticos_correcciones_estacion (id INT IDENTITY PRIMARY KEY,papeleta_id INT NOT NULL,estacion_original_id INT NOT NULL,estacion_corregida_id INT NOT NULL,usuario_id INT NULL,activo BIT NOT NULL DEFAULT 1,creado_en DATETIME NOT NULL DEFAULT GETDATE(),actualizado_en DATETIME NULL,actualizado_por INT NULL,CONSTRAINT FK_efc_conc_analiticos_corr_estacion_papeleta FOREIGN KEY(papeleta_id) REFERENCES dbo.efc_conc_analiticos_papeletas(id))";
         $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_analiticos_corr_estacion_activa') CREATE UNIQUE INDEX UX_efc_conc_analiticos_corr_estacion_activa ON dbo.efc_conc_analiticos_correcciones_estacion(papeleta_id) WHERE activo=1";
+        $statements[] = "IF COL_LENGTH('dbo.efc_conc_analiticos_papeletas','creado_por') IS NULL ALTER TABLE dbo.efc_conc_analiticos_papeletas ADD creado_por INT NULL";
+        $statements[] = "IF COL_LENGTH('dbo.efc_conc_analiticos_papeletas','captura_manual') IS NULL ALTER TABLE dbo.efc_conc_analiticos_papeletas ADD captura_manual BIT NOT NULL CONSTRAINT DF_efc_conc_analiticos_papeletas_manual DEFAULT 0";
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_analiticos_correcciones_datos','U') IS NULL CREATE TABLE dbo.efc_conc_analiticos_correcciones_datos (id INT IDENTITY PRIMARY KEY,papeleta_id INT NOT NULL,fecha_efectiva DATE NOT NULL,hora_efectiva NVARCHAR(100) NULL,estacion_id INT NOT NULL,remesa_efectiva NVARCHAR(100) NULL,cuenta_efectiva NVARCHAR(100) NULL,declarado_mn DECIMAL(18,2) NULL,real_mn DECIMAL(18,2) NULL,declarado_usd DECIMAL(18,2) NULL,real_usd DECIMAL(18,2) NULL,usuario_id INT NOT NULL,activo BIT NOT NULL DEFAULT 1,creado_en DATETIME NOT NULL DEFAULT GETDATE(),CONSTRAINT FK_efc_conc_analiticos_corr_datos_papeleta FOREIGN KEY(papeleta_id) REFERENCES dbo.efc_conc_analiticos_papeletas(id))";
+        $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='UX_efc_conc_analiticos_corr_datos_activa') CREATE UNIQUE INDEX UX_efc_conc_analiticos_corr_datos_activa ON dbo.efc_conc_analiticos_correcciones_datos(papeleta_id) WHERE activo=1";
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_analiticos_papeletas_auditoria','U') IS NULL CREATE TABLE dbo.efc_conc_analiticos_papeletas_auditoria (id BIGINT IDENTITY PRIMARY KEY,papeleta_id INT NOT NULL,operacion VARCHAR(20) NOT NULL,valores_anteriores NVARCHAR(MAX) NULL,valores_nuevos NVARCHAR(MAX) NULL,usuario_id INT NOT NULL,creado_en DATETIME NOT NULL DEFAULT GETDATE(),CONSTRAINT FK_efc_conc_analiticos_papeletas_auditoria_papeleta FOREIGN KEY(papeleta_id) REFERENCES dbo.efc_conc_analiticos_papeletas(id))";
+        $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE name='IX_efc_conc_analiticos_papeletas_auditoria_papeleta') CREATE INDEX IX_efc_conc_analiticos_papeletas_auditoria_papeleta ON dbo.efc_conc_analiticos_papeletas_auditoria(papeleta_id,creado_en,id)";
         $this->db->exec(implode(";\n", $statements));
+        $this->db->exec("IF OBJECT_ID('dbo.v_efc_conc_analiticos_papeletas_efectivas','V') IS NULL EXEC(N'CREATE VIEW dbo.v_efc_conc_analiticos_papeletas_efectivas AS SELECT P.*,COALESCE(D.fecha_efectiva,C.fecha_efectiva,P.fecha_reportada) effective_date,COALESCE(D.hora_efectiva,P.hora_original) effective_time,COALESCE(D.estacion_id,S.estacion_corregida_id,P.estacion_id) effective_station_id,COALESCE(D.remesa_efectiva,P.remesa_numero) effective_remittance,COALESCE(D.cuenta_efectiva,P.cuenta_mn_original) effective_account,COALESCE(D.declarado_mn,P.dice_contener_mn) effective_declared_mn,COALESCE(D.real_mn,P.real_mn) effective_real_mn,COALESCE(D.declarado_usd,P.dice_contener_usd) effective_declared_usd,COALESCE(D.real_usd,P.real_usd) effective_real_usd,ISNULL(COALESCE(D.real_mn,P.real_mn),0)-ISNULL(COALESCE(D.declarado_mn,P.dice_contener_mn),0) effective_difference_mn,ISNULL(COALESCE(D.real_usd,P.real_usd),0)-ISNULL(COALESCE(D.declarado_usd,P.dice_contener_usd),0) effective_difference_usd,P.fecha_reportada source_date FROM dbo.efc_conc_analiticos_papeletas P LEFT JOIN dbo.efc_conc_analiticos_correcciones_fecha C ON C.papeleta_id=P.id AND C.activo=1 LEFT JOIN dbo.efc_conc_analiticos_correcciones_estacion S ON S.papeleta_id=P.id AND S.activo=1 LEFT JOIN dbo.efc_conc_analiticos_correcciones_datos D ON D.papeleta_id=P.id AND D.activo=1')");
     }
 
     private function dateValue($value): string { return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : substr((string)$value,0,10); }

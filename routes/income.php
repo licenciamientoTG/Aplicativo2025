@@ -6,6 +6,14 @@ return [
     group('income/', [
         // Pantalla del menú
         route('conciliation/', [Income::class, 'conciliation'], name: 'income.conciliation', methods: ['GET'], permission: 14),
+        route('cash_reconciliation_papers', [Income::class, 'cash_reconciliation_papers'], name: 'income.cash_reconciliation_papers', methods: ['GET'], permission: 14),
+        route('efc_conc_analiticos_papeletas', [Income::class, 'efc_conc_analiticos_papeletas'], name: 'income.efc_conc_analiticos_papeletas', methods: ['GET'], permission: 14),
+        route('efc_conc_analiticos_historial', [Income::class, 'efc_conc_analiticos_historial'], name: 'income.efc_conc_analiticos_historial', methods: ['GET'], permission: 14),
+        route('efc_conc_analiticos_archivo', [Income::class, 'efc_conc_analiticos_archivo'], name: 'income.efc_conc_analiticos_archivo', methods: ['GET'], permission: 14),
+        route('efc_conc_analiticos_crear', [Income::class, 'efc_conc_analiticos_crear'], name: 'income.efc_conc_analiticos_crear', methods: ['POST'], permission: 14),
+        route('efc_conc_analiticos_editar', [Income::class, 'efc_conc_analiticos_editar'], name: 'income.efc_conc_analiticos_editar', methods: ['POST'], permission: 14),
+        route('efc_conc_analiticos_corregir_fecha', [Income::class, 'efc_conc_analiticos_corregir_fecha'], name: 'income.efc_conc_analiticos_corregir_fecha', methods: ['POST'], permission: 14),
+        route('efc_conc_analiticos_corregir_estacion', [Income::class, 'efc_conc_analiticos_corregir_estacion'], name: 'income.efc_conc_analiticos_corregir_estacion', methods: ['POST'], permission: 14),
 
         // Llamadas de views/income/conciliation.html
         route('conciliation/sales/', [Income::class, 'conciliation_sales'], name: 'income.conciliation_sales', methods: ['POST'], permission: 14),
