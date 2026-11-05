@@ -177,14 +177,15 @@ function botonesAccion(id, invoiceId, estatus) {
     // como botón sólido de un vistazo (2026-09-14).
     const colorFactura = invoiceId ? 'btn-success' : 'btn-outline-secondary';
     const recibida = estatus === 'Recibido';
-    const colorRecibido = recibida ? 'btn-success' : 'btn-outline-secondary';
+    const noLlego = estatus === 'NoLlego';
+    const colorRecibido = recibida ? 'btn-success' : (noLlego ? 'btn-danger' : 'btn-outline-secondary');
     // btn-group (en vez de d-flex con gap) para que los 4 botones quepan
     // sin desbordar la columna -- los bordes se comparten entre botones
     // contiguos, ahorrando el ancho que gap-1 agrega entre cada uno
     // (2026-09-15, al agregar el 4º botón de "marcar como recibida").
     return `
         <div class="btn-group btn-group-sm" role="group">
-            <button type="button" class="btn ${colorRecibido} btn-toggle-recibido btn-accion-icono" data-id="${id}" title="${recibida ? 'Marcada como recibida (clic para desmarcar)' : 'Marcar como recibida'}"><i data-feather="check-circle"></i></button>
+            <button type="button" class="btn ${colorRecibido} btn-toggle-recibido btn-accion-icono" data-id="${id}" title="${recibida ? 'Marcada como recibida (clic para desmarcar)' : (noLlego ? 'Marcada como NO llegó (clic para marcar como recibida)' : 'Marcar como recibida')}"><i data-feather="check-circle"></i></button>
             <button type="button" class="btn btn-outline-success btn-editar-recepcion btn-accion-icono" data-id="${id}" title="Editar"><i data-feather="edit-3"></i></button>
             <button type="button" class="btn btn-outline-primary btn-duplicar-recepcion btn-accion-icono" data-id="${id}" title="Duplicar esta línea en el mismo día"><i data-feather="copy"></i></button>
             <button type="button" class="btn ${colorFactura} btn-factura-recepcion btn-accion-icono" data-id="${id}" title="${invoiceId ? 'Ver factura' : 'Subir factura'}"><i data-feather="paperclip"></i></button>
@@ -363,6 +364,12 @@ function renderBotonesProveedor() {
             `<button type="button" class="btn btn-sm btn-filtro-proveedor${activo ? ' active' : ''}" data-supplier-id="${p.id}"${estilo}>${esc(p.nombreCorto)}</button>`
         );
     });
+
+    // El botón único muestra el proveedor filtrado para no tener que abrir
+    // el panel y saber si hay un filtro activo.
+    const elegido = PROVEEDORES_FILTRO.find(function (p) { return String(p.id) === String(proveedorFiltroActivo); });
+    $('#btnFiltroProveedor').toggleClass('con-filtro', !!elegido);
+    $('#filtroProveedorEtiqueta').text(elegido ? elegido.nombreCorto : '').toggle(!!elegido);
 }
 
 function renderPorTerminal(filas) {
@@ -678,6 +685,48 @@ function renderResumenProveedores(filas) {
     contenedor.html(tarjeta('Total del día', '#1e293b', total) + html);
 }
 
+// Resumen colapsable de llegadas: cuántas recepciones llegaron, no llegaron
+// y siguen pendientes (con sus litros). Usa las mismas filas que la vista, así
+// que respeta los filtros de proveedor y turno.
+function renderResumenLlegadas(filas) {
+    const contenedor = $('#resumenLlegadasContenido');
+    if (!contenedor.length) return;
+    const fmt = function (n) { return Number(n).toLocaleString('es-MX'); };
+    const g = {
+        Recibido: { n: 0, litros: 0, filas: [] },
+        NoLlego: { n: 0, litros: 0, filas: [] },
+        Pendiente: { n: 0, litros: 0, filas: [] }
+    };
+    filas.forEach(function (f) {
+        const k = (f.estatus === 'Recibido' || f.estatus === 'NoLlego') ? f.estatus : 'Pendiente';
+        g[k].n += 1;
+        g[k].litros += Number(f.litros) || 0;
+        g[k].filas.push(f);
+    });
+    function tarjeta(titulo, color, d) {
+        const items = d.filas.slice().sort(function (a, b) {
+            return String(a.supplier_nombre || '').localeCompare(String(b.supplier_nombre || ''), 'es')
+                || String(a.station_nombre || '').localeCompare(String(b.station_nombre || ''), 'es');
+        }).map(function (f) {
+            return '<li>' + esc(f.supplier_nombre || '—') + ' · ' + esc(f.station_nombre || 'Sin estación') + ' · ' + esc(f.product || '—') + '</li>';
+        }).join('');
+        return `
+            <div class="col-12 col-md-6 col-xl-4">
+                <div class="resumen-prov-card" style="border-left-color:${color};">
+                    <div class="resumen-prov-nombre" style="color:${color};">${titulo}</div>
+                    <div class="resumen-prov-litros">${d.n}</div>
+                    <div class="resumen-prov-sub">${fmt(d.litros)} L</div>
+                    ${items ? '<ul class="resumen-llegadas-lista">' + items + '</ul>' : ''}
+                </div>
+            </div>`;
+    }
+    contenedor.html(
+        tarjeta('Llegaron', '#009559', g.Recibido) +
+        tarjeta('No llegaron', '#dc3545', g.NoLlego) +
+        tarjeta('Pendientes', '#f59e0b', g.Pendiente)
+    );
+}
+
 // ===== Tab "Plan inventarios" =====
 // No carga solo: el botón "Buscar inventarios" consulta, estación por
 // estación, el inventario en tiempo real (/supply/scheduling_inventory_station)
@@ -693,7 +742,7 @@ function estacionesPlanInventario(filas) {
     filas.forEach(function (f) {
         // Las ya recibidas no se planean: su volumen ya está en el tanque (y
         // contarlas inflaría "Vol. tras descarga").
-        if (f.estatus === 'Recibido') return;
+        if (f.estatus === 'Recibido' || f.estatus === 'NoLlego') return;
         const nombre = f.station_nombre || 'Sin estación';
         if (!coincideBusquedaEstacion(nombre)) return;
         const code = String(f.station_code || '');
@@ -889,6 +938,7 @@ function renderizarTodo() {
     const filas = filasFiltradas();
     actualizarTotalDia(filas);
     renderResumenProveedores(filas);
+    renderResumenLlegadas(filas);
     if (agrupacionActiva === 'inventarios') {
         renderPlanInventarios(filas);
     } else if (agrupacionActiva === 'estacion') {
@@ -899,12 +949,20 @@ function renderizarTodo() {
     if (window.feather) feather.replace();
 }
 
-function cargarDia(fecha) {
-    $('#contenedorGrupos').html('<p class="text-muted text-center">Cargando…</p>');
+// enSitio=true: refresco tras una acción (marcar llegada, cancelar...). No se
+// vacía el contenedor con "Cargando…" porque la página se encoge y el
+// navegador manda el scroll arriba; se conserva el contenido y se restaura
+// la posición al volver a renderizar.
+function cargarDia(fecha, enSitio) {
+    const scrollY = window.scrollY;
+    if (!enSitio) {
+        $('#contenedorGrupos').html('<p class="text-muted text-center">Cargando…</p>');
+    }
     $.get('/supply/scheduling_day_data', { fecha: fecha })
         .done(function (resp) {
             ultimasFilas = resp.data || [];
             renderizarTodo();
+            if (enSitio) window.scrollTo(0, scrollY);
         })
         .fail(function () {
             $('#contenedorGrupos').html('<p class="text-danger text-center">No se pudo cargar la programación.</p>');
@@ -1081,6 +1139,135 @@ $(document).ready(function () {
         renderizarTodo();
     });
 
+    // Clic en el botón: alterna el panel (necesario en táctil, donde no hay
+    // hover). Clic fuera lo cierra.
+    $('#btnFiltroProveedor').on('click', function (e) {
+        e.stopPropagation();
+        const abierto = $('#filtroProveedorWrap').toggleClass('abierto').hasClass('abierto');
+        $(this).attr('aria-expanded', abierto);
+    });
+    $(document).on('click', function (e) {
+        if (!$(e.target).closest('#filtroProveedorWrap').length) {
+            $('#filtroProveedorWrap').removeClass('abierto');
+            $('#btnFiltroProveedor').attr('aria-expanded', false);
+        }
+    });
+
+    // ---- Modal "Marcar varias": recepciones del día en una sola tabla ----
+    // Pestaña activa = estatus destino ('Recibido' | 'NoLlego' | 'Programado').
+    // 'Programado' es la pestaña Desmarcar: lista las ya marcadas (cualquiera
+    // que sea su estatus) y las regresa a pendiente.
+    let marcarEstatusDestino = 'Recibido';
+
+    function renderMarcarVarias() {
+        const desmarcar = marcarEstatusDestino === 'Programado';
+        // Llegaron / No llegaron: solo pendientes. Desmarcar: solo las ya marcadas.
+        const filas = ultimasFilas.filter(function (f) {
+            const marcada = f.estatus === 'Recibido' || f.estatus === 'NoLlego';
+            return desmarcar ? marcada : !marcada;
+        }).sort(function (a, b) {
+            const ea = String(a.station_nombre || 'Sin estación');
+            const eb = String(b.station_nombre || 'Sin estación');
+            return ea.localeCompare(eb, 'es') || String(a.hora || '').localeCompare(String(b.hora || ''));
+        });
+        if (!filas.length) {
+            $('#marcarVariasLista').html('<p class="text-muted text-center mb-0">' + (desmarcar
+                ? 'No hay recepciones marcadas para este día.'
+                : 'No hay recepciones pendientes para este día.') + '</p>');
+            actualizarConteoMarcarVarias();
+            return;
+        }
+        const cuerpo = filas.map(function (f) {
+            // Solo en Desmarcar se muestra el estado actual, para saber qué
+            // se está regresando a pendiente.
+            const estado = f.estatus === 'Recibido'
+                ? '<span class="badge bg-success">Llegó</span>'
+                : '<span class="badge bg-danger">No llegó</span>';
+            return `
+                <tr class="fila-marcar" style="cursor:pointer;">
+                    <td><input type="checkbox" class="form-check-input chk-recepcion" value="${f.id}"></td>
+                    <td class="fw-semibold">${esc(f.station_nombre || 'Sin estación')}</td>
+                    <td>${esc(f.hora) || '—'}</td>
+                    <td>${badgeProducto(f.product, f.mezcla)}</td>
+                    <td class="text-end">${Number(f.litros).toLocaleString('es-MX')} L</td>
+                    <td>${esc(f.supplier_nombre) || '—'}</td>
+                    <td>${esc(f.terminal_nombre) || '—'}</td>
+                    ${desmarcar ? '<td>' + estado + '</td>' : ''}
+                </tr>`;
+        }).join('');
+        $('#marcarVariasLista').html(`
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light" style="position:sticky;top:0;z-index:1;">
+                    <tr>
+                        <th style="width:2rem;"><input type="checkbox" class="form-check-input" id="chkTodasMarcar" title="Seleccionar todas"></th>
+                        <th>Estación</th><th>Hora</th><th>Producto</th><th class="text-end">Litros</th><th>Proveedor</th><th>Terminal</th>${desmarcar ? '<th>Estado</th>' : ''}
+                    </tr>
+                </thead>
+                <tbody>${cuerpo}</tbody>
+            </table>`);
+        actualizarConteoMarcarVarias();
+    }
+
+    function actualizarConteoMarcarVarias() {
+        const n = $('#marcarVariasLista .chk-recepcion:checked:not(:disabled)').length;
+        $('#marcarVariasConteo').text(n ? n + ' seleccionada' + (n === 1 ? '' : 's') : '');
+        const noLlego = marcarEstatusDestino === 'NoLlego';
+        const desmarcar = marcarEstatusDestino === 'Programado';
+        $('#btnConfirmarMarcarVarias')
+            .prop('disabled', n === 0)
+            .toggleClass('btn-success', !noLlego && !desmarcar)
+            .toggleClass('btn-danger', noLlego)
+            .toggleClass('btn-secondary', desmarcar)
+            .text(noLlego ? 'Marcar como NO llegaron' : (desmarcar ? 'Desmarcar (volver a pendiente)' : 'Marcar como recibidas'));
+    }
+
+    $('#btnMarcarVarias').on('click', function () {
+        marcarEstatusDestino = 'Recibido';
+        $('#tabsMarcarVarias .nav-link').removeClass('active').first().addClass('active');
+        $('#marcarVariasFecha').text('· ' + fechaInput.val());
+        renderMarcarVarias();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('modalMarcarVarias')).show();
+    });
+
+    $('#tabsMarcarVarias').on('click', '.nav-link', function () {
+        marcarEstatusDestino = $(this).data('estatus');
+        $('#tabsMarcarVarias .nav-link').removeClass('active');
+        $(this).addClass('active');
+        renderMarcarVarias();
+    });
+
+    $(document).on('change', '#marcarVariasLista .chk-recepcion', actualizarConteoMarcarVarias);
+    $(document).on('change', '#chkTodasMarcar', function () {
+        $('#marcarVariasLista .chk-recepcion:not(:disabled)').prop('checked', this.checked);
+        actualizarConteoMarcarVarias();
+    });
+    // Clic en cualquier parte de la fila alterna su casilla (más rápido).
+    $(document).on('click', '#marcarVariasLista .fila-marcar', function (e) {
+        if ($(e.target).is('input')) return;
+        const chk = $(this).find('.chk-recepcion:not(:disabled)');
+        chk.prop('checked', !chk.prop('checked')).trigger('change');
+    });
+
+    $('#btnConfirmarMarcarVarias').on('click', function () {
+        const ids = $('#marcarVariasLista .chk-recepcion:checked:not(:disabled)').map(function () { return this.value; }).get();
+        if (!ids.length) return;
+        const boton = $(this).prop('disabled', true);
+        $.post('/supply/scheduling_marcar_estatus', { ids: ids, estatus: marcarEstatusDestino })
+            .done(function (resp) {
+                if (!resp.success) {
+                    alertify.myAlert('<div class="text-danger text-center"><p>' + esc(resp.message || 'No se pudo actualizar.') + '</p></div>');
+                    boton.prop('disabled', false);
+                    return;
+                }
+                bootstrap.Modal.getInstance(document.getElementById('modalMarcarVarias')).hide();
+                cargarDia(fechaInput.val(), true);
+            })
+            .fail(function () {
+                alertify.myAlert('<div class="text-danger text-center"><p>No se pudo actualizar.</p></div>');
+                boton.prop('disabled', false);
+            });
+    });
+
     $(document).on('click', '.btn-filtro-proveedor', function () {
         const id = $(this).data('supplier-id');
         proveedorFiltroActivo = (String(proveedorFiltroActivo) === String(id)) ? null : id;
@@ -1112,7 +1299,7 @@ $(document).ready(function () {
     $('#btnActualizar').on('click', function () {
         const boton = $(this);
         boton.prop('disabled', true).find('i').addClass('spin-icono');
-        cargarDia(fechaInput.val());
+        cargarDia(fechaInput.val(), true);
         // renderizarTodo() (llamado dentro de cargarDia -> done) es
         // síncrono, así que para cuando esta línea corre ya terminó -- el
         // pequeño delay es solo para que el giro del ícono sea perceptible
@@ -1181,7 +1368,7 @@ $(document).ready(function () {
                 } else if (resp.ya_existia) {
                     alertify.myAlert('<div class="text-center"><p>La factura ya estaba registrada en el sistema; se vinculó a esta recepción sin volver a subirla.</p></div>');
                 }
-                cargarDia($('#fecha_programacion').val());
+                cargarDia($('#fecha_programacion').val(), true);
             })
             .fail(function (xhr) {
                 // Si el servidor mandó JSON con el motivo, mostrarlo; si no,
@@ -1213,7 +1400,7 @@ $(document).ready(function () {
                     return;
                 }
                 bootstrap.Modal.getInstance(document.getElementById('modalFactura')).hide();
-                cargarDia($('#fecha_programacion').val());
+                cargarDia($('#fecha_programacion').val(), true);
             })
             .fail(function () {
                 errorBox.text('No se pudo vincular la factura.').show();
@@ -1262,7 +1449,7 @@ $(document).ready(function () {
                     return;
                 }
                 abrirModalFactura(scheduleId);
-                cargarDia($('#fecha_programacion').val());
+                cargarDia($('#fecha_programacion').val(), true);
             })
             .fail(function () {
                 alertify.myAlert('<div class="text-danger text-center"><p>No se pudo quitar el vínculo.</p></div>');
@@ -1378,7 +1565,7 @@ $(document).ready(function () {
         const id = $(this).data('id');
         if (!confirm('¿Cancelar esta recepción programada?')) return;
         $.post('/supply/scheduling_cancel', { id: id })
-            .done(function () { cargarDia(fechaInput.val()); })
+            .done(function () { cargarDia(fechaInput.val(), true); })
             .fail(function () {
                 alertify.myAlert('<div class="text-danger text-center"><p>No se pudo cancelar.</p></div>');
             });
@@ -1394,7 +1581,7 @@ $(document).ready(function () {
                     boton.prop('disabled', false);
                     return;
                 }
-                cargarDia(fechaInput.val());
+                cargarDia(fechaInput.val(), true);
             })
             .fail(function () {
                 alertify.myAlert('<div class="text-danger text-center"><p>No se pudo duplicar.</p></div>');
@@ -1413,7 +1600,7 @@ $(document).ready(function () {
                     boton.prop('disabled', false);
                     return;
                 }
-                cargarDia(fechaInput.val());
+                cargarDia(fechaInput.val(), true);
             })
             .fail(function () {
                 alertify.myAlert('<div class="text-danger text-center"><p>No se pudo actualizar.</p></div>');
@@ -1446,7 +1633,7 @@ $(document).ready(function () {
                     return;
                 }
                 bootstrap.Modal.getInstance(document.getElementById('modalProgramacion')).hide();
-                cargarDia(fechaInput.val());
+                cargarDia(fechaInput.val(), true);
             })
             .fail(function () {
                 alertify.myAlert('<div class="text-danger text-center"><p>No se pudo guardar.</p></div>');
@@ -1643,7 +1830,7 @@ $(document).ready(function () {
                 importAviso('success', `Listo: se importaron <strong>${resp.insertadas}</strong> recepciones y se omitieron <strong>${resp.omitidas}</strong> que ya existían.`);
                 $('#importResultado').html(importTabla(resp.filas));
                 boton.hide();
-                cargarDia(fechaInput.val());
+                cargarDia(fechaInput.val(), true);
             })
             .fail(function () {
                 importAviso('danger', 'No se pudo importar; no se guardó nada.');

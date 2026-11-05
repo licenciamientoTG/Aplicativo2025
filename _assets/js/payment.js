@@ -7353,7 +7353,17 @@ function guardarConciliacionComprobantes() {
 
     const esAnticipo = grupo.tipo_registro === "ANTICIPO";
 
+    const impComp = parseFloat(comprobantesPreview[i]?.comprobante?.importe) || 0;
+    const montoGrupo = parseFloat(grupo.total_saldo) || 0;
     asignaciones.push({
+      _importe: impComp,
+      _destino: esAnticipo
+        ? `Anticipo #${grupo.payment_request_id}`
+        : `${invoiceIds.length} factura(s)`,
+      _proveedor: grupo.proveedor_nombre || "",
+      _empresa: grupo.empresa_nombre || "",
+      _montoGrupo: montoGrupo,
+      _dif: impComp - montoGrupo,
       archivo_idx: i,
       archivo: comprobantesPreview[i]?.comprobante?.archivo || `comprobante ${i}`,
       invoice_ids: esAnticipo ? [] : invoiceIds,
@@ -7379,17 +7389,60 @@ function guardarConciliacionComprobantes() {
     return;
   }
 
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const conDif = asignaciones.filter((a) => Math.abs(a._dif) > 1);
+
+  const filas = asignaciones
+    .map((a) => {
+      const dif = Math.abs(a._dif) > 1;
+      return `<tr style="${dif ? "background:#fef2f2;" : ""}">
+          <td style="text-align:left;">
+            <div style="font-weight:600;color:#1e293b;">${esc(a._proveedor) || "—"}</div>
+            <div style="font-size:.72rem;color:#64748b;">${esc(a._empresa)} · ${esc(a._destino)}</div>
+            <div style="font-size:.72rem;color:#94a3b8;">Ref ${esc(a.referencia)} · ${esc(a.fecha_pago)}</div>
+          </td>
+          <td style="text-align:right;white-space:nowrap;">
+            <div style="font-weight:700;color:#065f46;">${fmtMoneda(a._importe)}</div>
+            ${dif ? `<div style="font-size:.7rem;color:#b91c1c;">Registrado: ${fmtMoneda(a._montoGrupo)}</div>` : ""}
+          </td>
+        </tr>`;
+    })
+    .join("");
+
+  const aviso = conDif.length
+    ? `<div style="background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;border-radius:.5rem;padding:.55rem .75rem;font-size:.8rem;text-align:left;margin-top:.75rem;">
+         <i class="fas fa-exclamation-triangle"></i>
+         <strong>${conDif.length}</strong> comprobante(s) no coinciden con el monto registrado.
+         Se pagará el <strong>monto registrado</strong> del anticipo/facturas, no el del comprobante.
+       </div>`
+    : "";
+
   alertify.confirm(
-    '<i class="fas fa-check-circle text-success"></i> Confirmar conciliación',
-    `<div class="text-center">
-        <p>Vas a <strong>marcar como pagado</strong> y guardar el comprobante de:</p>
-        <div class="alert alert-info">
-          <strong>${asignaciones.length}</strong> pago(s) · Total <strong>${fmtMoneda(totalSel)}</strong>
+    '<i class="fas fa-check-circle" style="color:#16a34a;"></i> Confirmar conciliación',
+    `<div>
+        <div style="display:flex;gap:.5rem;margin-bottom:.75rem;">
+          <div style="flex:1;background:#eff6ff;border:1px solid #93c5fd;border-radius:.5rem;padding:.5rem;text-align:center;">
+            <div style="font-size:.68rem;text-transform:uppercase;color:#1d4ed8;">Pagos</div>
+            <div style="font-size:1.25rem;font-weight:700;color:#1e40af;">${asignaciones.length}</div>
+          </div>
+          <div style="flex:2;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:.5rem;padding:.5rem;text-align:center;">
+            <div style="font-size:.68rem;text-transform:uppercase;color:#047857;">Total comprobantes</div>
+            <div style="font-size:1.25rem;font-weight:700;color:#065f46;">${fmtMoneda(totalSel)}</div>
+          </div>
         </div>
-        <small class="text-muted">Esta acción registra las transacciones y no se puede deshacer fácilmente.</small>
+        <div style="max-height:260px;overflow:auto;border:1px solid #e2e8f0;border-radius:.5rem;">
+          <table style="width:100%;font-size:.82rem;"><tbody>${filas}</tbody></table>
+        </div>
+        ${aviso}
+        <p style="font-size:.75rem;color:#64748b;margin:.75rem 0 0;">
+          Se marcarán como <strong>pagados</strong> y se guardarán los PDFs. No se deshace fácilmente.
+        </p>
      </div>`,
     function () {
-      ejecutarConciliacionComprobantes(asignaciones);
+      ejecutarConciliacionComprobantes(
+        asignaciones.map(({ _importe, _destino, _proveedor, _empresa, _montoGrupo, _dif, ...resto }) => resto)
+      );
     },
     function () {
       alertify.message("Conciliación cancelada");

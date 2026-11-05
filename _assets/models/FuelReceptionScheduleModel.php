@@ -263,4 +263,41 @@ class FuelReceptionScheduleModel extends Model {
         );
         return $nuevo;
     }
+
+    /**
+     * Cambia el estatus de varias recepciones a la vez ('Recibido',
+     * 'NoLlego' o 'Programado' para desmarcar). No toca Canceladas ni las que ya tienen ese estatus.
+     * Devuelve cuántas se actualizaron.
+     */
+    function marcar_estatus(array $ids, string $estatus, int $userId): int {
+        if (!in_array($estatus, ['Recibido', 'NoLlego', 'Programado'], true)) {
+            return 0;
+        }
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), function ($i) { return $i > 0; })));
+        if (!$ids) {
+            return 0;
+        }
+        $marcas = implode(',', array_fill(0, count($ids), '?'));
+        // 'Programado' = desmarcar: solo regresa las ya marcadas (Recibido /
+        // NoLlego) a pendiente; para los otros destinos se salta Canceladas y
+        // las que ya tienen ese estatus.
+        $desmarcar = $estatus === 'Programado';
+        $cond = $desmarcar ? "estatus IN ('Recibido', 'NoLlego')" : "estatus NOT IN ('Cancelado', ?)";
+        $extra = $desmarcar ? [] : [$estatus];
+        $rows = $this->sql->select(
+            "SELECT COUNT(*) AS n FROM TG.dbo.fuel_reception_schedule
+             WHERE id IN ($marcas) AND $cond",
+            array_merge($ids, $extra)
+        );
+        $n = (int)($rows[0]['n'] ?? 0);
+        if ($n > 0) {
+            $this->sql->update(
+                "UPDATE TG.dbo.fuel_reception_schedule
+                 SET estatus = ?, updated_by = ?, updated_at = GETDATE()
+                 WHERE id IN ($marcas) AND $cond",
+                array_merge([$estatus, $userId], $ids, $extra)
+            );
+        }
+        return $n;
+    }
 }

@@ -177,7 +177,7 @@
                 <div class="alert alert-danger py-1 px-2 mt-2 mb-0 d-none" id="alert-excede" style="font-size:.78rem;">
                     <i class="fas fa-exclamation-triangle"></i> El total excede el saldo disponible.
                 </div>
-                {% if anticipo.status == 2 and authorized(68) %}
+                {% if anticipo.status == 2 and (authorized(66) or authorized(68)) %}
                 <button class="btn btn-success btn-sm w-100 mt-2" id="btn-aplicar" onclick="confirmarAplicar()" disabled>
                     <i class="fas fa-check me-1"></i> Aplicar Anticipo
                 </button>
@@ -187,7 +187,7 @@
                 </div>
                 {% else %}
                 <div class="alert alert-info py-1 px-2 mt-2 mb-0" style="font-size:.78rem;">
-                    Solo Tesorería puede aplicar el anticipo.
+                    Solo Abastos o Tesorería pueden aplicar el anticipo.
                 </div>
                 {% endif %}
             </div>

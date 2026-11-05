@@ -1003,8 +1003,14 @@ class PaymentRequestsModel extends Model
      * (total - aplicado > 0), para poder cubrirlas con otro anticipo desde
      * la página de aplicar.
      */
-    public function get_facturas_con_remanente_anticipo($provider_cod): array
+    public function get_facturas_con_remanente_anticipo($provider_cod, $emp_cod = null): array
     {
+        $params = [$provider_cod];
+        $filtro_emp = '';
+        if (!empty($emp_cod)) {
+            $filtro_emp = ' AND pr.emp_cod = ?';
+            $params[] = $emp_cod;
+        }
         $query = "
             SELECT
                 pri.id AS invoice_id,
@@ -1021,12 +1027,12 @@ class PaymentRequestsModel extends Model
             INNER JOIN [TG].[dbo].[anticipo_invoice_applications] a
                 ON a.invoice_id = pri.id
             LEFT JOIN [SG12].[dbo].Gasolineras g ON g.cod = pri.codgas
-            WHERE pr.provider_cod = ? AND pri.is_deleted = 0
+            WHERE pr.provider_cod = ? AND pri.is_deleted = 0{$filtro_emp}
             GROUP BY pri.id, pri.folio, pri.invoice_number, pri.codgas, g.abr, pri.amount, pr.id
             HAVING (pri.amount - ISNULL(SUM(a.monto_aplicado), 0)) > 0.01
             ORDER BY pri.id DESC
         ";
-        $rows = $this->sql->select($query, [$provider_cod]) ?: [];
+        $rows = $this->sql->select($query, $params) ?: [];
         foreach ($rows as &$r) {
             $r['restante'] = floatval($r['amount']) - floatval($r['aplicado']);
         }

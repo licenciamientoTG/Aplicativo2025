@@ -714,7 +714,7 @@ class DocumentosModel extends Model{
 
         $query = "
         SELECT
-            t1.logfch AS LogRegistro,
+            t1.lognew AS LogRegistro,
             t1.codgas,
             t1.nro AS [Número],
             t1.Entidad AS Proveedor,

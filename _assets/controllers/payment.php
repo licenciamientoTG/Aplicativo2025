@@ -522,8 +522,21 @@ class Payment
             'until'     => dateToInt($_POST['untilDate']),
             'codgas'    => !empty($_POST['codgas']) ? $_POST['codgas'] : '0',
             'proveedor' => $anticipo['provider_cod'],
-            'company'   => '0'
+            // Solo estaciones de la empresa del anticipo
+            'company'   => !empty($anticipo['emp_cod']) ? (string)$anticipo['emp_cod'] : '0'
         ];
+
+        // Estaciones válidas de la empresa del anticipo (filtro de respaldo
+        // por si la API no restringe por empresa).
+        $emp_anticipo = (int)($anticipo['emp_cod'] ?? 0);
+        $codgas_empresa = [];
+        if ($emp_anticipo > 0) {
+            foreach ($this->gasolinerasModel->get_stations() ?: [] as $s) {
+                if ((int)$s['codemp'] === $emp_anticipo) {
+                    $codgas_empresa[(string)$s['cod']] = true;
+                }
+            }
+        }
 
         $ch = curl_init('http://192.168.0.109:82/api/estacion_documentos_compra/');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -538,6 +551,10 @@ class Payment
             foreach ($apiData as $row) {
                 // Solo documentos con CFDI y que NO estén ya en una orden de pago
                 if (empty($row['satuid']) || !empty($row['en_orden_pago'])) {
+                    continue;
+                }
+                // Descartar estaciones de otra empresa
+                if ($codgas_empresa && !isset($codgas_empresa[(string)($row['codgas'] ?? '')])) {
                     continue;
                 }
 
@@ -563,7 +580,7 @@ class Payment
 
         // Facturas del proveedor con remanente de anticipo (viven bajo otro
         // anticipo con aplicación parcial): se pueden cubrir desde este anticipo.
-        $remanentes = $this->PaymentRequestsModel->get_facturas_con_remanente_anticipo($anticipo['provider_cod']);
+        $remanentes = $this->PaymentRequestsModel->get_facturas_con_remanente_anticipo($anticipo['provider_cod'], $anticipo['emp_cod'] ?? null);
 
         json_output(['data' => $data, 'remanentes' => $remanentes]);
     }
@@ -6485,8 +6502,9 @@ class Payment
             }
         }
 
+        // Solo estaciones de la empresa del anticipo
         $all_stations = $this->gasolinerasModel->get_stations();
-        $stations = array_filter($all_stations, fn($s) => $s['cod'] != 0);
+        $stations = array_filter($all_stations, fn($s) => $s['cod'] != 0 && $s['codemp'] == $anticipo['emp_cod']);
 
         echo $this->twig->render($this->route . 'aplicar_anticipo.html', [
             'anticipo'         => $anticipo,
@@ -6506,8 +6524,9 @@ class Payment
     {
         header('Content-Type: application/json');
         try {
-            if (!authorized(68)) {
-                json_output(['success' => false, 'message' => 'Solo Tesorería puede aplicar anticipos']);
+            // Abastos (66) y Tesorería (68) pueden aplicar anticipos a facturas
+            if (!authorized(66) && !authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Abastos o Tesorería pueden aplicar anticipos']);
                 return;
             }
             $user_id = $_SESSION['tg_user']['Id'] ?? null;
@@ -6622,10 +6641,21 @@ class Payment
         $authorizations = $this->PaymentRequestsModel->getPaymentAuthorizations($anticipo_id);
         // Estado de autorizaciones
         $auth_status = $this->PaymentRequestsModel->getAuthorizationStatus($anticipo_id);
-        // Renderizar vista
-        // echo $this->twig->render($this->route . 'anticipo_detail.html', compact());
+        // Proveedor, empresa y comprobantes de pago para el encabezado de la vista
+        $proveedor = $this->proveedores->get_by_id($anticipo['provider_cod']);
+        $empresa_nombre = '';
+        foreach ($this->gasolinerasModel->get_company() ?: [] as $c) {
+            if ($c['codemp'] == $anticipo['emp_cod']) {
+                $empresa_nombre = $c['den'];
+                break;
+            }
+        }
+        $comprobantes = $this->PaymentTransactionDocumentsModel->get_by_anticipo((int)$anticipo_id);
 
         echo $this->twig->render($this->route . 'anticipo_detail.html', [
+            'proveedor_nombre' => $proveedor['den'] ?? ('Proveedor ' . ($anticipo['provider_cod'] ?? '')),
+            'empresa_nombre'   => $empresa_nombre,
+            'comprobantes'     => $comprobantes,
             'anticipo' => $anticipo,
             'aplicaciones' => $aplicaciones,
             'summary' => $summary,

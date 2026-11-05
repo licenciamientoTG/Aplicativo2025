@@ -28,6 +28,24 @@
     .btn-filtro-proveedor.active {
         color: #fff;
     }
+    /* Botón único de filtros: el panel se abre al pasar el mouse (y con clic,
+       para pantallas táctiles). El panel pega con el botón (padding-top en vez
+       de margen) para que el mouse no pierda el :hover al cruzar el hueco. */
+    .filtro-prov-wrap { position: relative; }
+    .filtro-prov-panel {
+        display: none; position: absolute; top: 100%; left: 0; z-index: 1050;
+        padding-top: .35rem;
+    }
+    .filtro-prov-caja {
+        background: #fff; border: 1px solid rgba(0,0,0,.2); border-radius: .5rem;
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15); padding: .75rem; min-width: 220px;
+        max-width: 90vw;
+    }
+    .filtro-prov-wrap.abierto .filtro-prov-panel { display: block; }
+    @media (hover: hover) {
+        .filtro-prov-wrap:hover .filtro-prov-panel { display: block; }
+    }
+    #btnFiltroProveedor.con-filtro { border-color: #009559; color: #009559; }
     /* El borde por defecto de Bootstrap (rgba(0,0,0,.125)) es demasiado
        sutil para distinguir dónde termina una tarjeta de la siguiente,
        sobre todo abajo donde no hay header de color que marque el límite. */
@@ -104,9 +122,14 @@
     .resumen-prov-nombre { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
     .resumen-prov-litros { font-size: 1.25rem; font-weight: 700; color: #1e293b; line-height: 1.2; }
     .resumen-prov-sub { font-size: .75rem; color: #64748b; }
+    /* Lista simple (proveedor · estación · combustible) dentro de las
+       tarjetas de "Resumen de llegadas"; con scroll si el día trae muchas. */
+    .resumen-llegadas-lista { list-style: none; margin: .5rem 0 0; padding: .4rem 0 0; border-top: 1px solid #e2e8f0; max-height: 14rem; overflow-y: auto; font-size: .75rem; color: #334155; }
+    .resumen-llegadas-lista li { padding: .1rem 0; }
     .resumen-prov-prod { font-size: .75rem; color: #334155; display: flex; justify-content: space-between; gap: .5rem; }
-    #btnResumenProveedores .icono-colapso { transition: transform .2s; }
-    #btnResumenProveedores[aria-expanded="true"] .icono-colapso { transform: rotate(180deg); }
+    #btnResumenProveedores .icono-colapso, #btnResumenLlegadas .icono-colapso { transition: transform .2s; }
+    #btnResumenProveedores[aria-expanded="true"] .icono-colapso,
+    #btnResumenLlegadas[aria-expanded="true"] .icono-colapso { transform: rotate(180deg); }
 
     .spin-icono {
         animation: spin-icono-anim .6s linear infinite;
@@ -142,7 +165,7 @@
         }
 
         /* --- Resumen por proveedor --- */
-        #btnResumenProveedores { width: 100%; justify-content: space-between; padding: .5rem .75rem; }
+        #btnResumenProveedores, #btnResumenLlegadas { width: 100%; justify-content: space-between; padding: .5rem .75rem; margin: 0 0 .4rem 0 !important; }
 
         /* --- Tabs: una sola línea, con scroll si no caben --- */
         .sch-tabs { flex: 0 0 100%; max-width: 100%; }
@@ -155,12 +178,8 @@
         #btnOcultarVaciosTerminal, #btnOcultarVacias { order: 1; }
         .sch-turno { order: 2; margin-left: auto; }
         .sch-columnas { display: none !important; }
-        #filtroProveedorBotones {
-            order: 3; flex: 0 0 100%; flex-wrap: nowrap !important; overflow-x: auto;
-            padding-bottom: .35rem; scrollbar-width: none; -webkit-overflow-scrolling: touch;
-        }
-        #filtroProveedorBotones::-webkit-scrollbar { display: none; }
-        .btn-filtro-proveedor { flex: 0 0 auto; white-space: nowrap; padding: .45rem .85rem; }
+        #filtroProveedorWrap { order: 1; }
+        .btn-filtro-proveedor { white-space: nowrap; padding: .45rem .85rem; }
         .sch-buscar { flex: 0 0 100%; max-width: 100%; }
         .sch-buscar .input-group { width: 100% !important; }
 
@@ -307,8 +326,17 @@
                     Resumen por proveedor
                     <i data-feather="chevron-down" class="icono-colapso" style="width:15px;height:15px;"></i>
                 </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1 ms-2" id="btnResumenLlegadas"
+                    data-bs-toggle="collapse" data-bs-target="#resumenLlegadas" aria-expanded="false" aria-controls="resumenLlegadas">
+                    <i data-feather="check-square" style="width:15px;height:15px;"></i>
+                    Resumen de llegadas
+                    <i data-feather="chevron-down" class="icono-colapso" style="width:15px;height:15px;"></i>
+                </button>
                 <div class="collapse" id="resumenProveedores">
                     <div id="resumenProveedoresContenido" class="row g-2 pt-3"></div>
+                </div>
+                <div class="collapse" id="resumenLlegadas">
+                    <div id="resumenLlegadasContenido" class="row g-2 pt-3"></div>
                 </div>
             </div>
             <div class="card-header border-top-0 pt-0">
@@ -333,7 +361,21 @@
                         <button type="button" id="btnOcultarVacias" class="btn btn-outline-secondary btn-accion-icono active" style="display:none;" title="Ocultar estaciones sin recepción programada">
                             <i data-feather="eye-off"></i>
                         </button>
-                        <div id="filtroProveedorBotones" class="d-flex align-items-center gap-1 flex-wrap"></div>
+                        <div id="filtroProveedorWrap" class="filtro-prov-wrap">
+                            <button type="button" id="btnFiltroProveedor" class="btn btn-outline-secondary btn-accion-icono d-inline-flex align-items-center gap-1" title="Filtrar por proveedor" aria-haspopup="true" aria-expanded="false">
+                                <i data-feather="filter"></i>
+                                <span id="filtroProveedorEtiqueta" class="small" style="display:none;"></span>
+                            </button>
+                            <div class="filtro-prov-panel">
+                                <div class="filtro-prov-caja">
+                                    <div class="small text-muted mb-2">Proveedor</div>
+                                    <div id="filtroProveedorBotones" class="d-flex align-items-center gap-1 flex-wrap"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" id="btnMarcarVarias" class="btn btn-outline-secondary btn-accion-icono" title="Marcar varias recepciones como recibidas">
+                            <i data-feather="check-square"></i>
+                        </button>
                         <div class="d-flex align-items-center gap-2 sch-columnas">
                             <label class="text-muted mb-0 small">Columnas:</label>
                             <div class="btn-group btn-group-sm" role="group">
@@ -368,6 +410,32 @@
             <div class="card-body sch-body">
                 <div id="contenedorGrupos" class="row">
                     <p class="text-muted text-center">Cargando…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalMarcarVarias" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Marcar recepciones <small class="text-muted" id="marcarVariasFecha"></small></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-2">
+                <ul class="nav nav-tabs mb-3" id="tabsMarcarVarias">
+                    <li class="nav-item"><button type="button" class="nav-link active" data-estatus="Recibido">Llegaron</button></li>
+                    <li class="nav-item"><button type="button" class="nav-link" data-estatus="NoLlego">No llegaron</button></li>
+                    <li class="nav-item"><button type="button" class="nav-link" data-estatus="Programado">Desmarcar</button></li>
+                </ul>
+                <div id="marcarVariasLista" class="table-responsive"></div>
+            </div>
+            <div class="modal-footer justify-content-between">
+                <span class="text-muted small" id="marcarVariasConteo"></span>
+                <div>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+                    <button type="button" class="btn btn-success" id="btnConfirmarMarcarVarias" disabled>Marcar como recibidas</button>
                 </div>
             </div>
         </div>

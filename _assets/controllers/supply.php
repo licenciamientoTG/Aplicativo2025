@@ -3255,6 +3255,30 @@ class Supply
         json_output(['success' => true, 'estatus' => $nuevoEstatus]);
     }
 
+    // Marca varias recepciones como Recibido o NoLlego en una sola llamada
+    // (modal "Marcar varias" de /supply/scheduling).
+    public function scheduling_marcar_estatus()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(95)) {
+            json_output(['success' => false, 'message' => 'No autorizado']);
+            return;
+        }
+        $userId = (int)($_SESSION['tg_user']['id'] ?? 0);
+        $ids = $_POST['ids'] ?? [];
+        if (!is_array($ids) || !$ids) {
+            json_output(['success' => false, 'message' => 'No seleccionaste ninguna recepción']);
+            return;
+        }
+        $estatus = (string)($_POST['estatus'] ?? '');
+        if (!in_array($estatus, ['Recibido', 'NoLlego', 'Programado'], true)) {
+            json_output(['success' => false, 'message' => 'Estatus no válido']);
+            return;
+        }
+        $n = $this->fuelReceptionScheduleModel->marcar_estatus($ids, $estatus, $userId);
+        json_output(['success' => true, 'marcadas' => $n]);
+    }
+
     // Carga el modal de captura/edición. Sin $id: formulario vacío para
     // "Agregar recepción". Con $id: precarga la fila (patrón idéntico a
     // frmCapturaCompra()).
