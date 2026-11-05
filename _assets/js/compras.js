@@ -390,7 +390,12 @@
             paging: false,
             language: { info: 'Mostrando _TOTAL_ renglones', infoFiltered: ' (filtrados de _MAX_)', infoEmpty: 'Sin renglones', emptyTable: 'Sin facturas en el rango', processing: 'Cargando…' },
             processing: true,
-            order: [[idx.fecha_descarga, 'asc']],
+            order: [[idx.fecha_descarga, 'desc'], [idx.fecha, 'desc']],
+            createdRow: function (tr, r) {
+                var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; };
+                var hoy = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+                if ((r.fecha_descarga || r.fecha) === hoy) $(tr).addClass('compras-hoy').attr('title', 'Descarga de hoy');
+            },
             buttons: [
                 { extend: 'excel', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-sm btn-success', title: 'Registro de compras', exportOptions: { columns: ':visible:not(:last-child)' } },
                 { extend: 'colvis', text: '<i class="fas fa-columns"></i> Columnas', className: 'btn btn-sm btn-outline-secondary', columns: ':not(:last-child)' }

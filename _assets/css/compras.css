@@ -101,3 +101,18 @@
 #tblCompras thead tr.filter th {
     z-index: 1;
 }
+
+/* Renglones de hoy: barra verde a la izquierda + punto */
+#tblCompras > tbody > tr.compras-hoy > td:first-child {
+    box-shadow: inset 4px 0 0 #198754;
+}
+#tblCompras > tbody > tr.compras-hoy > td:first-child::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: #198754;
+    vertical-align: middle;
+}
