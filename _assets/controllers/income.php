@@ -7664,12 +7664,26 @@ public function stamped_invoices_detail(): void
             $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);if(!is_array($data))throw new RuntimeException('Solicitud inválida.');
             $changeId=(int)($data['id']??0);$decision=strtoupper(trim((string)($data['decision']??'')));
             if($decision!=='APROBAR')throw new RuntimeException('Solo se permite aprobar cambios.');
-            $candidate=$this->efcConciliacion->pendingCutChange($changeId);if(!$candidate||$candidate['estado']!=='PENDIENTE')throw new RuntimeException('El cambio ya fue resuelto o no existe.');
+            $candidate=$this->efcConciliacion->pendingCutChange($changeId);if(!$candidate||!in_array($candidate['estado'],['PENDIENTE','APROBADO'],true))throw new RuntimeException('El cambio ya fue resuelto o no existe.');
             $station=(int)$candidate['estacion_id'];$allowed=array_values(array_diff(EfcConciliacionModel::stationIds('DIAZ GAS'),[40]));if(!in_array($station,$allowed,true))throw new RuntimeException('Estación fuera del alcance del monitor.');
             $day=new DateTimeImmutable($candidate['fecha_operativa']);$source=$this->efcConcReportControlGas($station,(int)$day->format('Y'),(int)$day->format('n'));
             $live=$this->efcConciliacion->findControlGasCutAmount($source,$candidate['fecha_operativa'],(string)$candidate['turno'],(string)$candidate['concepto']);
             if($live===null||round($live,2)!==round((float)$candidate['importe_nuevo'],2))throw new RuntimeException('ControlGas volvió a cambiar desde la última revisión. Espera el siguiente monitoreo y revisa la nueva versión.');
             $result=$this->efcConciliacion->decideCutChange($changeId,$decision,(int)($_SESSION['tg_user']['Id']??0));
+            echo json_encode(['status'=>'success','data'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
+        exit;
+    }
+
+    /** Revert a still-current approved ControlGas cut change. */
+    public function efc_conc_cambios_revertir(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);if(!is_array($data))throw new RuntimeException('Solicitud inválida.');
+            $changeId=(int)($data['id']??0);if($changeId<1)throw new RuntimeException('Cambio inválido.');
+            $candidate=$this->efcConciliacion->pendingCutChange($changeId);if(!$candidate||$candidate['estado']!=='APROBADO')throw new RuntimeException('Solo se puede revertir un cambio APROBADO.');
+            $allowed=array_values(array_diff(EfcConciliacionModel::stationIds('DIAZ GAS'),[40]));if(!in_array((int)$candidate['estacion_id'],$allowed,true))throw new RuntimeException('Estación fuera del alcance del monitor.');
+            $result=$this->efcConciliacion->revertApprovedCutChange($changeId,(int)($_SESSION['tg_user']['Id']??0));
             echo json_encode(['status'=>'success','data'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);}
         exit;
@@ -8032,9 +8046,35 @@ public function stamped_invoices_detail(): void
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
 
+    public function efc_conc_analiticos_crear(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        if (!$this->papeletasCsrfValido()) { http_response_code(403); echo json_encode(['status'=>'error','message'=>'Token CSRF inválido.']); exit; }
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $id=$this->efcAnaliticos->createManagedPaper($data,(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','id'=>$id]); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    public function efc_conc_analiticos_editar(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        if (!$this->papeletasCsrfValido()) { http_response_code(403); echo json_encode(['status'=>'error','message'=>'Token CSRF inválido.']); exit; }
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcAnaliticos->updateManagedPaper((int)($data['id']??0),$data,(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    public function efc_conc_analiticos_historial(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try { echo json_encode(['status'=>'success']+$this->efcAnaliticos->managedPaperHistory((int)($_GET['id']??0))); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    private function papeletasCsrfValido(): bool {
+        $expected=$_SESSION['tableros_csrf']??''; $provided=$_SERVER['HTTP_X_CSRF_TOKEN']??'';
+        return is_string($expected) && $expected!=='' && is_string($provided) && $provided!=='' && hash_equals($expected,$provided);
+    }
+
     /** Corrige/restaura la fecha efectiva, sin tocar el Excel ni la papeleta fuente. */
     public function efc_conc_analiticos_corregir_fecha(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        if (!$this->papeletasCsrfValido()) { http_response_code(403); echo json_encode(['status'=>'error','message'=>'Token CSRF inválido.']); exit; }
         try {
             $data=json_decode(file_get_contents('php://input'),true)?:[];
             $ids=$data['papeleta_ids']??[];
@@ -8048,6 +8088,7 @@ public function stamped_invoices_detail(): void
     /** Corrige/restaura la estación efectiva sin alterar el Excel importado. */
     public function efc_conc_analiticos_corregir_estacion(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        if (!$this->papeletasCsrfValido()) { http_response_code(403); echo json_encode(['status'=>'error','message'=>'Token CSRF inválido.']); exit; }
         try {
             $data=json_decode(file_get_contents('php://input'),true)?:[];
             $ids=$data['papeleta_ids']??[];

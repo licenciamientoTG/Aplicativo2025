@@ -1,8 +1,6 @@
 <?php
 class InventarioUrovoModel extends Model {
     private const LOCATIONS = ['estacion', 'almacen', 'reparacion', 'perdida', 'baja_definitiva'];
-    private const CONDITIONS = ['operativa', 'dañada', 'por_diagnosticar', 'desconocida'];
-
     public static function locationTypes(): array { return self::LOCATIONS; }
 
     public function hasAccess(): bool {
@@ -14,6 +12,81 @@ class InventarioUrovoModel extends Model {
 
     public function stations(): array {
         return $this->sql->select('SELECT Codigo,Nombre FROM [TG].[dbo].[Estaciones] WHERE activa=1 AND Codigo NOT IN (0,4,20) ORDER BY Nombre');
+    }
+
+    /** Resumen por estación, agregando cada fuente antes de unirla para evitar multiplicar conteos. */
+    public function summary(): array {
+        $rows=$this->sql->select("SELECT s.Codigo AS station_id,s.Nombre AS station_name,
+                COALESCE(t.terminales_count,0) AS terminales_count,
+                COALESCE(a.sin_serie_count,0) AS sin_serie_count,
+                COALESCE(t.operativa,0)+COALESCE(a.operativa,0) AS operativa,
+                COALESCE(t.danada,0)+COALESCE(a.danada,0) AS danada,
+                COALESCE(t.desconocida,0)+COALESCE(a.desconocida,0) AS desconocida,
+                COALESCE(t.extraviada,0)+COALESCE(a.extraviada,0) AS extraviada,
+                COALESCE(t.operativa,0)+COALESCE(a.operativa,0)+
+                COALESCE(t.danada,0)+COALESCE(a.danada,0)+
+                COALESCE(t.desconocida,0)+COALESCE(a.desconocida,0)+
+                COALESCE(t.extraviada,0)+COALESCE(a.extraviada,0) AS total_count
+            FROM [TG].[dbo].[Estaciones] s
+            LEFT JOIN (
+                SELECT estacion_codigo,COUNT(*) AS terminales_count,
+                    SUM(CASE WHEN condicion='operativa' THEN 1 ELSE 0 END) AS operativa,
+                    SUM(CASE WHEN condicion='dañada' THEN 1 ELSE 0 END) AS danada,
+                    SUM(CASE WHEN condicion='desconocida' THEN 1 ELSE 0 END) AS desconocida,
+                    SUM(CASE WHEN condicion='extraviada' THEN 1 ELSE 0 END) AS extraviada
+                FROM [TG].[dbo].[inv_urovo_terminales]
+                WHERE ubicacion_tipo='estacion' AND estacion_codigo IS NOT NULL
+                GROUP BY estacion_codigo
+            ) t ON t.estacion_codigo=s.Codigo
+            LEFT JOIN (
+                SELECT estacion_codigo,SUM(delta_cantidad) AS sin_serie_count,
+                    SUM(CASE WHEN estado='operativa' THEN delta_cantidad ELSE 0 END) AS operativa,
+                    SUM(CASE WHEN estado='dañada' THEN delta_cantidad ELSE 0 END) AS danada,
+                    SUM(CASE WHEN estado='desconocida' THEN delta_cantidad ELSE 0 END) AS desconocida,
+                    SUM(CASE WHEN estado='extraviada' THEN delta_cantidad ELSE 0 END) AS extraviada
+                FROM [TG].[dbo].[inv_urovo_existencias_movimientos]
+                WHERE ubicacion_tipo='estacion' AND estacion_codigo IS NOT NULL
+                GROUP BY estacion_codigo
+                HAVING SUM(delta_cantidad)>0
+            ) a ON a.estacion_codigo=s.Codigo
+            WHERE s.activa=1 AND s.Codigo NOT IN (0,4,20)
+            ORDER BY s.Nombre");
+        return array_map(static function(array $row): array {
+            return [
+                'station_id'=>$row['station_id'],
+                'station_name'=>$row['station_name'],
+                'terminales_count'=>(int)$row['terminales_count'],
+                'sin_serie_count'=>(int)$row['sin_serie_count'],
+                'total_count'=>(int)$row['total_count'],
+                'conditions'=>[
+                    'operativa'=>(int)$row['operativa'],
+                    'dañada'=>(int)$row['danada'],
+                    'desconocida'=>(int)$row['desconocida'],
+                    'extraviada'=>(int)$row['extraviada'],
+                ],
+            ];
+        },$rows);
+    }
+
+    /** Detalle bajo demanda para una estación activa. */
+    public function summaryDetail(int $stationId): array {
+        $stations=$this->sql->select('SELECT Codigo AS station_id,Nombre AS station_name FROM [TG].[dbo].[Estaciones] WHERE Codigo=? AND activa=1 AND Codigo NOT IN (0,4,20)',[$stationId]);
+        if (!$stations) throw new OutOfBoundsException('Estación inválida.');
+        $terminals=$this->sql->select("SELECT t.id,t.numero_serie,t.modelo,t.condicion,
+                t.ubicacion_tipo,t.estacion_codigo,s.Nombre AS estacion_nombre,
+                lm.fecha_evento AS last_movement
+            FROM [TG].[dbo].[inv_urovo_terminales] t
+            LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=t.estacion_codigo
+            OUTER APPLY (SELECT TOP (1) h.fecha_evento FROM [TG].[dbo].[inv_urovo_movimientos] h WHERE h.terminal_id=t.id ORDER BY h.fecha_evento DESC,h.id DESC) lm
+            WHERE t.ubicacion_tipo='estacion' AND t.estacion_codigo=?
+            ORDER BY t.modelo,t.numero_serie",[$stationId]);
+        $anonymous=$this->sql->select("SELECT m.modelo,m.estado,SUM(m.delta_cantidad) AS cantidad
+            FROM [TG].[dbo].[inv_urovo_existencias_movimientos] m
+            WHERE m.ubicacion_tipo='estacion' AND m.estacion_codigo=?
+            GROUP BY m.modelo,m.estado
+            HAVING SUM(m.delta_cantidad)>0
+            ORDER BY m.modelo,m.estado",[$stationId]);
+        return ['station'=>$stations[0],'terminals'=>$terminals,'anonymous'=>$anonymous];
     }
 
     public function anonymousHistory(array $key): array {
@@ -40,7 +113,7 @@ class InventarioUrovoModel extends Model {
         if ($source !== null) {
             $sourceModel=mb_strtoupper(trim((string)$source['model']),'UTF-8');
             foreach ($items as $item) {
-                $itemModel=mb_strtoupper(trim((string)($item['model']??'No especificado')),'UTF-8');
+                $itemModel=mb_strtoupper(trim((string)($item['model']??'I9000S')),'UTF-8');
                 if ($itemModel!==$sourceModel) throw new InvalidArgumentException('El modelo de cada terminal debe coincidir con la existencia anónima seleccionada.');
             }
         }
@@ -55,7 +128,7 @@ class InventarioUrovoModel extends Model {
                 if ($source!==null) {
                     $this->stockMove($source['model'],-1,$source,'individualized',$actor,$source['condition']);
                 }
-                $id=$this->sql->insert('INSERT INTO [TG].[dbo].[inv_urovo_terminales] (numero_serie,numero_serie_normalizado,modelo,ip,mac,imei,fecha_compra,fin_garantia,condicion,accesorios,notas,ubicacion_tipo,estacion_codigo,proveedor,creado_por,creado_en,actualizado_por,actualizado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,SYSDATETIME(),?,SYSDATETIME())', [$serial,$normalized,$item['model']?:'No especificado',$item['ip']?:null,$item['mac']?:null,$item['imei']?:null,$item['purchase_date']?:null,$item['warranty_until']?:null,$item['condition']?:'desconocida',$item['accessories']?:null,$item['notes']?:null,$location['location_type'],$location['station_id'],$location['provider'],$actor,$actor]);
+                $id=$this->sql->insert('INSERT INTO [TG].[dbo].[inv_urovo_terminales] (numero_serie,numero_serie_normalizado,modelo,ip,mac,imei,fecha_compra,fin_garantia,condicion,accesorios,notas,ubicacion_tipo,estacion_codigo,proveedor,creado_por,creado_en,actualizado_por,actualizado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,SYSDATETIME(),?,SYSDATETIME())', [$serial,$normalized,$item['model']?:'I9000S',$item['ip']?:null,$item['mac']?:null,$item['imei']?:null,$item['purchase_date']?:null,$item['warranty_until']?:null,$item['condition']?:'desconocida',$item['accessories']?:null,$item['notes']?:null,$location['location_type'],$location['station_id'],$location['provider'],$actor,$actor]);
                 if (!$id) throw new RuntimeException('No se pudo guardar el terminal.');
                 $eventSource=$source===null?null:['location_type'=>$source['location_type'],'station_id'=>$source['station_id'],'provider'=>$source['provider']];
                 $this->terminalMove((int)$id,$eventSource,$location,$source['condition']??null,(string)($item['condition']??'desconocida'),$source===null?'alta':'asignacion',$source===null?'alta':'Individualizada desde existencia anónima.',$actor);
@@ -73,7 +146,7 @@ class InventarioUrovoModel extends Model {
 
     public function adjustAnonymous(array $data, array $location, int $actor): void {
         $this->sql->beginTransaction();
-        try { $this->stockMove((string)($data['model']??'No especificado'),(int)$data['delta'],$location,(string)$data['reason'],$actor,(string)($data['condition']??'desconocida')); $this->sql->commit(); }
+        try { $this->stockMove((string)($data['model']??'I9000S'),(int)$data['delta'],$location,(string)$data['reason'],$actor,(string)($data['condition']??'desconocida')); $this->sql->commit(); }
         catch (Throwable $e) { $this->sql->rollBack(); throw $e; }
     }
 
@@ -102,7 +175,7 @@ class InventarioUrovoModel extends Model {
             $fields=['modelo'=>'model','ip'=>'ip','mac'=>'mac','imei'=>'imei','fecha_compra'=>'purchase_date','fin_garantia'=>'warranty_until','condicion'=>'condition','accesorios'=>'accessories','notas'=>'notes'];
             $set=[]; $params=[]; $diff=[];
             foreach ($fields as $column=>$key) {
-                $value=$changes[$key]; if ($column==='modelo') $value=$value?:'No especificado'; if ($column==='condicion') $value=$value?:'desconocida';
+                $value=$changes[$key]; if ($column==='modelo') $value=$value?:'I9000S'; if ($column==='condicion') $value=$value?:'desconocida';
                 $prior=$old[$column]??null; if ((string)($prior??'')!==(string)($value??'')) $diff[$column]=['from'=>$prior,'to'=>$value];
                 $set[]="[$column]=?"; $params[]=$value;
             }
@@ -125,6 +198,6 @@ class InventarioUrovoModel extends Model {
             $rows=$this->sql->select("SELECT SUM(delta_cantidad) AS cantidad FROM [TG].[dbo].[inv_urovo_existencias_movimientos] WITH (UPDLOCK,HOLDLOCK) WHERE modelo=? AND ubicacion_tipo=? AND ISNULL(estacion_codigo,0)=? AND estado=? AND ISNULL(proveedor,'')=?",[$model,$location['location_type'],(int)($location['station_id']??0),$condition,(string)($location['provider']??'')]);
             if ((int)($rows[0]['cantidad']??0)<abs($delta)) throw new DomainException('La cantidad anónima disponible es insuficiente.');
         }
-        $this->sql->insert('INSERT INTO [TG].[dbo].[inv_urovo_existencias_movimientos] (fecha_evento,modelo,delta_cantidad,ubicacion_tipo,estacion_codigo,estado,proveedor,motivo,actor_id,registrado_en) VALUES (SYSDATETIME(),?,?,?,?,?,?,?,?,SYSDATETIME())',[$model?:'No especificado',$delta,$location['location_type'],$location['station_id'],$condition,$location['provider'],$reason,$actor]);
+        $this->sql->insert('INSERT INTO [TG].[dbo].[inv_urovo_existencias_movimientos] (fecha_evento,modelo,delta_cantidad,ubicacion_tipo,estacion_codigo,estado,proveedor,motivo,actor_id,registrado_en) VALUES (SYSDATETIME(),?,?,?,?,?,?,?,?,SYSDATETIME())',[$model?:'I9000S',$delta,$location['location_type'],$location['station_id'],$condition,$location['provider'],$reason,$actor]);
     }
 }

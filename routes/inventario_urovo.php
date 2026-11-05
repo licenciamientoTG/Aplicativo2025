@@ -3,6 +3,8 @@ return [
     group('inventario-urovo/', [
         route('', [inventario_urovo::class, 'index'], name: 'inventario_urovo.index', methods: ['GET']),
         route('data/', [inventario_urovo::class, 'data'], name: 'inventario_urovo.data', methods: []),
+        route('summary/', [inventario_urovo::class, 'summary'], name: 'inventario_urovo.summary', methods: ['GET']),
+        route('summary/<int:station_id>/', [inventario_urovo::class, 'summary_detail'], name: 'inventario_urovo.summary_detail', methods: ['GET']),
         route('batch/', [inventario_urovo::class, 'batch'], name: 'inventario_urovo.batch', methods: []),
         route('anonymous/', [inventario_urovo::class, 'anonymous'], name: 'inventario_urovo.anonymous', methods: []),
         route('anonymous/history/', [inventario_urovo::class, 'anonymous_history'], name: 'inventario_urovo.anonymous_history', methods: []),
