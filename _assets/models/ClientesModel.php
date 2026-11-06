@@ -176,12 +176,23 @@ class ClientesModel extends Model{
     }
 
     /**
+     * Crédito: un despacho cobrado con terminal bancaria (Despachos.rut = 'SBT:...') sin vehículo ni tarjeta del cliente
+     * no es consumo a crédito (se pagó con tarjeta bancaria; el cliente solo quedó asignado al facturar). Solo tipval 3.
+     */
+    private function pagoBancarioFilter(int $tipval, string $alias) : string {
+        return $tipval === 3
+            ? "AND NOT (ISNULL({$alias}.rut, '') LIKE 'SBT:%' AND {$alias}.nroveh = 0 AND {$alias}.tar = 0)"
+            : '';
+    }
+
+    /**
      * $empresa: 0 = todas, -1 = estaciones sin razón social, >0 = SG12.Empresas.cod.
      * $propio: 'incluir' | 'excluir' | 'solo' (ver consumoPropioFilter). Categoria = categoría de consumo propio o ''.
      */
     public function get_dispatches_by_client(int $from, int $until, int $tipval, int $codcli = 0, int $empresa = 0, string $propio = 'incluir') : array|false {
         $cli_filter = $codcli > 0 ? "AND t1.codcli = {$codcli}" : '';
         $propio_filter = $this->consumoPropioFilter($propio, 't1.codcli');
+        $sbt_filter = $this->pagoBancarioFilter($tipval, 't1');
         $query = "SELECT
                     t2.den AS Cliente,
                     t1.codcli,
@@ -212,6 +223,7 @@ class ClientesModel extends Model{
                 WHERE t1.fchtrn BETWEEN {$from} AND {$until}
                     AND t1.codcli > 0
                     AND t2.tipval = {$tipval}
+                    {$sbt_filter}
                     AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
                     {$cli_filter}
                     {$propio_filter}
@@ -233,6 +245,7 @@ class ClientesModel extends Model{
         $codval = $tipval === 3 ? 28 : 127;
         $propio_d = $this->consumoPropioFilter($propio, 't1.codcli');
         $propio_r = $this->consumoPropioFilter($propio, 'r.codcli');
+        $sbt_d = $this->pagoBancarioFilter($tipval, 't1');
         // El FULL JOIN contra Clientes/CP en una sola consulta hacía que SQL Server eligiera un plan
         // de minutos (222 s medidos en crédito/Diaz Gas, 1 mes). Cada parte tarda ~1-3 s por separado,
         // así que se consultan por separado y se unen en PHP.
@@ -262,6 +275,7 @@ class ClientesModel extends Model{
                 WHERE t1.fchtrn BETWEEN ? AND ?
                     AND t1.codcli > 0
                     AND (t2.tipval = ? OR vx.nrotrn IS NOT NULL)
+                    {$sbt_d}
                     AND (? = 0 OR t1.codcli = ?)
                     AND (? = 0 OR (? = -1 AND EMP.cod IS NULL) OR EMP.cod = ?)
                     {$propio_d}
