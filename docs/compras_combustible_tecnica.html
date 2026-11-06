@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compras de combustible — Documentación técnica</title>
+<style>
+  :root {
+    --verde: #009559; --azul: #0095DA; --lima: #A6CE39; --ambar: #b45309;
+    --rojo: #b91c1c; --morado: #7c3aed;
+    --tinta: #0f172a; --gris: #64748b; --borde: #cbd5e1; --fondo: #f8fafc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif; color: var(--tinta);
+    margin: 0 auto; max-width: 900px; padding: 32px 40px; line-height: 1.55;
+    font-size: 13px;
+  }
+  h1 { font-size: 24px; border-bottom: 4px solid var(--verde); padding-bottom: 8px; margin-bottom: 4px; }
+  .subtitulo { color: var(--gris); margin: 0 0 24px; font-size: 13px; }
+  h2 {
+    font-size: 17px; color: #fff; background: var(--verde);
+    padding: 6px 12px; border-radius: 4px; margin-top: 32px;
+    page-break-after: avoid;
+  }
+  h2.azul { background: var(--azul); }
+  h2.ambar { background: var(--ambar); }
+  h2.verde { background: var(--verde); }
+  h3 { font-size: 14px; margin: 18px 0 6px; color: var(--verde); page-break-after: avoid; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; font-size: 12px; page-break-inside: avoid; }
+  th { background: var(--fondo); text-align: left; }
+  th, td { border: 1px solid var(--borde); padding: 5px 8px; vertical-align: top; }
+  code, pre {
+    font-family: Consolas, "Courier New", monospace; font-size: 11.5px;
+    background: var(--fondo); border: 1px solid #e2e8f0; border-radius: 3px;
+  }
+  code { padding: 1px 4px; }
+  pre { padding: 10px 12px; overflow-x: auto; line-height: 1.4; page-break-inside: avoid; }
+  .nota {
+    background: #fffbeb; border-left: 4px solid #f59e0b; padding: 8px 12px;
+    margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid;
+  }
+  .ok { background: #ecfdf5; border-left: 4px solid var(--verde); padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  .riesgo { background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  ul, ol { margin: 6px 0 12px; padding-left: 22px; }
+  li { margin-bottom: 3px; }
+  .chip { display: inline-block; background: var(--fondo); border: 1px solid var(--borde); border-radius: 10px; padding: 0 8px; font-size: 11px; color: var(--gris); }
+
+  /* ---- Mapa comparativo hoy vs. con el sistema ---- */
+  .mapa { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; margin: 14px 0 18px; }
+  .mapa .caja { height: 100%; }
+  .mapa-titulo { text-align: center; font-weight: 700; font-size: 14px; padding: 6px; border-radius: 4px; margin-bottom: 8px; color: #fff; }
+  .mapa-titulo.hoy { background: #94a3b8; }
+  .mapa-titulo.nuevo { background: var(--verde); }
+  .caja .gana {
+    display: block; margin-top: 6px; padding: 4px 8px; font-size: 11.5px; line-height: 1.4;
+    background: #ecfdf5; color: #065f46; border-radius: 4px;
+  }
+  .diagrama { margin: 14px 0 22px; page-break-inside: avoid; }
+  .diagrama svg { display: block; width: 100%; height: auto; border: 1px solid var(--borde); border-radius: 0 0 6px 6px; }
+  .diagrama-titulo { font-weight: 700; font-size: 14px; padding: 6px 12px; color: #fff; border-radius: 6px 6px 0 0; }
+  .diagrama-titulo.hoy { background: #94a3b8; }
+  .diagrama-titulo.nuevo { background: var(--verde); }
+  /* Antes y Con el sistema lado a lado (col-6 cada uno); se sale del ancho del texto para que se lean */
+  .diagramas-par {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start;
+    width: min(1500px, calc(100vw - 32px)); position: relative; left: 50%; transform: translateX(-50%);
+    margin: 14px 0 22px;
+  }
+  .diagramas-par .diagrama { margin: 0; }
+  @media (max-width: 900px) { .diagramas-par { grid-template-columns: 1fr; } }
+  .caja.destacada { border-width: 3px; box-shadow: 0 0 0 3px #fde68a; }
+  .caja .trazabilidad {
+    display: inline-block; margin-top: 6px; padding: 2px 10px; border-radius: 10px;
+    background: #f59e0b; color: #fff; font-weight: 700; font-size: 12px;
+  }
+
+  /* ---- Etapas ---- */
+  .etapa {
+    margin: 40px 0 0; padding: 14px 16px; border-radius: 6px; font-size: 20px; font-weight: 700;
+    color: var(--verde); background: #ecfdf5; border: 2px solid var(--verde); text-align: center;
+  }
+  .etapa.tecnica { color: #334155; background: var(--fondo); border-color: #334155; page-break-before: always; }
+  .flujo { margin: 18px auto; max-width: 680px; }
+  .caja {
+    border: 2px solid var(--borde); border-radius: 8px; padding: 10px 14px 10px 52px;
+    position: relative; background: #fff; page-break-inside: avoid;
+  }
+  .caja .num {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    width: 28px; height: 28px; border-radius: 50%; color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .caja b { display: block; font-size: 13.5px; }
+  .caja small { color: var(--gris); display: block; line-height: 1.45; }
+  .caja.usuario  { border-color: var(--ambar); }  .caja.usuario .num  { background: var(--ambar); }
+  .caja.php      { border-color: var(--verde); }  .caja.php .num      { background: var(--verde); }
+  .caja.bd       { border-color: var(--morado); } .caja.bd .num       { background: var(--morado); }
+  .caja.api      { border-color: var(--azul); }   .caja.api .num      { background: var(--azul); }
+  .caja.est      { border-color: var(--rojo); }   .caja.est .num      { background: var(--rojo); }
+  .caja.dir      { border-color: var(--azul); }   .caja.dir .num      { background: var(--azul); }
+  .flecha { text-align: center; color: var(--gris); font-size: 18px; line-height: 1.1; padding: 2px 0; }
+  .flecha small { font-size: 10.5px; display: block; }
+  .leyenda { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin: 8px 0 4px; font-size: 11px; color: var(--gris); }
+  .leyenda span::before { content: "■ "; }
+  .l-usr::before  { color: var(--ambar); } .l-api::before { color: var(--azul); }
+  .l-php::before  { color: var(--verde); } .l-bd::before  { color: var(--morado); }
+  .l-est::before  { color: var(--rojo); }  .l-dir::before { color: var(--azul); }
+  .dos-col { display: flex; gap: 16px; align-items: flex-start; }
+  .dos-col > div { flex: 1; }
+  .malo  { background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 12px; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  .bueno { background: #ecfdf5; border-left: 4px solid var(--verde); padding: 8px 12px; border-radius: 0 4px 4px 0; page-break-inside: avoid; }
+  @media print {
+    body { padding: 0; font-size: 11.5px; max-width: none; }
+    @page { size: A4; margin: 15mm 14mm; }
+    a { color: inherit; text-decoration: none; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .salto { break-before: page; page-break-before: always; margin-top: 0; }
+    h1, h2, h3, .etapa, .mapa-titulo, .diagrama-titulo { break-after: avoid; page-break-after: avoid; }
+    .caja, .nota, .ok, .riesgo, .malo, .bueno, .dos-col, .diagrama, pre, tr, li { break-inside: avoid; page-break-inside: avoid; }
+    .flecha { break-after: avoid; page-break-after: avoid; }
+    table { page-break-inside: auto; }
+    thead { display: table-header-group; }
+    .mapa { margin: 6px 0 8px; }
+    .mapa .caja { padding: 4px 8px 4px 40px; border-width: 1.5px; }
+    .mapa .caja .num { width: 22px; height: 22px; font-size: 12px; left: 9px; }
+    .mapa .caja b { font-size: 11.5px; }
+    .mapa .caja small, .mapa .caja .gana { font-size: 9.5px; line-height: 1.3; }
+    .mapa .caja .gana { margin-top: 3px; padding: 2px 6px; }
+    .mapa .caja .trazabilidad { margin-top: 3px; font-size: 10px; padding: 1px 8px; }
+    .mapa .flecha { font-size: 11px; line-height: 1; padding: 0; }
+    .mapa .flecha small { font-size: 9px; display: inline; }
+    .mapa-titulo { margin-bottom: 4px; padding: 4px; }
+    .diagrama svg { max-height: 235mm; }
+    .diagramas-par { width: 100%; left: 0; transform: none; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Compras de combustible — Documentación técnica</h1>
+<p class="subtitulo">Diseño del registro de compras (<code>/compras/registro</code>) · Para quien programa o mantiene el módulo · Última actualización: 5 de noviembre de 2026</p>
+
+<div class="nota">
+Este documento es la <b>Etapa 2</b> de <code>docs/compras_combustible_documentacion.html</code> (Etapa 1: qué es, mapa del proceso y qué cambia para cada quien). Se conserva la numeración de las secciones (5 a 19) para que las referencias <b>§</b> de ambos documentos sigan valiendo; §1 a §4 están en el otro documento. Plan de trabajo detallado: <code>docs/superpowers/specs/2026-11-05-compras-remisiones-correo-design.md</code>.
+</div>
+
+
+
+<div class="nota">
+Esta etapa describe <b>lo que se va a construir</b>. Las partes marcadas como <i>ya existe</i> están en
+producción; las demás son propuesta y pueden cambiar al implementarse. El análisis que la sustenta (cruce del
+Excel de septiembre contra la base) está en <code>docs/plan_automatizar_compras_combustible.html</code>.
+</div>
+
+<h2>5. Alcance y relación con otros módulos</h2>
+<table>
+  <tr><th style="width:30%">Módulo</th><th>Qué aporta al registro de compras</th><th>Estado</th></tr>
+  <tr><td><b>Descarga de facturas</b><br><code>run_ciclo.py</code> → <code>FacturasRecibidas</code></td><td>Cada factura con PDF, XML, conceptos y estación resuelta.</td><td>Ya existe (con ajustes, §9)</td></tr>
+  <tr><td><b>Pago a proveedores</b><br><code>/payment/...</code></td><td>Requisición, fecha programada, monto autorizado y pagado (<code>payment_request_invoices.uuid</code>).</td><td>Ya existe</td></tr>
+  <tr><td><b>Mis Recepciones</b><br><code>/station_portal/mis_recepciones</code></td><td>Descarga real en ControlGas, remisión y carta porte de la estación.</td><td>Ya existe</td></tr>
+  <tr><td><b>Programación de recepciones</b><br><code>/supply/scheduling</code></td><td>Transportista y terminal de cada entrega.</td><td>Ya existe; falta uso diario</td></tr>
+  <tr><td><b>Conciliación Petrotal</b><br><code>/supply/petrotal_reconciliation</code></td><td>Factura del proveedor real ↔ factura de Petrotal a la estación.</td><td>En curso</td></tr>
+  <tr><td><b>Dashboard de ventas</b><br><code>/merma/ventas</code></td><td>Margen, estímulo y precio por proveedor; ya lee las mismas facturas.</td><td>Ya existe</td></tr>
+  <tr><td><b>Remisiones por correo</b><br><code>correoFacturas</code></td><td>BOL, transportista, placas, litros y fecha de cada remisión, ligados a la factura (§17).</td><td>Por construir</td></tr>
+  <tr><td><b>Registro de compras</b><br><code>/compras/registro</code></td><td>La pantalla nueva: junta todo lo anterior en un renglón por factura.</td><td>Por construir</td></tr>
+</table>
+
+<h2>6. Cómo se ligan</h2>
+<p>La llave de todo es el <b>UUID de la factura</b> (CFDI):</p>
+<ul>
+  <li><code>FacturasRecibidas.UUID</code> = <code>payment_request_invoices.uuid</code> → pago programado y pagado.</li>
+  <li><code>FacturasRecibidas.UUID</code> = <code>SG12.dbo.DocumentosC.satuid</code> → la factura ya está en ControlGas; por
+  <code>DocumentosC.nro</code> se llega a <code>SG12.dbo.Movimientos</code> (tip 11) con la fecha y los litros de la descarga.
+  Es la misma unión que usa <code>VentasRentabilidadModel</code>.</li>
+  <li><code>FacturasRecibidas.EstacionCodgas</code> → <code>TG.dbo.Estaciones</code> (número, nombre, zona).</li>
+  <li><code>fuel_reception_invoices.invoice_id</code> = <code>FacturasRecibidas.Id</code> → renglón de programación → transportista.</li>
+  <li><code>FacturasMovimientosTanques</code> (<code>UUIDProveedor</code> / <code>UUIDPetrotal</code>) → factura de Petrotal ligada.</li>
+</ul>
+
+<h3>6.1 Recorrido de la información</h3>
+<div class="leyenda">
+  <span class="l-est">Proveedor / estación</span>
+  <span class="l-api">Proceso automático</span>
+  <span class="l-bd">Base central</span>
+  <span class="l-php">AplicativoPhp</span>
+</div>
+<div class="flujo">
+  <div class="caja est"><span class="num">1</span>
+    <b>Proveedor manda la factura por correo · la remisión llega al mismo buzón · estación captura la descarga en ControlGas</b>
+  </div>
+  <div class="flecha">↓</div>
+  <div class="caja api"><span class="num">2</span>
+    <b><code>run_ciclo.py</code> (servidor 192.168.0.3)</b>
+    <small>Descarga PDF + XML, los importa por ApiER a <code>FacturasRecibidas</code> y resuelve
+    <code>EstacionCodgas</code> con <code>EstacionesCodigosExternos</code>.
+    <b>Con remisiones:</b> también descarga las remisiones y las deja en una carpeta/tabla de remisiones (§17).</small>
+  </div>
+  <div class="flecha">↓</div>
+  <div class="caja bd"><span class="num">3</span>
+    <b>TG + SG12</b>
+    <small><code>FacturasRecibidas</code> y conceptos · <code>payment_request_invoices</code> · <code>FuelPrices</code> ·
+    tablas de captura (§13) · <code>SG12.DocumentosC</code> / <code>Movimientos</code>.</small>
+  </div>
+  <div class="flecha">↓ <small>una consulta que junta todo por UUID</small></div>
+  <div class="caja php"><span class="num">4</span>
+    <b><code>ComprasRegistroModel::listar()</code> → pantalla y exportación</b>
+  </div>
+</div>
+
+<h2>7. Componentes</h2>
+<table>
+  <tr><th>Capa</th><th>Archivo</th><th>Responsabilidad</th></tr>
+  <tr><td>Rutas</td><td><code>routes/compras.php</code></td><td>Rutas explícitas <code>/compras/...</code> (§14).</td></tr>
+  <tr><td>Controlador</td><td><code>_assets/controllers/compras.php</code> (clase <code>Compras</code>)</td><td>Vista, JSON del registro, guardado de celdas y renglones manuales; el permiso se revisa con <code>authorized()</code>.</td></tr>
+  <tr><td>Modelo</td><td><code>_assets/models/ComprasRegistroModel.php</code></td><td>Consulta del registro (<code>listar()</code>), captura con auditoría y catálogos. Usa <code>LEFT HASH JOIN</code> con <code>documentosC</code> y <code>NOLOCK</code>: no quitar esas pistas (§12).</td></tr>
+  <tr><td>Cálculo</td><td><code>_assets/classes/ComprasCalculos.class.php</code></td><td>Columnas derivadas (precio por litro, IEPS, estímulo, almacenaje, utilidad) sin BD. Prueba: <code>php tests/ComprasCalculosTest.php</code>.</td></tr>
+  <tr><td>Vista</td><td><code>views/compras/registro.html</code></td><td>Filtros, tabla y perfiles de columnas.</td></tr>
+  <tr><td>JS / CSS</td><td><code>_assets/js/compras.js</code>, <code>_assets/css/compras.css</code></td><td>DataTables sin paginación, edición en celda, perfiles, renglón de hoy en verde.</td></tr>
+  <tr><td>SQL</td><td><code>docs/sql/compras_permisos.sql</code>, <code>compras_captura_schema.sql</code>, <code>compras_captura_columnas.sql</code></td><td>Permisos y tablas de captura (ya corridos).</td></tr>
+  <tr><td>Menú</td><td><code>views/layouts/sidebar.html</code></td><td>Compras → "Registro de compras" (permiso 112).</td></tr>
+  <tr><td>Remisiones por correo</td><td><code>correoFacturas/</code> (servidor 192.168.0.3) y tabla nueva (§17)</td><td>Por construir.</td></tr>
+</table>
+
+<h2>8. Permisos</h2>
+<table>
+  <tr><th>Id</th><th>Nombre</th><th>Qué habilita</th></tr>
+  <tr><td><b>112</b></td><td>Compras de combustible — Ver registro</td><td>Ver la pantalla y exportar.</td></tr>
+  <tr><td><b>113</b></td><td>Compras de combustible — Capturar y editar</td><td>Capturar datos en celda (transportista, placas, BOL, flete, estación, pago programado, observaciones) y agregar/eliminar renglones manuales.</td></tr>
+</table>
+<p>Los ids 106/107 de la primera versión de este documento ya estaban ocupados; se usan 112 y 113 (<code>docs/sql/compras_permisos.sql</code>).</p>
+
+<h2 class="ambar">9. Fase 0 — correcciones previas en la descarga de facturas</h2>
+<table>
+  <tr><th>Problema</th><th>Evidencia</th><th>Corrección</th></tr>
+  <tr><td><b>Folio de MGC recortado</b></td><td>Desde el 23-sep-2026 MGC usa 7 dígitos (3000405); se guarda <code>000405</code>. 167 facturas de septiembre. <b>Sigue igual al 5-nov</b>: por eso el cruce contra el Excel necesita normalizar el folio (§18).</td><td>Extractor de MGC (<code>ImportadorFacturas.py</code> / perfil MGC) toma el folio del XML completo. Script de reparación sobre las ya importadas leyendo <code>RutaXml</code>.</td></tr>
+  <tr><td><b>Estación sin resolver</b></td><td>258 facturas de septiembre de Premier, AEMSA y Petrotal sin <code>EstacionCodgas</code>.</td><td>Agregar a <code>resolver_estacion.py</code> el campo de código de cada proveedor y dar de alta sus filas en <code>EstacionesCodigosExternos</code>, como se hizo con Tesoro.</td></tr>
+  <tr><td><b>Repsol / Colosio</b></td><td>7 facturas al mes no llegan al buzón.</td><td>Definir si el proveedor las manda al buzón o se suben a mano (PDF + XML) en la pantalla.</td></tr>
+  <tr><td><b>Fletes de Petrotal</b></td><td>Facturas VPET… no están en <code>FacturasRecibidas</code>.</td><td>Agregar el buzón o remitente de fletes a la descarga (Fase 2).</td></tr>
+</table>
+
+<h2 class="azul">10. Pantalla Registro de compras (<code>/compras/registro</code>)</h2>
+<h3>10.1 Filtros y vista</h3>
+<ul>
+  <li><b>Rango de fechas</b> (por fecha de la factura), <b>proveedor</b>, <b>estación</b>, <b>producto</b> y <b>solo faltantes</b>.</li>
+  <li>Tabla sin paginación con las 60 columnas A..BH de la hoja COMPRAS (más fecha de factura, remisión, en pagos, en ControlGas y origen),
+  encabezado de dos filas (títulos y filtro por columna) fijo al desplazar, y barra de desplazamiento horizontal arriba y abajo.</li>
+  <li><b>Perfiles de columnas</b>: Captura, Pagos, Análisis, IEPS, Petrotal, Tesoro, ControlGas, Fletes y Completa; el perfil se recuerda en el navegador.</li>
+  <li><b>Orden</b>: lo más nuevo primero (fecha de descarga, luego fecha de factura). Los renglones con descarga de <b>hoy</b> llevan punto y barra verde.</li>
+  <li>Totales del filtro: litros, monto y renglones. Botón <b>Excel</b> (exporta las columnas visibles; el orden A..BH va en la exportación de §11).</li>
+  <li><b>Captura en celda</b> (permiso 113): clic sobre la celda marcada; cada cambio queda en <code>compras_audit_log</code>. También se pueden agregar <b>renglones manuales</b> (remisiones del Excel sin factura).</li>
+</ul>
+
+<h3>10.2 De dónde sale cada columna</h3>
+<table>
+  <tr><th>Columna del Excel</th><th>Origen</th></tr>
+  <tr><td>FECHA DE DESCARGA</td><td><b>Primera entrega:</b> la capturada en celda; si no hay, la fecha de la factura (<code>FacturasRecibidas.Fecha</code>). <b>Con remisiones:</b> la de la remisión (§17) y, en su defecto, <code>SG12.Movimientos.fch</code> (tip 11) del documento con <code>satuid</code> = UUID</td></tr>
+  <tr><td>MES, AÑO</td><td>De la fecha de descarga</td></tr>
+  <tr><td>NUMERO DE ESTACION, CIUDAD, ZONA, ESTACIONES</td><td><code>EstacionCodgas</code> → <code>Estaciones</code> (número de permiso/estación, zona)</td></tr>
+  <tr><td>PROVEEDOR, PROVEEDOR QUE REALIZA LA FACTURA FINAL</td><td><code>EmisorNombre</code> / <code>EmisorRfc</code> (nombre corto por catálogo)</td></tr>
+  <tr><td>PRODUCTO</td><td><code>ClaveProdServ</code>: 15101514 Regular, 15101515 Súper (el Excel usa SUPER, no Premium), 15101505 Diésel; 80141629 «Servicio asociado» = fletes, excluido</td></tr>
+  <tr><td>NUMERO DE FACTURA, MONTO FACTURA, LITROS, % IVA</td><td><code>Serie</code>+<code>Folio</code>, <code>Total</code>, <code>SUM(Cantidad)</code>, <code>TasaOCuota</code></td></tr>
+  <tr><td>RAZON SOCIAL FACTURA</td><td><code>ReceptorNombre</code> (nombre corto)</td></tr>
+  <tr><td>VENCIMIENTO</td><td>Fecha de factura + <code>Proveedores.dias_credito</code>, ajustada a día hábil (misma regla que pagos)</td></tr>
+  <tr><td>PAGO PROGRAMADO, Monto Pagado, SALDO FACTURA</td><td><code>payment_requests.scheduled_payment_date</code>, <code>payment_request_invoices.paid_amount</code></td></tr>
+  <tr><td>PRECIO VENTA EN ESTACION</td><td><code>FuelPrices</code> vigente el día de la descarga (estación + producto)</td></tr>
+  <tr><td>PRECIO COTIZADO, PRECIO PEMEX (TAR)</td><td>Fuera del alcance por ahora: la columna sale vacía en la exportación</td></tr>
+  <tr><td>BOL / EMBARQUE</td><td><b>Primera entrega:</b> captura en celda (la columna <i>remisión</i> sale de <code>FacturasRecibidas.Remision</code>). <b>Con remisiones:</b> BOL de la remisión leída del correo (§17)</td></tr>
+  <tr><td>TRANSPORTISTA</td><td><b>Primera entrega:</b> captura en celda. <b>Con remisiones:</b> remisión del correo o <code>fuel_reception_schedule.carrier_id</code> si la factura está ligada a la programación</td></tr>
+  <tr><td>PLACAS</td><td><b>Primera entrega:</b> captura en celda. <b>Con remisiones:</b> de la remisión leída del correo</td></tr>
+  <tr><td>FACTURA PETROTAL, MONTO, PRECIO A CLIENTE FINAL</td><td><code>FacturasMovimientosTanques</code> (conciliación Petrotal)</td></tr>
+  <tr><td>FLETE (folio, monto carta porte, razón social, fecha de pago)</td><td>Captura; después, factura de flete ligada (Fase 2)</td></tr>
+  <tr><td>LITROS CAPTURADOS EN CONTROL GAS / PENDIENTES</td><td>Litros de <code>Movimientos</code> del documento con ese <code>satuid</code>; 0 si la factura no está en ControlGas</td></tr>
+  <tr><td>Columnas de análisis (precio por litro, diferencias, IEPS, estímulo, utilidad, utilidad Petrotal)</td><td><code>ComprasCalculos.class.php</code> con las mismas fórmulas del Excel (§12)</td></tr>
+  <tr><td>OBSERVACIONES</td><td>Captura</td></tr>
+</table>
+
+<h3>10.3 Avisos</h3>
+<table>
+  <tr><th>Aviso</th><th>Regla</th><th>Cuándo</th></tr>
+  <tr><td>Sin estación</td><td><code>EstacionCodgas</code> nulo (celda amarilla).</td><td>Primera entrega</td></tr>
+  <tr><td>No está en ControlGas</td><td>UUID sin <code>DocumentosC.satuid</code> (celda amarilla).</td><td>Primera entrega</td></tr>
+  <tr><td>Litros no cuadran</td><td>Litros de factura vs litros del documento en ControlGas, diferencia mayor a 1%.</td><td>Segunda entrega</td></tr>
+  <tr><td>Sin pago programado</td><td>Vence en menos de N días y no está en ninguna requisición.</td><td>Segunda entrega</td></tr>
+  <tr><td>Factura sin remisión / remisión sin factura</td><td>BOL de la factura sin remisión leída del correo, o al revés, pasados N días.</td><td>Con remisiones (§17)</td></tr>
+  <tr><td>BOL no coincide</td><td>BOL de la factura distinto al de la remisión.</td><td>Con remisiones (§17)</td></tr>
+</table>
+
+<h2 class="azul">11. Exportar a Excel</h2>
+<p>Hoy el botón <b>Excel</b> de la tabla exporta solo las columnas visibles. Falta una exportación
+(<code>/compras/exportar</code>, aún sin ruta) que genere un .xlsx con <b>las mismas columnas y el mismo
+orden</b> de la hoja COMPRAS (A: FECHA DE DESCARGA … BH: OBSERVACIONES), con valores, para que las tablas dinámicas
+de Abastos (Deuda Comb DG, Zona 3, Picachos, Ventanas, TSA, LITROS FACTURADOS, GLOBAL, RESUMEN, ANEXOS) se
+actualicen apuntando al archivo exportado.</p>
+
+<h2>12. Reglas de negocio</h2>
+<ul>
+  <li><b>Universo</b>: CFDI tipo I con al menos un concepto <code>ClaveProdServ LIKE '151015%'</code>. Las notas de crédito
+  (tipo E) y los complementos de pago (tipo P) no son renglones.</li>
+  <li><b>Fecha del renglón</b>: la de descarga (como el Excel). Una factura de fin de mes descargada el día 1 cae en el mes nuevo.</li>
+  <li><b>IEPS y estímulo</b>: cuotas por año y producto (hoy en la hoja Matriz y Estimulos) pasan a constantes
+  versionadas por año; el estímulo usa los mismos montos que <code>VentasRentabilidad::ESTIMULO_FRONTERA</code>.</li>
+  <li><b>Vencimiento</b>: fecha de la factura + <code>dias_credito</code> del proveedor, ajustada a día hábil; nunca <code>fechaVto</code>.</li>
+  <li><b>Almacenaje</b>: solo si el proveedor final es PETROTAL (REGULAR/SUPER 0.09038, DIESEL 0.148887585 en 2026).</li>
+  <li><b>Documentos sin <code>satuid</code></b> en ControlGas son remisiones: no van a pagos y no se filtra por <code>satuid</code>.</li>
+  <li><b>Rendimiento</b>: el join con <code>SG12.dbo.documentosC</code> (5.6 M filas, sin índice por <code>satuid</code>) va como <code>LEFT HASH JOIN</code>, con fechas como literales validados y <code>WITH (NOLOCK)</code>. Sin eso la pantalla se cuelga (171 s).</li>
+  <li><b>Fórmulas de análisis</b>: se copian tal cual del Excel (precio por litro = monto / litros; precio sin IVA y sin IEPS; utilidad por litro; utilidad Petrotal = monto Petrotal sin IVA − monto proveedor sin IVA).</li>
+</ul>
+
+<h2>13. Tablas de captura</h2>
+<table>
+  <tr><th style="width:30%">Tabla (<code>TG.dbo</code>)</th><th>Qué guarda</th></tr>
+  <tr><td><code>compras_factura_datos</code></td><td>Una fila por factura (llave <code>uuid</code>) con lo que el sistema no sabe: estación, fecha de descarga y pago programado capturados, placas, BOL, transportista, observaciones y, desde <code>compras_captura_columnas.sql</code>, proveedor final, litros de soporte, columnas de Tesoro y Petrotal y datos de flete. Lo capturado gana sobre lo calculado.</td></tr>
+  <tr><td><code>compras_renglon_manual</code></td><td>Renglones sin factura (remisiones del Excel): fecha, estación, proveedor, producto, folio, remisión, litros, monto, IVA, razón social, fechas, pago, placas, BOL, transportista. Borrado lógico (<code>is_deleted</code>).</td></tr>
+  <tr><td><code>compras_audit_log</code></td><td>Cada cambio: tipo (factura/manual), clave, campo, valor anterior y nuevo, usuario y fecha.</td></tr>
+</table>
+<p>No se copia ningún dato de la factura a estas tablas: folio, monto y litros se leen siempre de <code>FacturasRecibidas</code>.
+Las cuotas de IEPS, estímulo y almacenaje no están en tablas: viven dentro de <code>ComprasCalculos</code> y se actualizan ahí cada año.</p>
+
+<h2>14. Rutas</h2>
+<table>
+  <tr><th>Ruta</th><th>Tipo</th><th>Permiso</th><th>Qué hace</th></tr>
+  <tr><td><code>/compras/registro/</code></td><td>GET vista</td><td>112</td><td>Pantalla principal.</td></tr>
+  <tr><td><code>/compras/registro-datos/</code></td><td>GET JSON</td><td>112</td><td>Renglones del rango y filtros.</td></tr>
+  <tr><td><code>/compras/guardar-celda/</code></td><td>POST JSON</td><td>113</td><td>Guarda un campo de una factura (uuid) o de un renglón manual (id), con auditoría.</td></tr>
+  <tr><td><code>/compras/renglon-manual/crear/</code></td><td>POST JSON</td><td>113</td><td>Agrega un renglón manual.</td></tr>
+  <tr><td><code>/compras/renglon-manual/eliminar/</code></td><td>POST JSON</td><td>113</td><td>Eliminación lógica de un renglón manual.</td></tr>
+</table>
+<p>Después se agregan la exportación con el orden A..BH (§11) y las rutas de remisiones (§17).</p>
+
+<h2>15. Plan de trabajo</h2>
+<table>
+  <tr><th>Fase</th><th>Qué</th><th>Cuándo</th></tr>
+  <tr><td><b>0</b></td><td>Folio MGC, estaciones de Premier/AEMSA/Petrotal, Colosio (§9)</td><td>Antes de empezar</td></tr>
+  <tr><td><b>1</b></td><td>Pantalla con renglón armado, 60 columnas y fórmulas</td><td>Primera entrega</td></tr>
+  <tr><td><b>2</b></td><td>Captura en celda, renglones manuales, auditoría, perfiles</td><td>Segunda entrega</td></tr>
+  <tr><td><b>3</b></td><td>Remisiones por correo: BOL, placas, transportista y litros sin teclear (§17)</td><td>Tercera entrega; spec en <code>docs/superpowers/specs/2026-11-05-compras-remisiones-correo-design.md</code></td></tr>
+  <tr><td><b>4</b></td><td>Exportación en el orden del Excel; proveedor final desde la conciliación Petrotal; vista de deuda por empresa</td><td>Cuarta entrega</td></tr>
+  <tr><td><b>5</b></td><td>Mes en paralelo y retiro del Excel</td><td>Al final</td></tr>
+</table>
+<div class="ok">
+<b>Criterio para dejar el Excel</b>: un mes completo donde la exportación y el Excel coincidan en facturas, litros y
+montos, y Abastos confirme que sus análisis salen igual con el archivo exportado. Con el cruce del 5-nov (§18)
+coincide 97.6 % de los renglones; faltan vencimiento, precio de venta y los renglones de Premier Gas, Repsol y Petrotal.
+</div>
+
+<h2>16. Qué se ahorra</h2>
+<table>
+  <tr><th>Actividad</th><th class="n">Hoy</th><th>Con el sistema</th></tr>
+  <tr><td>Bajar las facturas</td><td class="n">≈ 1.5 h al día (≈ 33 h al mes)</td><td>El sistema las descarga solo: ≈ 0</td></tr>
+  <tr><td>Bajar las remisiones</td><td class="n">≈ 1.5 h al día (≈ 33 h al mes)</td><td>El sistema las lee del correo: solo se revisan las marcadas</td></tr>
+  <tr><td>Revisar y completar lo marcado</td><td class="n">—</td><td>≈ 30–45 min al día (≈ 11–17 h al mes), estimación</td></tr>
+  <tr><td><b>Total</b></td><td class="n"><b>3–4 h al día (≈ 66–88 h al mes)</b></td><td><b>≈ 11–17 h al mes · ahorro ≈ 50–75 h al mes</b></td></tr>
+  <tr><td>Hora en que están listas las remisiones</td><td class="n">10–11 de la mañana; los lunes, casi a la 1 de la tarde (cuando el operador que las baja manda el archivo)</td><td>Conforme llegan al buzón (el sistema lo revisa cada 15 minutos)</td></tr>
+</table>
+<p style="color:var(--gris)">Las horas de hoy y la hora en que llegan las remisiones las dio Abastos el 5-nov-2026 (alrededor de hora y media en facturas, hora y media en remisiones, 3 a 4 horas bajando todo); se toman 22 días hábiles al mes. Las horas con el sistema son estimación y se confirman en el mes en paralelo.</p>
+
+<h2 class="ambar">17. Remisiones por correo</h2>
+<p>Hoy alguien de Abastos baja las remisiones del correo y teclea proveedor, estación, fecha de descarga, producto,
+litros, monto, BOL, transportista y placas. Las remisiones llegan al buzón <code>jesus.olivas@</code>, el mismo de donde
+<code>correoFacturas</code> ya descarga las facturas de Petrotal y MGC. La propuesta es que el mismo ciclo (<code>run_ciclo.py</code>, cada 15 minutos)
+también descargue las remisiones, las ligue a su factura y deje los datos en el registro.</p>
+<table>
+  <tr><th style="width:25%">Paso</th><th>Qué hace</th></tr>
+  <tr><td><b>1. Descargar</b></td><td>Busca en el buzón los correos de remisión (remitentes y formato por definir) y guarda el archivo en <code>attachments/remisiones/&lt;proveedor&gt;/</code>, sin duplicar (por <code>Message-ID</code> y hash).</td></tr>
+  <tr><td><b>2. Leer</b></td><td>Extrae BOL, fecha, producto, litros, transportista y placas del PDF (texto del PDF o, si es imagen, lectura OCR). Lo que no pueda leer con certeza queda como «por revisar», nunca inventado.</td></tr>
+  <tr><td><b>3. Ligar</b></td><td>Cruza con la factura por BOL (<code>FacturasRecibidas.Remision</code>) y, si no hay, por proveedor + estación + fecha + litros. Si no hay factura aún, la remisión queda esperando.</td></tr>
+  <tr><td><b>4. Mostrar</b></td><td>El registro toma BOL, placas, transportista y fecha de descarga de la remisión, y avisa «factura sin remisión», «remisión sin factura» y «BOL no coincide». Lo capturado a mano sigue ganando.</td></tr>
+</table>
+<div class="nota">
+<b>Por definir antes de construir</b> (ver el spec): remitentes y formato de cada remisión (PDF de texto, escaneado o foto),
+si una misma remisión puede traer varios BOL, y qué proveedores mandan remisión por correo. No se ha entrado al buzón para
+revisar los correos; falta autorización para hacerlo.
+</div>
+
+<h2>18. Punto de partida: cruce contra el Excel de Abastos (5-nov-2026)</h2>
+<p>Antes de construir se comparó el Excel <code>COMPRAS 2026 (1).xlsx</code> (actualizado el 5-nov) contra lo que el sistema ya tiene (facturas, pagos y precios) para facturas del 1-ago al 5-nov:
+4,835 renglones en el Excel y 5,063 en el sistema. El cruce usó folio y monto, o fecha y monto cuando el folio viene escrito distinto
+(MGC <code>000405</code> contra <code>3000405</code>, AEMSA <code>02-8800004587</code> contra <code>8800004587</code>, Premier <code>FE-040993</code> contra <code>FE-40993</code>).</p>
+<table>
+  <tr><th>Concepto</th><th>Resultado</th></tr>
+  <tr><td>Renglones del Excel con su par en el sistema</td><td>4,717 de 4,835 (97.6 %)</td></tr>
+  <tr><td>Litros / producto / estímulo / almacenaje</td><td>99.7 % / 100 % / 98.3 % / 97.0 % iguales</td></tr>
+  <tr><td>Fecha de descarga</td><td>94.6 % iguales</td></tr>
+  <tr><td>Vencimiento y pago programado</td><td><b>25 % y 38 % iguales</b>. Tesoro: el sistema va casi siempre 2 días después; MGC y AEMSA con desfases de −1 a +6 días. Por confirmar con Abastos qué fecha base y qué ajuste de día hábil usan.</td></tr>
+  <tr><td>Precio de venta</td><td>701 renglones con precio en el Excel y vacío en el sistema (Anapra, Puerto de Palos, Puertecito, Picachos, Ventanas, Praxedis): faltan precios en <code>FuelPrices</code>. Otros 36 distintos.</td></tr>
+  <tr><td>Estímulo y almacenaje en 0 en el sistema</td><td>35 renglones de estímulo (Enerey, Premier) y 141 de almacenaje (Tesoro, Essafuel con proveedor final PETROTAL capturado a mano).</td></tr>
+  <tr><td>Pagos</td><td>154 renglones pagados en el Excel y sin pago en el sistema.</td></tr>
+  <tr><td>MGC con monto distinto</td><td>29 facturas con mismo folio y litros, entre $2 mil y $6 mil de diferencia.</td></tr>
+  <tr><td>Solo en el Excel</td><td>88: Premier Gas 44, Repsol 22, Tesoro 11, Petrotal USA, Enerey, AEMSA.</td></tr>
+  <tr><td>Solo en el sistema</td><td>316: 148 de Petrotal (el Excel no los lleva como compra directa), Premier Gas 50, Tesoro 24 y facturas muy recientes de MGC y AEMSA.</td></tr>
+</table>
+
+<h2>19. Pendientes y preguntas abiertas</h2>
+<ul>
+  <li><b>Vencimiento</b>: confirmar con Abastos la fecha base y el ajuste de día hábil por proveedor (§18).</li>
+  <li><b>Precios de venta</b> faltantes en <code>FuelPrices</code> para las estaciones de §18.</li>
+  <li><b>Reesa</b>: Alberto no está seguro de que llegue por correo ni de cómo se integra al pago a proveedores.</li>
+  <li>Remitentes y formato de las remisiones en <code>jesus.olivas@</code> (§17).</li>
+  <li>¿Qué análisis se hacen con las tablas dinámicas? Si alguno se usa mucho, conviene tenerlo en pantalla además del export.</li>
+  <li>Moratorios, falsos fletes y notas de crédito: hoy son hojas aparte. Falsos fletes ya llegan como CFDI y las NC
+  tienen carga masiva; moratorios está por definir.</li>
+</ul>
+
+<p style="color:var(--gris); font-size:11.5px; margin-top:28px;">
+Documentación interna de TotalGas · Diseño del registro de compras de combustible · Al implementar cada fase,
+actualizar este archivo y pasar las secciones de "propuesto" a "cómo funciona".
+</p>
+
+</body>
+</html>

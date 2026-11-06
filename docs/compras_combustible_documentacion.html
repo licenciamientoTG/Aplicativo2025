@@ -48,7 +48,9 @@
 
   /* ---- Mapa comparativo hoy vs. con el sistema ---- */
   .mapa { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; margin: 14px 0 18px; }
-  .mapa .caja { height: 100%; }
+  .mapa .celda { display: flex; flex-direction: column; gap: 6px; }
+  .mapa .celda > .caja:only-child { flex: 1; }
+  .mapa .caja .num { min-width: 28px; width: auto; padding: 0 5px; border-radius: 14px; font-size: 12px; }
   .mapa-titulo { text-align: center; font-weight: 700; font-size: 14px; padding: 6px; border-radius: 4px; margin-bottom: 8px; color: #fff; }
   .mapa-titulo.hoy { background: #94a3b8; }
   .mapa-titulo.nuevo { background: var(--verde); }
@@ -140,7 +142,7 @@
 
 <h1>Compras de combustible</h1>
 <p class="subtitulo">Registro de compras de Abastos en el sistema (reemplazo de <code>COMPRAS 2026.xlsx</code>) ·
-Documento de diseño — lo que se hará y cómo quedará · Última actualización: 14 de octubre de 2026</p>
+Documento de diseño — cómo está hoy y cómo quedará · Última actualización: 5 de noviembre de 2026</p>
 
 <div class="etapa">Etapa 1 — Qué es y qué cambia</div>
 
@@ -153,16 +155,15 @@ Con ese registro se hacen los análisis de compra: deuda por estación y zona, p
 utilidad por litro y utilidad de Petrotal.
 </p>
 <p>
-Hoy ese registro es el Excel <code>COMPRAS 2026.xlsx</code>, y la pantalla nueva es
-<b>Compras de combustible</b> en el aplicativo:
+Hoy ese registro es el Excel <code>COMPRAS 2026.xlsx</code>.
 </p>
 <table>
   <tr><th style="width:30%">Pantalla</th><th style="width:18%">Quién la usa</th><th>Para qué</th></tr>
   <tr>
-    <td><b>Compras de combustible</b><br><span class="chip">Abastos → Compras de combustible</span></td>
+    <td><b>Registro de compras</b><br><span class="chip">Compras → Registro de compras</span></td>
     <td>Abastos</td>
-    <td>Ver todas las facturas de combustible del periodo con sus datos ya llenos, completar lo poco
-    que el sistema no conoce (transportista, flete) y revisar los avisos.
+    <td>Ver todas las facturas de combustible del periodo con sus datos ya llenos, completar con un clic lo que
+    el sistema no conoce (transportista, placas, BOL, flete) y revisar lo que falta.
     Exportar a Excel con las mismas columnas de siempre para los análisis.</td>
   </tr>
   <tr>
@@ -181,7 +182,7 @@ factura sin estación o factura sin pago programado.
 </div>
 <p>En concreto, se busca:</p>
 <ul>
-  <li><b>Liberar el tiempo de captura</b>: hoy son 3 a 4 horas diarias, 5 los lunes.</li>
+  <li><b>Liberar el tiempo de captura</b>: hoy son unas 3 a 4 horas diarias bajando facturas y remisiones (según Abastos, alrededor de hora y media en facturas y hora y media en remisiones).</li>
   <li><b>Un solo dato para compras, pagos y merma</b>: la factura del registro es la misma que se paga y la
   misma que se cruza con la descarga.</li>
   <li><b>Saber de verdad qué falta subir a ControlGas</b>: en septiembre eran 96 facturas, aunque el Excel
@@ -191,7 +192,7 @@ factura sin estación o factura sin pago programado.
 </ul>
 
 <h2 class="verde salto">3. Mapa del proceso: hoy vs. con el sistema</h2>
-<p>Los mismos pasos, en el mismo orden. A la izquierda cómo se hace hoy; a la derecha cómo se hará.</p>
+<p>Las mismas etapas, en el mismo orden. A la izquierda cómo se hace hoy, con todos los pasos que lleva cada una (1a, 1b, 1c…); a la derecha cómo se hará. Donde hoy hay varios pasos y con el sistema uno solo, es el trabajo que se quita.</p>
 <div class="leyenda">
   <span class="l-usr">Abastos</span>
   <span class="l-est">Estación</span>
@@ -199,83 +200,194 @@ factura sin estación o factura sin pago programado.
 </div>
 
 <div class="mapa">
-  <div class="mapa-titulo hoy">Hoy (Excel)</div>
+  <div class="mapa-titulo hoy">Hoy (Excel y correo)</div>
   <div class="mapa-titulo nuevo">Con el sistema</div>
 
-  <div class="caja usuario"><span class="num">1</span>
-    <b>Baja las facturas del correo y de los portales</b>
-    <small>Tesoro, ABC y correo de cada proveedor; los lunes, todo el fin de semana.</small>
+  <!-- 1. Remisiones -->
+  <div class="celda">
+    <div class="caja usuario"><span class="num">1a</span>
+      <b>El operador de Abastos baja las remisiones del correo</b>
+      <small>Cualquier operador de Abastos puede bajarlas.</small>
+    </div>
+    <div class="caja usuario"><span class="num">1b</span>
+      <b>El operador de Abastos captura las remisiones en el Excel</b>
+      <small>Proveedor, estación, fecha de descarga, producto, litros, monto y número de BOL.</small>
+    </div>
+    <div class="caja usuario"><span class="num">1c</span>
+      <b>El operador de Abastos anota transportista y placas</b>
+      <small>Vienen en la remisión; también se capturan en el Excel.</small>
+    </div>
   </div>
-  <div class="caja php"><span class="num">1</span>
-    <b>El sistema ya las descarga</b>
-    <small>PDF y XML de cada factura, varias veces al día. Ya opera hoy.</small>
-    <span class="gana">✔ En septiembre ya estaban en el sistema 1,583 de las 1,598 facturas del Excel.</span>
-  </div>
-
-  <div class="flecha">↓</div><div class="flecha">↓</div>
-
-  <div class="caja est"><span class="num">2</span>
-    <b>La estación manda remisión y carta porte por correo</b>
-    <small>Abastos las baja de su buzón.</small>
-  </div>
-  <div class="caja est"><span class="num">2</span>
-    <b>La estación las sube en "Mis Recepciones"</b>
-    <small>Sobre la misma descarga. Ya construido.</small>
-    <span class="gana">✔ Abastos ve cuáles faltan sin revisar correos.</span>
-  </div>
-
-  <div class="flecha">↓</div><div class="flecha">↓</div>
-
-  <div class="caja usuario"><span class="num">3</span>
-    <b>Teclea unos 22 datos por factura en el Excel</b>
-    <small>Folio, estación, proveedor, producto, litros, monto, IVA, vencimiento, razón social, pago… unas 75 facturas al día.</small>
-  </div>
-  <div class="caja php destacada"><span class="num">3</span>
-    <b>El renglón se arma solo</b>
-    <small>Con la factura, la estación, el vencimiento, el pago programado, el precio de venta y si ya está en ControlGas.</small>
-    <span class="trazabilidad">★ Aquí se libera el tiempo</span>
-    <span class="gana">✔ Unos 14 de los 22 datos salen de la factura y del módulo de pagos, sin teclear.</span>
+  <div class="celda">
+    <div class="caja php"><span class="num">1</span>
+      <b>El sistema toma las remisiones: primero del correo, después de Mis Recepciones</b>
+      <small>Al inicio las lee del buzón <code>jesus.olivas@</code> (BOL, transportista, placas, litros y fecha, §17). Después las toma de las que las
+      estaciones suben en Mis Recepciones, y el correo deja de ser la fuente.</small>
+      <span class="gana">✔ Nadie baja ni teclea remisiones.</span>
+    </div>
   </div>
 
   <div class="flecha">↓</div><div class="flecha">↓</div>
 
-  <div class="caja usuario"><span class="num">4</span>
-    <b>Busca transportista, placas, BOL y flete en correos y documentos</b>
+  <!-- 2. Facturas -->
+  <div class="celda">
+    <div class="caja usuario"><span class="num">2a</span>
+      <b>El operador de Abastos recorre proveedor por proveedor, de arriba hacia abajo</b>
+      <small>Busca las facturas en el correo o en la página de cada proveedor; los lunes, todo el fin de semana.</small>
+    </div>
+    <div class="caja usuario"><span class="num">2b</span>
+      <b>El operador de Abastos anota de cada factura: folio, fecha, litros y monto</b>
+    </div>
+    <div class="caja usuario"><span class="num">2c</span>
+      <b>El operador de Abastos valida el BOL de la factura contra la remisión</b>
+    </div>
   </div>
-  <div class="caja usuario"><span class="num">4</span>
-    <b>Completa solo lo marcado</b>
-    <small>El transportista sale de la programación; BOL y placas, de la remisión que subió la estación.</small>
-    <span class="gana">✔ Solo se captura lo que el sistema no puede saber, como los fletes (≈ 10% de las facturas).</span>
+  <div class="celda">
+    <div class="caja php"><span class="num">2</span>
+      <b>El sistema descarga las facturas y compara el BOL</b>
+      <small>PDF y XML cada 15 minutos. Avisa si el BOL de la factura no coincide con el de la remisión.</small>
+      <span class="gana">✔ En septiembre ya estaban en el sistema 1,583 de las 1,598 facturas del Excel.</span>
+    </div>
   </div>
 
   <div class="flecha">↓</div><div class="flecha">↓</div>
 
-  <div class="caja usuario"><span class="num">5</span>
-    <b>Revisa a ojo qué falta</b>
-    <small>La columna "pendiente de capturar en ControlGas" siempre da 0.</small>
+  <!-- 3. Precio y ControlGas -->
+  <div class="celda">
+    <div class="caja usuario"><span class="num">3a</span>
+      <b>El operador de Abastos calcula el precio de la factura sin IEPS</b>
+      <small>Subtotal ÷ litros.</small>
+    </div>
+    <div class="caja usuario"><span class="num">3b</span>
+      <b>El operador de Abastos captura la compra en ControlGas con ese precio</b>
+    </div>
   </div>
-  <div class="caja php"><span class="num">5</span>
-    <b>Avisos en pantalla</b>
-    <small>Sin estación, sin subir a ControlGas, sin pago programado, litros que no cuadran con la descarga.</small>
-    <span class="gana">✔ "Pendiente en ControlGas" real, revisado contra la factura subida.</span>
+  <div class="celda">
+    <div class="caja php"><span class="num">3</span>
+      <b>El renglón muestra el precio por litro sin IEPS</b>
+      <small>La captura en ControlGas sigue haciéndose en ControlGas; el registro avisa cuando una factura aún no está ahí.</small>
+    </div>
   </div>
 
   <div class="flecha">↓</div><div class="flecha">↓</div>
 
-  <div class="caja usuario"><span class="num">6</span>
-    <b>Tablas dinámicas y análisis en el Excel</b>
+  <!-- 4. Renglón del Excel -->
+  <div class="celda">
+    <div class="caja usuario"><span class="num">4a</span>
+      <b>El operador de Abastos teclea datos de cada factura en el Excel</b>
+      <small>Folio, estación, proveedor, producto, litros, monto, IVA, vencimiento, razón social, pago… unas 75 facturas al día.</small>
+    </div>
+    <div class="caja usuario"><span class="num">4b</span>
+      <b>El operador de Abastos busca transportista, placas, BOL y flete en correos y documentos</b>
+    </div>
   </div>
-  <div class="caja usuario"><span class="num">6</span>
-    <b>Análisis con el mismo formato</b>
-    <small>"Exportar a Excel" con las mismas columnas de la hoja COMPRAS, más los resúmenes en pantalla.</small>
-    <span class="gana">✔ Las tablas dinámicas de siempre siguen funcionando, ahora con datos completos.</span>
+  <div class="celda">
+    <div class="caja php destacada"><span class="num">4</span>
+      <b>El renglón se arma solo; el operador de Abastos completa solo lo marcado</b>
+      <small>Con la factura, la estación, el vencimiento, el pago programado, el precio de venta y si ya está en ControlGas.
+      El transportista sale de la programación; BOL, placas y litros, de la remisión.</small>
+      <span class="trazabilidad">★ Aquí se libera el tiempo</span>
+      <span class="gana">✔ Los datos de la factura y del pago salen del sistema, sin teclear.</span>
+    </div>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <!-- 5. Pagos -->
+  <div class="celda">
+    <div class="caja usuario"><span class="num">5a</span>
+      <b>El operador de Abastos actualiza facturas y pagos en la hoja Pendientes</b>
+      <small>Con lo que le manda Karen.</small>
+    </div>
+    <div class="caja usuario"><span class="num">5b</span>
+      <b>El operador de Abastos marca si la factura se pagó completa o solo una parte</b>
+    </div>
+  </div>
+  <div class="celda">
+    <div class="caja php"><span class="num">5</span>
+      <b>El renglón toma el pago del módulo de pagos</b>
+      <small>Pago programado, monto pagado y saldo; no se captura dos veces.</small>
+    </div>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <!-- 6. Petrotal -->
+  <div class="celda">
+    <div class="caja usuario"><span class="num">6a</span>
+      <b>El operador de Abastos pide por correo las facturas de Petrotal</b>
+      <small>A Marco, Christofer, Liliana, Maribel y Claudia, con la factura del proveedor original adjunta.</small>
+    </div>
+    <div class="caja usuario"><span class="num">6b</span>
+      <b>El operador de Abastos captura los datos de la factura de Petrotal</b>
+      <small>Reesa también va por correo: por confirmar con Alberto.</small>
+    </div>
+  </div>
+  <div class="celda">
+    <div class="caja php"><span class="num">6a</span>
+      <b>El sistema genera la solicitud de facturas a Petrotal</b>
+      <small>Petrotal no factura hasta que se lo piden. El operador de Abastos marca en el registro las facturas por solicitar y, con un botón,
+      el sistema arma y manda el correo con la factura del proveedor original adjunta; ya no se redacta ni se adjunta a mano.</small>
+    </div>
+    <div class="caja php"><span class="num">6b</span>
+      <b>La factura de Petrotal se liga a la del proveedor</b>
+      <small>Llega al mismo buzón y se descarga sola; con la conciliación Petrotal se liga y el proveedor final deja de teclearse.</small>
+    </div>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <!-- 7. Revisión del día -->
+  <div class="celda">
+    <div class="caja usuario"><span class="num">7a</span>
+      <b>El operador de Abastos revisa lo que llegó (libro amarillo) contra las remisiones</b>
+      <small>Y contra el archivo de compras.</small>
+    </div>
+    <div class="caja usuario"><span class="num">7b</span>
+      <b>El operador de Abastos entra a ControlGas a validar compras</b>
+      <small>Cada día; las estaciones se reparten entre los 4 operadores de Abastos.</small>
+    </div>
+    <div class="caja usuario"><span class="num">7c</span>
+      <b>El operador de Abastos revisa la hoja Deuda por empresa y manda correos</b>
+      <small>La deuda es siempre a un día antes. Correos a Susana, Maribel, Luis y Claudia.</small>
+    </div>
+  </div>
+  <div class="celda">
+    <div class="caja php"><span class="num">7a–7b</span>
+      <b>Avisos en pantalla</b>
+      <small>Sin estación, sin subir a ControlGas, sin pago programado, factura sin remisión (o remisión sin factura), BOL que no coincide, litros que no cuadran.</small>
+      <span class="gana">✔ «Pendiente en ControlGas» real, revisado contra la factura subida (hoy la columna siempre da 0).</span>
+    </div>
+    <div class="caja php"><span class="num">7c</span>
+      <b>Sección propia: Deuda por empresa, con envío de correo</b>
+      <small>La deuda a un día antes, por razón social. Un botón arma y manda el correo a Susana, Maribel, Luis y Claudia.</small>
+    </div>
+  </div>
+
+  <div class="flecha">↓</div><div class="flecha">↓</div>
+
+  <!-- 8. Análisis y reporte -->
+  <div class="celda">
+    <div class="caja usuario"><span class="num">8a</span>
+      <b>El operador de Abastos actualiza las tablas dinámicas y hace el análisis</b>
+    </div>
+    <div class="caja usuario"><span class="num">8b</span>
+      <b>El operador de Abastos manda la hoja Litros facturados a Dirección</b>
+    </div>
+  </div>
+  <div class="celda">
+    <div class="caja usuario"><span class="num">8</span>
+      <b>Análisis con el mismo formato</b>
+      <small>«Exportar a Excel» con las mismas columnas de la hoja COMPRAS, más los resúmenes en pantalla.</small>
+      <span class="gana">✔ Las tablas dinámicas y la hoja de litros facturados siguen funcionando, ahora con datos completos.</span>
+    </div>
   </div>
 </div>
 
 <div class="riesgo">
 <b>Lo que hoy cuesta llevar el registro a mano, y el sistema resuelve:</b>
 <ul style="margin-bottom:0">
-  <li>3 a 5 horas diarias copiando datos que ya vienen en la factura.</li>
+  <li>3 a 4 horas diarias bajando facturas y remisiones y copiando sus datos al Excel.</li>
   <li>No se sabe qué facturas faltan por subir a ControlGas: la fórmula siempre dice 0.</li>
   <li>Errores de captura: 175 renglones de septiembre tienen la estación escrita como texto, y una
   columna de folio trae la razón social.</li>
@@ -290,150 +402,388 @@ Simbología: <b>óvalo</b> = inicio/fin · <b>rectángulo</b> = actividad · <b>
 
 <div class="diagramas-par">
 <div class="diagrama">
-  <div class="diagrama-titulo hoy">Hoy (Excel)</div>
-  <svg viewBox="0 0 840 630" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de flujo actual con Excel">
-    <defs>
-      <marker id="fh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker>
-      <marker id="fhc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
-    </defs>
-    <g font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#0f172a">
-      <rect x="0" y="0" width="560" height="630" fill="#fffbf5" stroke="#cbd5e1"/>
-      <rect x="560" y="0" width="280" height="630" fill="#fff6f6" stroke="#cbd5e1"/>
-      <rect x="0" y="0" width="560" height="34" fill="#b45309"/>
-      <rect x="560" y="0" width="280" height="34" fill="#b91c1c"/>
-      <text x="280" y="22" fill="#fff" font-weight="700" font-size="14">Abastos</text>
-      <text x="700" y="22" fill="#fff" font-weight="700" font-size="14">Estación</text>
-
-      <!-- Abastos, columna izquierda -->
-      <rect x="80" y="54" width="120" height="40" rx="20" fill="#fff" stroke="#b45309" stroke-width="2"/>
-      <text x="140" y="78" font-weight="700">Inicio</text>
-      <line x1="140" y1="94" x2="140" y2="119" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
-
-      <rect x="40" y="121" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
-      <text x="140" y="143">Revisa correo y portales</text><text x="140" y="159">de proveedores</text>
-      <line x1="140" y1="173" x2="140" y2="198" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
-
-      <rect x="40" y="200" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
-      <text x="140" y="222">Descarga el PDF</text><text x="140" y="238">de cada factura</text>
-      <line x1="140" y1="252" x2="140" y2="277" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
-
-      <polygon points="140,279 235,319 140,359 45,319" fill="#fff" stroke="#b45309" stroke-width="2"/>
-      <text x="140" y="308" font-size="11">¿Quedan</text><text x="140" y="322" font-size="11">facturas sin</text><text x="140" y="336" font-size="11">capturar?</text>
-      <line x1="140" y1="359" x2="140" y2="384" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
-      <text x="152" y="376" font-size="11" font-weight="700">Sí</text>
-
-      <rect x="40" y="386" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
-      <text x="140" y="408">Teclea ≈ 22 datos</text><text x="140" y="424">en la hoja COMPRAS</text>
-      <line x1="140" y1="438" x2="140" y2="463" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
-
-      <rect x="40" y="465" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
-      <text x="140" y="487">Busca transportista, placas,</text><text x="140" y="503">BOL y flete en correos</text>
-      <polyline points="40,491 18,491 18,319 43,319" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
-      <text x="10" y="410" font-size="9.5" fill="#64748b" transform="rotate(-90 10 410)">siguiente factura</text>
-
-      <!-- Abastos, columna derecha -->
-      <line x1="235" y1="319" x2="318" y2="319" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
-      <text x="262" y="311" font-size="11" font-weight="700">No</text>
-      <rect x="320" y="293" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
-      <text x="420" y="315">Actualiza las</text><text x="420" y="331">tablas dinámicas</text>
-      <line x1="420" y1="345" x2="420" y2="384" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
-
-      <rect x="320" y="386" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
-      <text x="420" y="408">Hace el análisis</text><text x="420" y="424">de compras</text>
-      <line x1="420" y1="438" x2="420" y2="463" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
-
-      <rect x="360" y="465" width="120" height="40" rx="20" fill="#fff" stroke="#b45309" stroke-width="2"/>
-      <text x="420" y="489" font-weight="700">Fin</text>
-
-      <path d="M320 560 h200 v46 q-50 12 -100 0 t-100 0 z" fill="#fff" stroke="#b45309" stroke-width="2"/>
-      <text x="420" y="578" font-size="11">Remisión y carta porte</text><text x="420" y="593" font-size="11">en su correo</text>
-      <polyline points="320,583 190,583 190,519" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
-
-      <!-- Estación -->
-      <rect x="600" y="121" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
-      <text x="700" y="143">Recibe el combustible y</text><text x="700" y="159">captura en ControlGas</text>
-      <line x1="700" y1="173" x2="700" y2="198" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
-
-      <rect x="600" y="200" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
-      <text x="700" y="222">Escanea remisión</text><text x="700" y="238">y carta porte</text>
-      <line x1="700" y1="252" x2="700" y2="555" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
-
-      <rect x="600" y="557" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
-      <text x="700" y="579">Las manda por correo</text><text x="700" y="595">a Abastos</text>
-      <line x1="600" y1="583" x2="524" y2="583" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#fhc)"/>
-      <text x="562" y="575" font-size="10.5" fill="#64748b">📧</text>
-    </g>
-  </svg>
+  <div class="diagrama-titulo hoy">Hoy (Excel y correo)</div>
+<svg viewBox="0 0 840 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de flujo actual con Excel">
+<defs>
+<marker id="fh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker>
+<marker id="fhc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker>
+</defs>
+<g font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#0f172a">
+<rect x="0" y="0" width="280" height="720" fill="#fff6f6" stroke="#cbd5e1"/>
+<rect x="280" y="0" width="560" height="720" fill="#fffbf5" stroke="#cbd5e1"/>
+<rect x="0" y="0" width="280" height="34" fill="#b91c1c"/>
+<rect x="280" y="0" width="560" height="34" fill="#b45309"/>
+<text x="140" y="22" fill="#fff" font-weight="700" font-size="14">Estación</text>
+<text x="560" y="22" fill="#fff" font-weight="700" font-size="14">Abastos</text>
+<rect x="40" y="110" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+<text x="140" y="132">Recibe el combustible y</text>
+<text x="140" y="148">captura en ControlGas</text>
+<line x1="140" y1="162" x2="140" y2="180" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="40" y="182" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+<text x="140" y="204">Escanea la remisión</text>
+<text x="140" y="220">y la carta porte</text>
+<line x1="140" y1="234" x2="140" y2="252" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="40" y="254" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+<text x="140" y="276">Las manda por correo</text>
+<text x="140" y="292">a Abastos</text>
+<polyline points="240,280 290,280 290,136 318,136" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#fhc)"/>
+<text x="265" y="272" font-size="9.5" fill="#64748b">correo</text>
+<rect x="360" y="54" width="120" height="40" rx="20" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="420" y="78" font-weight="700">Inicio</text>
+<line x1="420" y1="94" x2="420" y2="108" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="320" y="110" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="420" y="132">Baja las remisiones</text>
+<text x="420" y="148">del correo</text>
+<line x1="420" y1="162" x2="420" y2="180" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="320" y="182" width="200" height="66" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="420" y="203">Las captura en el Excel:</text>
+<text x="420" y="219">proveedor, estación, fecha,</text>
+<text x="420" y="235">litros, monto, BOL, placas</text>
+<line x1="420" y1="248" x2="420" y2="268" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="320" y="270" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="420" y="292">Recorre proveedor por</text>
+<text x="420" y="308">proveedor buscando facturas</text>
+<line x1="420" y1="322" x2="420" y2="342" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="320" y="344" width="200" height="66" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="420" y="365">Anota folio, fecha, litros</text>
+<text x="420" y="381">y monto de la factura y</text>
+<text x="420" y="397">valida el BOL</text>
+<line x1="420" y1="410" x2="420" y2="430" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="320" y="432" width="200" height="66" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="420" y="453">Calcula el precio sin IEPS</text>
+<text x="420" y="469">(subtotal ÷ litros) y captura</text>
+<text x="420" y="485">la compra en ControlGas</text>
+<line x1="420" y1="498" x2="420" y2="518" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="320" y="520" width="200" height="66" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="420" y="541">Teclea los datos del renglón</text>
+<text x="420" y="557">y busca transportista, placas,</text>
+<text x="420" y="573">BOL y flete</text>
+<line x1="420" y1="586" x2="420" y2="606" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<polygon points="420,608 515,650 420,692 325,650" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="420" y="640" font-size="11">¿Quedan</text>
+<text x="420" y="654" font-size="11">facturas sin</text>
+<text x="420" y="668" font-size="11">capturar?</text>
+<polyline points="325,650 306,650 306,296 318,296" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<text x="294" y="644" font-size="11" font-weight="700">Sí</text>
+<polyline points="515,650 560,650 560,84 700,84 700,108" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<text x="538" y="642" font-size="11" font-weight="700">No</text>
+<rect x="600" y="110" width="200" height="66" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="700" y="131">Actualiza la hoja Pendientes</text>
+<text x="700" y="147">con lo que manda Karen y</text>
+<text x="700" y="163">marca pago completo o parcial</text>
+<line x1="700" y1="176" x2="700" y2="196" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="600" y="198" width="200" height="66" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="700" y="219">Pide por correo las facturas</text>
+<text x="700" y="235">de Petrotal (con la del proveedor</text>
+<text x="700" y="251">original) y captura sus datos</text>
+<line x1="700" y1="264" x2="700" y2="284" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="600" y="286" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="700" y="308">Revisa lo que llegó (libro</text>
+<text x="700" y="324">amarillo) contra remisiones</text>
+<line x1="700" y1="338" x2="700" y2="358" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="600" y="360" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="700" y="382">Valida compras en ControlGas</text>
+<text x="700" y="398">(estaciones entre los 4)</text>
+<line x1="700" y1="412" x2="700" y2="432" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="600" y="434" width="200" height="66" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="700" y="455">Revisa Deuda por empresa</text>
+<text x="700" y="471">(a un día antes) y</text>
+<text x="700" y="487">manda correos</text>
+<line x1="700" y1="500" x2="700" y2="520" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="600" y="522" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="700" y="544">Actualiza tablas dinámicas</text>
+<text x="700" y="560">y hace el análisis</text>
+<line x1="700" y1="574" x2="700" y2="594" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="600" y="596" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="700" y="618">Manda la hoja Litros</text>
+<text x="700" y="634">facturados a Dirección</text>
+<line x1="700" y1="648" x2="700" y2="668" stroke="#475569" stroke-width="1.6" marker-end="url(#fh)"/>
+<rect x="640" y="670" width="120" height="40" rx="20" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="700" y="694" font-weight="700">Fin</text>
+</g>
+</svg>
 </div>
 
 <div class="diagrama">
   <div class="diagrama-titulo nuevo">Con el sistema</div>
-  <svg viewBox="0 0 840 630" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de flujo con el sistema">
-    <defs>
-      <marker id="fs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker>
-    </defs>
-    <g font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#0f172a">
-      <rect x="0" y="0" width="280" height="630" fill="#f0fdf6" stroke="#cbd5e1"/>
-      <rect x="280" y="0" width="280" height="630" fill="#fffbf5" stroke="#cbd5e1"/>
-      <rect x="560" y="0" width="280" height="630" fill="#fff6f6" stroke="#cbd5e1"/>
-      <rect x="0" y="0" width="280" height="34" fill="#009559"/>
-      <rect x="280" y="0" width="280" height="34" fill="#b45309"/>
-      <rect x="560" y="0" width="280" height="34" fill="#b91c1c"/>
-      <text x="140" y="22" fill="#fff" font-weight="700" font-size="14">Sistema</text>
-      <text x="420" y="22" fill="#fff" font-weight="700" font-size="14">Abastos</text>
-      <text x="700" y="22" fill="#fff" font-weight="700" font-size="14">Estación</text>
-
-      <!-- Sistema -->
-      <rect x="80" y="54" width="120" height="40" rx="20" fill="#fff" stroke="#009559" stroke-width="2"/>
-      <text x="140" y="78" font-weight="700">Varias veces</text>
-      <line x1="140" y1="94" x2="140" y2="119" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
-
-      <rect x="40" y="121" width="200" height="52" rx="6" fill="#fff" stroke="#009559" stroke-width="2"/>
-      <text x="140" y="143">Descarga las facturas</text><text x="140" y="159">(PDF + XML)</text>
-      <line x1="140" y1="173" x2="140" y2="198" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
-
-      <rect x="40" y="200" width="200" height="52" rx="6" fill="#fff" stroke="#009559" stroke-width="2"/>
-      <text x="140" y="222">Arma el renglón: estación,</text><text x="140" y="238">vencimiento, pago</text>
-      <line x1="140" y1="252" x2="140" y2="277" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
-
-      <polygon points="140,279 235,319 140,359 45,319" fill="#fff" stroke="#009559" stroke-width="2"/>
-      <text x="140" y="308" font-size="11">¿Falta un dato</text><text x="140" y="322" font-size="11">o algo no</text><text x="140" y="336" font-size="11">cuadra?</text>
-      <line x1="140" y1="359" x2="140" y2="463" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
-      <text x="152" y="376" font-size="11" font-weight="700">No</text>
-      <polyline points="235,319 420,319 420,384" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
-      <text x="262" y="311" font-size="11" font-weight="700">Sí: aviso</text>
-
-      <rect x="40" y="465" width="200" height="66" rx="6" fill="#ecfdf5" stroke="#009559" stroke-width="2"/>
-      <text x="140" y="487" font-weight="700">Renglón completo</text><text x="140" y="503">ligado a factura,</text><text x="140" y="519">pago y descarga</text>
-      <line x1="240" y1="498" x2="318" y2="498" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
-
-      <!-- Abastos -->
-
-      <rect x="320" y="386" width="200" height="66" rx="6" fill="#fffbeb" stroke="#f59e0b" stroke-width="3"/>
-      <text x="420" y="406">Completa solo lo marcado</text><text x="420" y="422">(transportista, flete)</text>
-      <rect x="357" y="429" width="126" height="18" rx="9" fill="#f59e0b"/>
-      <text x="420" y="442" font-size="11" font-weight="700" fill="#fff">★ Minutos, no horas</text>
-      <polyline points="320,419 290,419 290,480 242,480" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
-
-      <rect x="320" y="472" width="200" height="52" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
-      <text x="420" y="494">Revisa avisos y hace</text><text x="420" y="510">el análisis / exporta</text>
-      <line x1="420" y1="524" x2="420" y2="559" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
-
-      <rect x="360" y="561" width="120" height="40" rx="20" fill="#fff" stroke="#b45309" stroke-width="2"/>
-      <text x="420" y="585" font-weight="700">Fin</text>
-
-      <!-- Estación -->
-      <rect x="600" y="121" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
-      <text x="700" y="143">Recibe el combustible y</text><text x="700" y="159">captura en ControlGas</text>
-      <line x1="700" y1="173" x2="700" y2="198" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
-
-      <rect x="600" y="200" width="200" height="66" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
-      <text x="700" y="222">Sube remisión y carta</text><text x="700" y="238">porte en Mis Recepciones</text><text x="700" y="254" font-size="10.5" fill="#64748b">(ya construido)</text>
-      <polyline points="600,258 300,258 300,240 242,240" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
-      <text x="450" y="252" font-size="10" fill="#64748b">BOL, placas</text>
-    </g>
-  </svg>
+<svg viewBox="0 0 840 830" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de flujo con el sistema">
+<defs>
+<marker id="fs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker>
+</defs>
+<g font-family="Segoe UI, Arial, sans-serif" font-size="12" text-anchor="middle" fill="#0f172a">
+<rect x="0" y="0" width="280" height="830" fill="#f0fdf6" stroke="#cbd5e1"/>
+<rect x="0" y="0" width="280" height="34" fill="#009559"/>
+<text x="140" y="22" fill="#fff" font-weight="700" font-size="14">Sistema</text>
+<rect x="280" y="0" width="280" height="830" fill="#fffbf5" stroke="#cbd5e1"/>
+<rect x="280" y="0" width="280" height="34" fill="#b45309"/>
+<text x="420" y="22" fill="#fff" font-weight="700" font-size="14">Abastos</text>
+<rect x="560" y="0" width="280" height="830" fill="#fff6f6" stroke="#cbd5e1"/>
+<rect x="560" y="0" width="280" height="34" fill="#b91c1c"/>
+<text x="700" y="22" fill="#fff" font-weight="700" font-size="14">Estación</text>
+<rect x="80" y="54" width="120" height="40" rx="20" fill="#fff" stroke="#009559" stroke-width="2"/>
+<text x="140" y="78" font-weight="700">Cada 15 min</text>
+<line x1="140" y1="94" x2="140" y2="108" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+<rect x="40" y="110" width="200" height="52" rx="6" fill="#fff" stroke="#009559" stroke-width="2"/>
+<text x="140" y="132">Descarga las facturas</text>
+<text x="140" y="148">(PDF + XML)</text>
+<line x1="140" y1="162" x2="140" y2="180" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+<rect x="40" y="182" width="200" height="66" rx="6" fill="#fff" stroke="#009559" stroke-width="2" stroke-dasharray="5 3"/>
+<text x="140" y="203">Lee las remisiones del</text>
+<text x="140" y="219">correo (BOL, placas,</text>
+<text x="140" y="235">transportista, litros)</text>
+<line x1="140" y1="248" x2="140" y2="268" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+<rect x="40" y="270" width="200" height="66" rx="6" fill="#fff" stroke="#009559" stroke-width="2"/>
+<text x="140" y="291">Arma el renglón: estación,</text>
+<text x="140" y="307">vencimiento, pago, precio</text>
+<text x="140" y="323">y liga factura y remisión</text>
+<line x1="140" y1="336" x2="140" y2="356" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+<polygon points="140,358 235,398 140,438 45,398" fill="#fff" stroke="#009559" stroke-width="2"/>
+<text x="140" y="388" font-size="11">¿Falta un dato</text>
+<text x="140" y="402" font-size="11">o algo no</text>
+<text x="140" y="416" font-size="11">cuadra?</text>
+<line x1="140" y1="438" x2="140" y2="458" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+<text x="152" y="452" font-size="11" font-weight="700">No</text>
+<rect x="40" y="460" width="200" height="66" rx="6" fill="#ecfdf5" stroke="#009559" stroke-width="2"/>
+<text x="140" y="481" font-weight="700">Renglón completo</text>
+<text x="140" y="497">ligado a factura,</text>
+<text x="140" y="513">pago y descarga</text>
+<rect x="40" y="600" width="200" height="66" rx="6" fill="#fff" stroke="#009559" stroke-width="2"/>
+<text x="140" y="621">Liga la factura de Petrotal</text>
+<text x="140" y="637">(conciliación) y deja el</text>
+<text x="140" y="653">proveedor final</text>
+<polyline points="235,398 420,398 420,418" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+<text x="268" y="390" font-size="11" font-weight="700">Sí: aviso</text>
+<rect x="320" y="420" width="200" height="84" rx="6" fill="#fffbeb" stroke="#f59e0b" stroke-width="3"/>
+<text x="420" y="442" font-size="12">Revisa los avisos y completa</text>
+<text x="420" y="458" font-size="12">solo lo marcado</text>
+<text x="420" y="474" font-size="12">(transportista, flete)</text>
+<rect x="357" y="482" width="126" height="18" rx="9" fill="#f59e0b"/>
+<text x="420" y="495" font-size="11" font-weight="700" fill="#fff">★ Minutos, no horas</text>
+<line x1="420" y1="504" x2="420" y2="524" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+<rect x="320" y="526" width="200" height="66" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="420" y="547">Marca las facturas por</text>
+<text x="420" y="563">solicitar y manda el correo</text>
+<text x="420" y="579">a Petrotal (botón)</text>
+<line x1="420" y1="592" x2="420" y2="612" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+<rect x="320" y="614" width="200" height="66" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="420" y="635">Sección Deuda por empresa:</text>
+<text x="420" y="651">un botón arma y manda</text>
+<text x="420" y="667">el correo</text>
+<line x1="420" y1="680" x2="420" y2="700" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+<rect x="320" y="702" width="200" height="66" rx="6" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="420" y="723">Exporta a Excel, hace el</text>
+<text x="420" y="739">análisis y manda Litros</text>
+<text x="420" y="755">facturados a Dirección</text>
+<line x1="420" y1="768" x2="420" y2="786" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+<rect x="360" y="788" width="120" height="36" rx="20" fill="#fff" stroke="#b45309" stroke-width="2"/>
+<text x="420" y="810" font-weight="700">Fin</text>
+<polyline points="320,570 270,570 270,633 242,633" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#fs)"/>
+<rect x="600" y="110" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+<text x="700" y="132">Recibe el combustible y</text>
+<text x="700" y="148">captura en ControlGas</text>
+<rect x="600" y="182" width="200" height="66" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2"/>
+<text x="700" y="203">Sube la remisión y la carta</text>
+<text x="700" y="219">porte en Mis Recepciones</text>
+<text x="700" y="235">(opcional)</text>
+<polyline points="600,208 242,208" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#fs)"/>
+<text x="420" y="202" font-size="10" fill="#64748b">BOL, placas</text>
+<rect x="600" y="270" width="200" height="52" rx="6" fill="#fff" stroke="#b91c1c" stroke-width="2" stroke-dasharray="5 3"/>
+<text x="700" y="292">O la manda por correo</text>
+<text x="700" y="308">(buzón jesus.olivas@)</text>
+<polyline points="600,296 262,296 262,236 242,236" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#fs)"/>
+<text x="430" y="290" font-size="10" fill="#64748b">por correo</text>
+</g>
+</svg>
 </div>
+</div>
+
+<h3 class="salto">3.2 Tiempos de hoy y ahorro esperado</h3>
+<p>Los tiempos de hoy los dio Abastos el 5-nov-2026. Para pasarlos a horas al mes se toman 22 días hábiles.</p>
+<table>
+  <tr><th style="width:26%">Actividad</th><th style="width:24%">Hoy</th><th style="width:30%">Con el sistema</th><th>Ahorro esperado</th></tr>
+  <tr><td>Bajar las facturas</td><td>≈ 1.5 h al día (≈ 33 h al mes)</td><td>El sistema las descarga solo, cada 15 minutos</td><td>≈ 1.5 h al día</td></tr>
+  <tr><td>Bajar las remisiones</td><td>≈ 1.5 h al día (≈ 33 h al mes)</td><td>El sistema las lee del correo al inicio y después de Mis Recepciones; el operador de Abastos solo revisa las marcadas</td><td>≈ 1 h al día o más</td></tr>
+  <tr><td><b>Bajar todo</b></td><td><b>3 a 4 h al día (≈ 66–88 h al mes)</b></td><td>Revisar y completar lo marcado: ≈ 30–45 min al día (≈ 11–17 h al mes), estimación</td><td><b>≈ 50–75 h al mes</b></td></tr>
+  <tr><td>Hora en que están listas las remisiones</td>
+    <td>Entre las 10 y las 11 de la mañana, cuando el operador que las baja manda el archivo; los lunes, casi a la 1 de la tarde</td>
+    <td>Conforme llegan al buzón (revisado cada 15 minutos) y, después, en cuanto la estación las sube en Mis Recepciones</td>
+    <td>El trabajo del día empieza horas antes, sobre todo los lunes</td></tr>
+</table>
+<div class="nota">
+Las horas con el sistema son una estimación y se confirman en el mes en paralelo. La hora en que están listas las remisiones depende
+de cuándo llegan al buzón o se suben en Mis Recepciones: eso se revisa en la primera etapa (remisiones, semanas 1 a 3).
+</div>
+
+<h3 class="salto">3.3 Plan de construcción (diagrama de Gantt)</h3>
+<p>Cómo se construirá, por etapas y en el orden en que conviene hacerlo, en <b>dos meses (9 semanas)</b>. Las barras son
+<b>semanas contadas desde la aprobación</b>; varias etapas avanzan al mismo tiempo y las duraciones son una estimación que se ajusta al avanzar.</p>
+<div class="diagrama">
+  <div class="diagrama-titulo nuevo">Plan de construcción</div>
+<svg viewBox="0 0 850 594" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de Gantt del plan de construcción">
+<g font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#0f172a">
+<rect x="0" y="0" width="850" height="594" fill="#fff"/>
+<rect x="370" y="8" width="470" height="26" fill="#f8fafc" stroke="#cbd5e1"/>
+<line x1="370" y1="8" x2="370" y2="584" stroke="#e2e8f0"/>
+<text x="396.111" y="25" text-anchor="middle" font-size="11" font-weight="700" fill="#475569">S1</text>
+<line x1="422.222" y1="8" x2="422.222" y2="584" stroke="#e2e8f0"/>
+<text x="448.333" y="25" text-anchor="middle" font-size="11" font-weight="700" fill="#475569">S2</text>
+<line x1="474.444" y1="8" x2="474.444" y2="584" stroke="#e2e8f0"/>
+<text x="500.556" y="25" text-anchor="middle" font-size="11" font-weight="700" fill="#475569">S3</text>
+<line x1="526.667" y1="8" x2="526.667" y2="584" stroke="#e2e8f0"/>
+<text x="552.778" y="25" text-anchor="middle" font-size="11" font-weight="700" fill="#475569">S4</text>
+<line x1="578.889" y1="8" x2="578.889" y2="584" stroke="#e2e8f0"/>
+<text x="605" y="25" text-anchor="middle" font-size="11" font-weight="700" fill="#475569">S5</text>
+<line x1="631.111" y1="8" x2="631.111" y2="584" stroke="#e2e8f0"/>
+<text x="657.222" y="25" text-anchor="middle" font-size="11" font-weight="700" fill="#475569">S6</text>
+<line x1="683.333" y1="8" x2="683.333" y2="584" stroke="#e2e8f0"/>
+<text x="709.444" y="25" text-anchor="middle" font-size="11" font-weight="700" fill="#475569">S7</text>
+<line x1="735.556" y1="8" x2="735.556" y2="584" stroke="#e2e8f0"/>
+<text x="761.667" y="25" text-anchor="middle" font-size="11" font-weight="700" fill="#475569">S8</text>
+<line x1="787.778" y1="8" x2="787.778" y2="584" stroke="#e2e8f0"/>
+<text x="813.889" y="25" text-anchor="middle" font-size="11" font-weight="700" fill="#475569">S9</text>
+<line x1="840" y1="8" x2="840" y2="584" stroke="#e2e8f0"/>
+<text x="605" y="48" text-anchor="middle" font-size="10" fill="#64748b">semanas desde la aprobación</text>
+<rect x="0" y="56" width="850" height="26" fill="#009559" opacity="0.12"/>
+<rect x="0" y="56" width="5" height="26" fill="#009559"/>
+<text x="14" y="73" font-weight="700" fill="#009559">Remisiones: primero del correo, luego de Mis Recepciones</text>
+<text x="14" y="100" font-size="12">Leer las remisiones del correo, solo al inicio (BOL, placas, litros)</text>
+<rect x="372" y="87" width="100.444" height="18" rx="4" fill="#009559"/>
+<line x1="0" y1="110" x2="850" y2="110" stroke="#f1f5f9"/>
+<text x="14" y="128" font-size="12">Ligar cada remisión con su factura</text>
+<rect x="424.222" y="115" width="48.2222" height="18" rx="4" fill="#009559"/>
+<line x1="0" y1="138" x2="850" y2="138" stroke="#f1f5f9"/>
+<text x="14" y="156" font-size="12">Tomar las remisiones que suben las estaciones en Mis Recepciones</text>
+<rect x="476.444" y="143" width="48.2222" height="18" rx="4" fill="#009559"/>
+<line x1="0" y1="166" x2="850" y2="166" stroke="#f1f5f9"/>
+<rect x="0" y="166" width="850" height="26" fill="#0095DA" opacity="0.12"/>
+<rect x="0" y="166" width="5" height="26" fill="#0095DA"/>
+<text x="14" y="183" font-weight="700" fill="#0095DA">Registro de compras: igualar al Excel y cruzar datos</text>
+<text x="14" y="210" font-size="12">Igualar las columnas de la hoja COMPRAS y sus fórmulas</text>
+<rect x="476.444" y="197" width="48.2222" height="18" rx="4" fill="#0095DA"/>
+<line x1="0" y1="220" x2="850" y2="220" stroke="#f1f5f9"/>
+<text x="14" y="238" font-size="12">Crear perfiles de columnas por tarea</text>
+<rect x="476.444" y="225" width="48.2222" height="18" rx="4" fill="#0095DA"/>
+<line x1="0" y1="248" x2="850" y2="248" stroke="#f1f5f9"/>
+<text x="14" y="266" font-size="12">Cruce contra las facturas (folio, litros, monto, BOL)</text>
+<rect x="476.444" y="253" width="100.444" height="18" rx="4" fill="#0095DA"/>
+<line x1="0" y1="276" x2="850" y2="276" stroke="#f1f5f9"/>
+<text x="14" y="294" font-size="12">Cruce contra ControlGas (qué falta de subir)</text>
+<rect x="528.667" y="281" width="48.2222" height="18" rx="4" fill="#0095DA"/>
+<line x1="0" y1="304" x2="850" y2="304" stroke="#f1f5f9"/>
+<text x="14" y="322" font-size="12">Vencimiento y pago programado iguales a los de Abastos</text>
+<rect x="476.444" y="309" width="100.444" height="18" rx="4" fill="#0095DA"/>
+<line x1="0" y1="332" x2="850" y2="332" stroke="#f1f5f9"/>
+<text x="14" y="350" font-size="12">Precio de venta de las estaciones que no lo tienen</text>
+<rect x="528.667" y="337" width="48.2222" height="18" rx="4" fill="#0095DA"/>
+<line x1="0" y1="360" x2="850" y2="360" stroke="#f1f5f9"/>
+<text x="14" y="378" font-size="12">Botón Excel con las mismas columnas de la hoja COMPRAS</text>
+<rect x="528.667" y="365" width="48.2222" height="18" rx="4" fill="#0095DA"/>
+<line x1="0" y1="388" x2="850" y2="388" stroke="#f1f5f9"/>
+<text x="14" y="406" font-size="12">Proveedor final desde la conciliación Petrotal</text>
+<rect x="528.667" y="393" width="100.444" height="18" rx="4" fill="#0095DA"/>
+<line x1="0" y1="416" x2="850" y2="416" stroke="#f1f5f9"/>
+<rect x="0" y="416" width="850" height="26" fill="#7c3aed" opacity="0.12"/>
+<rect x="0" y="416" width="5" height="26" fill="#7c3aed"/>
+<text x="14" y="433" font-weight="700" fill="#7c3aed">Funciones nuevas para Abastos</text>
+<text x="14" y="460" font-size="12">Solicitud de facturas a Petrotal con un botón</text>
+<rect x="580.889" y="447" width="48.2222" height="18" rx="4" fill="#7c3aed"/>
+<line x1="0" y1="470" x2="850" y2="470" stroke="#f1f5f9"/>
+<text x="14" y="488" font-size="12">Deuda por empresa con envío de correo</text>
+<rect x="580.889" y="475" width="100.444" height="18" rx="4" fill="#7c3aed"/>
+<line x1="0" y1="498" x2="850" y2="498" stroke="#f1f5f9"/>
+<rect x="0" y="498" width="850" height="26" fill="#b45309" opacity="0.12"/>
+<rect x="0" y="498" width="5" height="26" fill="#b45309"/>
+<text x="14" y="515" font-weight="700" fill="#b45309">Puesta en marcha</text>
+<text x="14" y="542" font-size="12">Mes en paralelo (Excel y sistema juntos)</text>
+<rect x="633.111" y="529" width="204.889" height="18" rx="4" fill="#b45309"/>
+<line x1="0" y1="552" x2="850" y2="552" stroke="#f1f5f9"/>
+<text x="14" y="570" font-size="12">Retiro del Excel</text>
+<polygon points="813.889,557 822.889,566 813.889,575 804.889,566" fill="#b45309"/>
+<text x="799.889" y="570" text-anchor="end" font-size="10.5" fill="#475569">Excel fuera de uso</text>
+<line x1="0" y1="580" x2="850" y2="580" stroke="#f1f5f9"/>
+</g>
+</svg>
+</div>
+<div class="nota">
+<b>Cómo se encadena:</b>
+<ul style="margin-bottom:0">
+  <li><b>Remisiones (2 semanas por correo y una más para Mis Recepciones)</b>: lo primero que se construye porque hoy se llevan alrededor de hora y media al día. Al inicio se leen del correo; necesita autorización para entrar de solo lectura al
+  buzón. Después se toman de las remisiones que las estaciones ya suben en Mis Recepciones y el correo deja de ser la fuente.</li>
+  <li><b>Vencimiento y pago programado</b> necesita que Abastos confirme la fecha base y el ajuste de día hábil por proveedor;
+  <b>Deuda por empresa</b> depende de eso.</li>
+  <li><b>Mes en paralelo (semanas 6 a 9)</b>: Excel y sistema se llevan juntos un mes completo y se comparan cada semana; solo si coinciden se retira el Excel.
+  Para que alcance en dos meses, lo que cae entre las semanas 3 y 6 se trabaja en paralelo.</li>
+  <li>Todo está por construir: ninguna de estas etapas ha empezado.</li>
+</ul>
+</div>
+
+<h3 class="salto">3.4 El proceso diario de Abastos, paso a paso</h3>
+<p>Lo que hace hoy el equipo de Abastos cada día, en su orden, y qué parte toca el sistema.
+Estado: <span class="chip">Ya existe</span> en otros módulos · <span class="chip">Por construir</span> ·
+<span class="chip">Fuera de este módulo</span> lo hace otro módulo o sigue manual.</p>
+<table>
+  <tr><th style="width:4%">#</th><th style="width:34%">Hoy (Excel y correo)</th><th style="width:40%">Con el sistema</th><th>Estado</th></tr>
+  <tr><td>1</td>
+    <td>El operador de Abastos <b>baja las remisiones</b> del correo y las captura en el Excel: proveedor,
+    estación, fecha de descarga, combustible, litros, monto y número de BOL. El transportista y las placas vienen en la remisión.</td>
+    <td><b>Al inicio</b>, el sistema lee las remisiones del buzón <code>jesus.olivas@</code> y deja BOL, transportista, placas, litros y fecha
+    ligados a la descarga (§17). <b>Después</b>, las toma de las remisiones que las estaciones suben en Mis Recepciones y el correo deja de ser la fuente.</td>
+    <td><span class="chip">Por construir</span></td></tr>
+  <tr><td>2</td>
+    <td>El operador de Abastos calcula el <b>precio sin IEPS</b> = subtotal ÷ litros y con ese precio captura la compra en ControlGas.</td>
+    <td>El renglón mostrará precio por litro, menos IEPS y precio sin IVA. La captura en ControlGas sigue siendo en
+    ControlGas; el registro avisará cuando una factura no esté (columna <i>en ControlGas</i>).</td>
+    <td><span class="chip">Por construir</span></td></tr>
+  <tr><td>3</td>
+    <td>El operador de Abastos recorre <b>proveedor por proveedor</b>, de arriba abajo, buscando las facturas en el correo o en la página del proveedor.
+    De cada factura anota folio, fecha, litros y monto, y <b>valida el BOL</b> contra la remisión.</td>
+    <td>Las facturas se descargan solas (PDF + XML) cada 15 minutos. El BOL de la factura se compara con el de la
+    remisión y avisa si no coinciden (§17).</td>
+    <td><span class="chip">Ya existe</span> descarga<br><span class="chip">Por construir</span> validación de BOL</td></tr>
+  <tr><td>4</td>
+    <td>El operador de Abastos revisa <b>lo que llegó</b> (libro amarillo) contra las remisiones y el archivo de compras.</td>
+    <td>Es la comparación remisión ↔ factura ↔ descarga en ControlGas; la parte de merma ya vive en <code>/merma/</code>.</td>
+    <td><span class="chip">Fuera de este módulo</span> (merma)</td></tr>
+  <tr><td>5</td>
+    <td>En la hoja <b>Pendientes</b>, el operador de Abastos actualiza facturas y pagos con lo que le manda Karen; revisa si la factura se pagó
+    completa o una parte.</td>
+    <td>El registro tomará pago programado, monto pagado y saldo del módulo de pagos (<code>payment_request_invoices</code>);
+    ya no se tecleará.</td>
+    <td><span class="chip">Por construir</span> (columnas de pago)</td></tr>
+  <tr><td>6</td>
+    <td><b>Petrotal</b> y Reesa (por confirmar) van por correo; el operador de Abastos pide la factura de Petrotal con la del proveedor original
+    adjunta a Marco, Christofer, Liliana, Maribel y Claudia, y captura sus datos.</td>
+    <td>Petrotal no hace la factura hasta que se la piden. El operador de Abastos marca en el registro las facturas por solicitar y, con un botón,
+    el sistema arma y manda el correo con la factura del proveedor original adjunta; ya no se redacta ni se adjunta a mano. La factura de Petrotal se descarga sola y se liga a la del proveedor
+    con la conciliación Petrotal; la columna <i>proveedor final</i> se infiere de ahí en lugar de teclearse
+    (hoy es manual, 89 renglones de Tesoro en septiembre–octubre).</td>
+    <td><span class="chip">Por construir</span> (correo de solicitud) · <span class="chip">En curso</span> (conciliación Petrotal)</td></tr>
+  <tr><td>7</td>
+    <td>El operador de Abastos revisa la hoja <b>Deuda por empresa</b>; la deuda es siempre a un día antes, y manda correos a Susana, Maribel,
+    Luis, Claudia y otros.</td>
+    <td>Una sección propia <b>Deuda por empresa</b>: la deuda a un día antes, por razón social, con un botón que arma y manda
+    el correo. Toma saldo y vencimiento del registro.</td>
+    <td><span class="chip">Por construir</span> (sección nueva)</td></tr>
+  <tr><td>8</td>
+    <td>Cada día, el operador de Abastos entra a <b>ControlGas a validar compras</b>; las estaciones se reparten entre los 4 operadores de Abastos.</td>
+    <td>El filtro <i>en ControlGas = no</i> y la columna de litros pendientes dirán qué falta por validar, por estación.
+    El reparto entre los 4 operadores sigue siendo de Abastos.</td>
+    <td><span class="chip">Por construir</span></td></tr>
+  <tr><td>9</td>
+    <td>El operador de Abastos manda la hoja <b>Litros facturados</b> a Dirección.</td>
+    <td>Las columnas de litros facturados / pendientes de facturar estarán en el registro; el archivo se exportará al Excel
+    con el mismo formato (§11).</td>
+    <td><span class="chip">Por construir</span> (exportación)</td></tr>
+  <tr><td>10</td>
+    <td>El operador de Abastos revisa lo <b>integrado al correo a proveedores</b>: las facturas pagadas el día anterior, con comprobante y número
+    de factura que cubre.</td>
+    <td>No es parte de este módulo: pertenece a pago a proveedores (comprobantes de pago).</td>
+    <td><span class="chip">Fuera de este módulo</span></td></tr>
+</table>
+<div class="nota">
+Alberto marcó dos puntos por confirmar con él: si <b>Reesa</b> también llega por correo y cómo se integra al pago a
+proveedores, y a qué cuentas exactas van los correos del paso 7. La letra del cuaderno es difícil de leer; los nombres
+de personas y la estación «La Monda» (paso 1) están sin verificar.
 </div>
 
 <h2>4. Qué cambia para cada quien</h2>
@@ -442,18 +792,18 @@ Simbología: <b>óvalo</b> = inicio/fin · <b>rectángulo</b> = actividad · <b>
   <tr>
     <td><b>Abastos</b></td>
     <td>Bajar facturas del correo y de los portales · bajar remisiones del correo · teclear cada factura
-    en el Excel.</td>
-    <td>Revisar la pantalla Compras de combustible y completar
-    lo marcado · revisar los avisos · exportar para sus análisis.</td>
+    y cada remisión en el Excel · buscar BOL, placas y transportista.</td>
+    <td>Revisar el Registro de compras y completar lo marcado · revisar los avisos de BOL y de ControlGas ·
+    exportar para sus análisis y para la hoja de litros facturados.</td>
   </tr>
   <tr>
     <td><b>Estación</b></td>
-    <td>Mandar remisión y carta porte por correo.</td>
-    <td>Subirlas en Mis Recepciones (ya disponible, parte del proyecto de recepciones).</td>
+    <td>Al inicio, nada obligatorio: si siguen mandando la remisión por correo, el sistema la lee.</td>
+    <td>Después, subir la remisión y la carta porte en Mis Recepciones (ya disponible) en cada descarga: será la fuente de las remisiones y reemplaza al correo.</td>
   </tr>
   <tr>
     <td><b>Tesorería / Pagos</b></td>
-    <td colspan="2">Sigue trabajando igual. El registro de compras toma de su módulo el pago programado y el
+    <td colspan="2">Sigue trabajando igual. El registro de compras tomará de su módulo el pago programado y el
     pagado; no se captura nada dos veces.</td>
   </tr>
 </table>
@@ -463,13 +813,13 @@ Simbología: <b>óvalo</b> = inicio/fin · <b>rectángulo</b> = actividad · <b>
     <b>Sin carga extra</b>
     <ul style="margin-bottom:0">
       <li>Abastos sigue haciendo sus análisis con el mismo formato de columnas.</li>
-      <li>La estación sigue escaneando sus documentos, como hoy.</li>
+      <li>La estación sigue mandando o escaneando sus documentos, como hoy.</li>
     </ul>
   </div>
   <div class="bueno">
     <b>Lo que se gana</b>
     <ul style="margin-bottom:0">
-      <li>Unas 55–65 horas al mes que hoy se van en captura.</li>
+      <li>Unas 50–75 horas al mes que hoy se van en bajar y capturar facturas y remisiones.</li>
       <li>Saber qué facturas faltan por subir a ControlGas.</li>
       <li>Un solo dato para compras, pagos y merma.</li>
     </ul>
@@ -482,215 +832,9 @@ Simbología: <b>óvalo</b> = inicio/fin · <b>rectángulo</b> = actividad · <b>
   <li><b>Corregir primero la descarga de facturas</b> (§9): el folio de MGC y la estación de Premier, AEMSA y Petrotal.</li>
   <li><b>Llevar un mes en paralelo</b> (octubre o noviembre): Excel y pantalla al mismo tiempo, comparando cada semana.</li>
   <li><b>Usar Programación de recepciones todos los días</b>: de ahí sale el transportista.</li>
-  <li><b>Que las estaciones suban sus remisiones</b> en Mis Recepciones; de ahí salen BOL y placas.</li>
+  <li><b>Al inicio, que las remisiones lleguen al buzón <code>jesus.olivas@</code></b>; después, que las estaciones las suban en Mis Recepciones, que será la fuente de BOL y placas.</li>
 </ul>
 </div>
-
-<div class="etapa tecnica">Etapa 2 — Documentación técnica (diseño)</div>
-
-<div class="nota">
-Esta etapa describe <b>lo que se va a construir</b>. Las partes marcadas como <i>ya existe</i> están en
-producción; las demás son propuesta y pueden cambiar al implementarse. El análisis que la sustenta (cruce del
-Excel de septiembre contra la base) está en <code>docs/plan_automatizar_compras_combustible.html</code>.
-</div>
-
-<h2>5. Alcance y relación con otros módulos</h2>
-<table>
-  <tr><th style="width:30%">Módulo</th><th>Qué aporta al registro de compras</th><th>Estado</th></tr>
-  <tr><td><b>Descarga de facturas</b><br><code>run_ciclo.py</code> → <code>FacturasRecibidas</code></td><td>Cada factura con PDF, XML, conceptos y estación resuelta.</td><td>Ya existe (con ajustes, §9)</td></tr>
-  <tr><td><b>Pago a proveedores</b><br><code>/payment/...</code></td><td>Requisición, fecha programada, monto autorizado y pagado (<code>payment_request_invoices.uuid</code>).</td><td>Ya existe</td></tr>
-  <tr><td><b>Mis Recepciones</b><br><code>/station_portal/mis_recepciones</code></td><td>Descarga real en ControlGas, remisión y carta porte de la estación.</td><td>Ya existe</td></tr>
-  <tr><td><b>Programación de recepciones</b><br><code>/supply/scheduling</code></td><td>Transportista y terminal de cada entrega.</td><td>Ya existe; falta uso diario</td></tr>
-  <tr><td><b>Conciliación Petrotal</b><br><code>/supply/petrotal_reconciliation</code></td><td>Factura del proveedor real ↔ factura de Petrotal a la estación.</td><td>En curso</td></tr>
-  <tr><td><b>Dashboard de ventas</b><br><code>/merma/ventas</code></td><td>Margen, estímulo y precio por proveedor; ya lee las mismas facturas.</td><td>Ya existe</td></tr>
-  <tr><td><b>Compras de combustible</b><br><code>/compras/combustible</code></td><td>La pantalla nueva: junta todo lo anterior en un renglón por factura.</td><td>Nuevo</td></tr>
-</table>
-
-<h2>6. Cómo se ligan</h2>
-<p>La llave de todo es el <b>UUID de la factura</b> (CFDI):</p>
-<ul>
-  <li><code>FacturasRecibidas.UUID</code> = <code>payment_request_invoices.uuid</code> → pago programado y pagado.</li>
-  <li><code>FacturasRecibidas.UUID</code> = <code>SG12.dbo.DocumentosC.satuid</code> → la factura ya está en ControlGas; por
-  <code>DocumentosC.nro</code> se llega a <code>SG12.dbo.Movimientos</code> (tip 11) con la fecha y los litros de la descarga.
-  Es la misma unión que usa <code>VentasRentabilidadModel</code>.</li>
-  <li><code>FacturasRecibidas.EstacionCodgas</code> → <code>TG.dbo.Estaciones</code> (número, nombre, zona).</li>
-  <li><code>fuel_reception_invoices.invoice_id</code> = <code>FacturasRecibidas.Id</code> → renglón de programación → transportista.</li>
-  <li><code>FacturasMovimientosTanques</code> (<code>UUIDProveedor</code> / <code>UUIDPetrotal</code>) → factura de Petrotal ligada.</li>
-</ul>
-
-<h3>6.1 Recorrido de la información</h3>
-<div class="leyenda">
-  <span class="l-est">Proveedor / estación</span>
-  <span class="l-api">Proceso automático</span>
-  <span class="l-bd">Base central</span>
-  <span class="l-php">AplicativoPhp</span>
-</div>
-<div class="flujo">
-  <div class="caja est"><span class="num">1</span>
-    <b>Proveedor manda la factura por correo · estación captura la descarga en ControlGas</b>
-  </div>
-  <div class="flecha">↓</div>
-  <div class="caja api"><span class="num">2</span>
-    <b><code>run_ciclo.py</code> (servidor 192.168.0.3)</b>
-    <small>Descarga PDF + XML, los importa por ApiER a <code>FacturasRecibidas</code> y resuelve
-    <code>EstacionCodgas</code> con <code>EstacionesCodigosExternos</code>.</small>
-  </div>
-  <div class="flecha">↓</div>
-  <div class="caja bd"><span class="num">3</span>
-    <b>TG + SG12</b>
-    <small><code>FacturasRecibidas</code> y conceptos · <code>payment_request_invoices</code> · <code>FuelPrices</code> ·
-    tabla nueva de datos de compra (§13) · <code>SG12.DocumentosC</code> / <code>Movimientos</code>.</small>
-  </div>
-  <div class="flecha">↓ <small>una consulta que junta todo por UUID</small></div>
-  <div class="caja php"><span class="num">4</span>
-    <b><code>ComprasCombustibleModel::get_registro()</code> → pantalla, avisos y exportación</b>
-  </div>
-</div>
-
-<h2>7. Componentes</h2>
-<table>
-  <tr><th>Capa</th><th>Archivo (propuesto)</th><th>Responsabilidad</th></tr>
-  <tr><td>Controlador</td><td><code>_assets/controllers/compras.php</code> (clase <code>Compras</code>)</td><td>Rutas <code>/compras/...</code>; index.php lo autocarga por nombre.</td></tr>
-  <tr><td>Modelo</td><td><code>_assets/models/ComprasCombustibleModel.php</code></td><td>Consulta del registro y guardado de datos de compra.</td></tr>
-  <tr><td>Cálculo</td><td><code>_assets/classes/ComprasCombustible.class.php</code></td><td>Columnas derivadas (precio por litro, diferencias, IEPS, estímulo, utilidad) sin BD, como <code>VentasConsolidado</code>.</td></tr>
-  <tr><td>Vista</td><td><code>views/compras/combustible.html</code> + <code>views/compras/modals/*.html</code></td><td>Tabla, filtros, avisos y captura de datos de compra (patrón de modales por vista parcial).</td></tr>
-  <tr><td>JS</td><td><code>_assets/js/compras_combustible.js</code></td><td>DataTables, edición en línea, modales.</td></tr>
-  <tr><td>SQL</td><td><code>docs/sql/compras_combustible.sql</code></td><td>DDL de tablas nuevas y permisos.</td></tr>
-  <tr><td>Menú</td><td><code>views/layouts/sidebar.html</code></td><td>Abastos → "Compras de combustible".</td></tr>
-</table>
-
-<h2>8. Permisos (propuestos)</h2>
-<table>
-  <tr><th>Id</th><th>Nombre</th><th>Qué habilita</th></tr>
-  <tr><td><b>106</b></td><td>Compras de combustible — Ver</td><td>Ver la pantalla, los avisos y exportar.</td></tr>
-  <tr><td><b>107</b></td><td>Compras de combustible — Editar</td><td>Capturar datos de compra (transportista, placas, BOL, flete, observaciones).</td></tr>
-</table>
-<p>Los ids son los siguientes libres en <code>tg_permissions</code> al 14-oct-2026 (el último es 105); se confirman al crear el SQL.</p>
-
-<h2 class="ambar">9. Fase 0 — correcciones previas en la descarga de facturas</h2>
-<table>
-  <tr><th>Problema</th><th>Evidencia</th><th>Corrección</th></tr>
-  <tr><td><b>Folio de MGC recortado</b></td><td>Desde el 23-sep-2026 MGC usa 7 dígitos (3000405); se guarda <code>000405</code>. 167 facturas de septiembre.</td><td>Extractor de MGC (<code>ImportadorFacturas.py</code> / perfil MGC) toma el folio del XML completo. Script de reparación sobre las ya importadas leyendo <code>RutaXml</code>.</td></tr>
-  <tr><td><b>Estación sin resolver</b></td><td>258 facturas de septiembre de Premier, AEMSA y Petrotal sin <code>EstacionCodgas</code>.</td><td>Agregar a <code>resolver_estacion.py</code> el campo de código de cada proveedor y dar de alta sus filas en <code>EstacionesCodigosExternos</code>, como se hizo con Tesoro.</td></tr>
-  <tr><td><b>Repsol / Colosio</b></td><td>7 facturas al mes no llegan al buzón.</td><td>Definir si el proveedor las manda al buzón o se suben a mano (PDF + XML) en la pantalla.</td></tr>
-  <tr><td><b>Fletes de Petrotal</b></td><td>Facturas VPET… no están en <code>FacturasRecibidas</code>.</td><td>Agregar el buzón o remitente de fletes a la descarga (Fase 2).</td></tr>
-</table>
-
-<h2 class="azul">10. Pantalla Compras de combustible (<code>/compras/combustible</code>)</h2>
-<h3>10.1 Filtros y vista</h3>
-<ul>
-  <li><b>Rango de fechas</b> (por fecha de descarga; si la factura aún no está en ControlGas, por fecha de factura), <b>proveedor</b>, <b>estación</b>, <b>zona</b>, <b>producto</b> y <b>solo con aviso</b>.</li>
-  <li>Tabla con las columnas de la hoja COMPRAS, agrupadas: Factura · Estación · Pago · Petrotal · Transporte · Análisis.</li>
-  <li>Encabezado con totales del filtro: litros, monto, precio promedio por litro, facturas con aviso.</li>
-  <li>Botones: <b>Exportar a Excel</b> (§11), ver PDF/XML de la factura.</li>
-</ul>
-
-<h3>10.2 De dónde sale cada columna</h3>
-<table>
-  <tr><th>Columna del Excel</th><th>Origen</th></tr>
-  <tr><td>FECHA DE DESCARGA</td><td><code>SG12.Movimientos.fch</code> (tip 11) del documento con <code>satuid</code> = UUID; si no existe, <code>FacturasRecibidas.Fecha</code> con aviso</td></tr>
-  <tr><td>MES, AÑO</td><td>De la fecha de descarga</td></tr>
-  <tr><td>NUMERO DE ESTACION, CIUDAD, ZONA, ESTACIONES</td><td><code>EstacionCodgas</code> → <code>Estaciones</code> (número de permiso/estación, zona)</td></tr>
-  <tr><td>PROVEEDOR, PROVEEDOR QUE REALIZA LA FACTURA FINAL</td><td><code>EmisorNombre</code> / <code>EmisorRfc</code> (nombre corto por catálogo)</td></tr>
-  <tr><td>PRODUCTO</td><td><code>ClaveProdServ</code>: 15101514 Regular, 15101515 Premium, 15101505 Diésel</td></tr>
-  <tr><td>NUMERO DE FACTURA, MONTO FACTURA, LITROS, % IVA</td><td><code>Serie</code>+<code>Folio</code>, <code>Total</code>, <code>SUM(Cantidad)</code>, <code>TasaOCuota</code></td></tr>
-  <tr><td>RAZON SOCIAL FACTURA</td><td><code>ReceptorNombre</code> (nombre corto)</td></tr>
-  <tr><td>VENCIMIENTO</td><td>Fecha de factura + <code>Proveedores.dias_credito</code>, ajustada a día hábil (misma regla que pagos)</td></tr>
-  <tr><td>PAGO PROGRAMADO, Monto Pagado, SALDO FACTURA</td><td><code>payment_requests.scheduled_payment_date</code>, <code>payment_request_invoices.paid_amount</code></td></tr>
-  <tr><td>PRECIO VENTA EN ESTACION</td><td><code>FuelPrices</code> vigente el día de la descarga (estación + producto)</td></tr>
-  <tr><td>PRECIO COTIZADO, PRECIO PEMEX (TAR)</td><td>Fuera del alcance por ahora: la columna sale vacía en la exportación</td></tr>
-  <tr><td>BOL / EMBARQUE</td><td><code>FacturasRecibidas.Remision</code>; si no viene, captura</td></tr>
-  <tr><td>TRANSPORTISTA</td><td><code>fuel_reception_schedule.carrier_id</code> si la factura está ligada a la programación; si no, captura</td></tr>
-  <tr><td>PLACAS</td><td>Captura (a la vista de la remisión que subió la estación)</td></tr>
-  <tr><td>FACTURA PETROTAL, MONTO, PRECIO A CLIENTE FINAL</td><td><code>FacturasMovimientosTanques</code> (conciliación Petrotal)</td></tr>
-  <tr><td>FLETE (folio, monto carta porte, razón social, fecha de pago)</td><td>Captura; después, factura de flete ligada (Fase 2)</td></tr>
-  <tr><td>LITROS CAPTURADOS EN CONTROL GAS / PENDIENTES</td><td>Litros de <code>Movimientos</code> del documento con ese <code>satuid</code>; 0 si la factura no está en ControlGas</td></tr>
-  <tr><td>Columnas de análisis (precio por litro, diferencias, IEPS, estímulo, utilidad, utilidad Petrotal)</td><td><code>ComprasCombustible.class.php</code> con las mismas fórmulas del Excel (§12)</td></tr>
-  <tr><td>OBSERVACIONES</td><td>Captura</td></tr>
-</table>
-
-<h3>10.3 Avisos</h3>
-<table>
-  <tr><th>Aviso</th><th>Regla</th></tr>
-  <tr><td>Sin estación</td><td><code>EstacionCodgas</code> nulo.</td></tr>
-  <tr><td>No está en ControlGas</td><td>UUID sin <code>DocumentosC.satuid</code> pasados N días de la factura.</td></tr>
-  <tr><td>Litros no cuadran</td><td>Litros de factura vs litros del documento en ControlGas, diferencia mayor a 1%.</td></tr>
-  <tr><td>Sin pago programado</td><td>Vence en menos de N días y no está en ninguna requisición.</td></tr>
-  <tr><td>Falta dato de captura</td><td>Sin transportista o, si es flete Petrotal, sin datos de flete.</td></tr>
-</table>
-
-<h2 class="azul">11. Exportar a Excel</h2>
-<p><code>/compras/combustible_excel?desde&amp;hasta&amp;...</code> genera un .xlsx con <b>las mismas columnas y el mismo
-orden</b> de la hoja COMPRAS (A: FECHA DE DESCARGA … BH: OBSERVACIONES), con valores, para que las tablas dinámicas
-de Abastos (Deuda Comb DG, Zona 3, Picachos, Ventanas, TSA, LITROS FACTURADOS, GLOBAL, RESUMEN, ANEXOS) se
-actualicen apuntando al archivo exportado.</p>
-
-<h2>12. Reglas de negocio</h2>
-<ul>
-  <li><b>Universo</b>: CFDI tipo I con al menos un concepto <code>ClaveProdServ LIKE '151015%'</code>. Las notas de crédito
-  (tipo E) y los complementos de pago (tipo P) no son renglones.</li>
-  <li><b>Fecha del renglón</b>: la de descarga (como el Excel). Una factura de fin de mes descargada el día 1 cae en el mes nuevo.</li>
-  <li><b>IEPS y estímulo</b>: cuotas por año y producto (hoy en la hoja Matriz y Estimulos) pasan a constantes
-  versionadas por año; el estímulo usa los mismos montos que <code>VentasRentabilidad::ESTIMULO_FRONTERA</code>.</li>
-  <li><b>Fórmulas de análisis</b>: se copian tal cual del Excel (precio por litro = monto / litros; precio sin IVA y sin IEPS; utilidad por litro; utilidad Petrotal = monto Petrotal sin IVA − monto proveedor sin IVA).</li>
-</ul>
-
-<h2>13. Tabla nueva (propuesta)</h2>
-<h3><code>TG.dbo.compras_factura_datos</code></h3>
-<table>
-  <tr><th>Columna</th><th>Descripción</th></tr>
-  <tr><td><code>uuid</code></td><td>PK, UUID de la factura</td></tr>
-  <tr><td><code>carrier_id</code></td><td>→ <code>fuel_carriers</code> (cuando no viene de la programación)</td></tr>
-  <tr><td><code>placas</code>, <code>bol</code></td><td>Texto</td></tr>
-  <tr><td><code>flete_folio</code>, <code>flete_monto</code>, <code>flete_razon_social</code>, <code>flete_fecha_pago</code></td><td>Datos del flete</td></tr>
-  <tr><td><code>observaciones</code></td><td>Texto libre</td></tr>
-  <tr><td><code>updated_by</code>, <code>updated_at</code></td><td>Auditoría</td></tr>
-</table>
-<p>No se copia ningún dato de la factura a esta tabla: folio, monto y litros se leen siempre de <code>FacturasRecibidas</code>.</p>
-
-<h2>14. Endpoints (propuestos)</h2>
-<table>
-  <tr><th>Ruta</th><th>Tipo</th><th>Permiso</th><th>Qué hace</th></tr>
-  <tr><td><code>/compras/combustible</code></td><td>GET vista</td><td>106</td><td>Pantalla principal.</td></tr>
-  <tr><td><code>/compras/combustible_tabla</code></td><td>POST JSON</td><td>106</td><td>Renglones del filtro (DataTables).</td></tr>
-  <tr><td><code>/compras/guardar_datos</code></td><td>POST JSON</td><td>107</td><td>Guarda transportista, placas, BOL, flete, observaciones de un UUID.</td></tr>
-  <tr><td><code>/compras/combustible_excel</code></td><td>GET .xlsx</td><td>106</td><td>Exportación con columnas del Excel.</td></tr>
-</table>
-
-<h2>15. Plan de trabajo</h2>
-<table>
-  <tr><th>Fase</th><th>Qué</th><th>Resultado</th></tr>
-  <tr><td><b>0</b></td><td>Folio MGC, estaciones de Premier/AEMSA/Petrotal, Colosio (§9)</td><td>100% de las facturas en el sistema con estación.</td></tr>
-  <tr><td><b>1</b></td><td>Pantalla con renglón armado, avisos y exportación</td><td>Abastos deja de teclear los datos de la factura.</td></tr>
-  <tr><td><b>2</b></td><td>Transportista desde programación, BOL/placas desde remisión, fletes de Petrotal</td><td>Solo se captura lo excepcional.</td></tr>
-  <tr><td><b>3</b></td><td>Mes en paralelo y retiro del Excel</td><td>El registro vive en el sistema.</td></tr>
-</table>
-<div class="ok">
-<b>Criterio para dejar el Excel</b>: un mes completo donde la exportación y el Excel coincidan en facturas, litros y
-montos (en septiembre ya coincidían 1,577 de 1,598 sin haber hecho nada), y Abastos confirme que sus análisis salen
-igual con el archivo exportado.
-</div>
-
-<h2>16. Qué se ahorra</h2>
-<table>
-  <tr><th>Actividad</th><th class="n">Hoy</th><th>Con el sistema</th></tr>
-  <tr><td>Bajar facturas y remisiones, llenar renglones</td><td class="n">3–4 h al día, 5 h los lunes (≈ 80 h al mes)</td><td>Revisar y completar lo marcado: ≈ 30–45 min al día</td></tr>
-  <tr><td><b>Total</b></td><td class="n"><b>≈ 80 h al mes</b></td><td><b>≈ 15–25 h al mes · ahorro ≈ 55–65 h</b></td></tr>
-</table>
-<p style="color:var(--gris)">Las horas actuales las dio Abastos; las del sistema son estimación y se confirman en el mes en paralelo.</p>
-
-<h2>17. Pendientes y preguntas abiertas</h2>
-<ul>
-  <li>¿Qué análisis se hacen con las tablas dinámicas? Si alguno se usa mucho, conviene tenerlo en pantalla además del export.</li>
-  <li>Moratorios, falsos fletes y notas de crédito: hoy son hojas aparte. Falsos fletes ya llegan como CFDI y las NC
-  tienen carga masiva; moratorios está por definir.</li>
-  <li>Confirmar los ids de permiso 106/107 al crear el SQL.</li>
-</ul>
-
-<p style="color:var(--gris); font-size:11.5px; margin-top:28px;">
-Documentación interna de TotalGas · Diseño del registro de compras de combustible · Al implementar cada fase,
-actualizar este archivo y pasar las secciones de "propuesto" a "cómo funciona".
-</p>
 
 </body>
 </html>
