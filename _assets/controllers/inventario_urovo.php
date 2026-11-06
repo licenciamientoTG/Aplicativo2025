@@ -127,7 +127,7 @@ class inventario_urovo {
         $types=[];
         foreach ($value as $type) {
             if (!is_string($type)) throw new InvalidArgumentException('Tipo de daño inválido.');
-            if (str_starts_with($type,'otro:')) {
+            if (strpos($type,'otro:')===0) {
                 $description=trim(mb_substr($type,5));
                 if ($description==='' || mb_strlen($description)>500) throw new InvalidArgumentException('Describe el daño seleccionado como “Otro” (máximo 500 caracteres).');
                 $type='otro: '.$description;
