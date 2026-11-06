@@ -4,6 +4,7 @@ class inventario_urovo {
     private InventarioUrovoModel $model;
     private const LOCATIONS = ['estacion','almacen','reparacion','perdida','baja_definitiva'];
     private const CONDITIONS = ['operativa','dañada','desconocida','extraviada'];
+    private const DAMAGE_TYPES = ['pantalla_quebrada','pantalla_negra','carcasa_exterior','puerto_carga_punta','usb_danado','falta_bateria','touch','modo_seguro','impresora','tapa_impresora','boton_encendido','tapa_bateria','lector_tarjetas','otro'];
 
     public function __construct($twig) { $this->twig=$twig; $this->model=new InventarioUrovoModel(); }
 
@@ -22,7 +23,7 @@ class inventario_urovo {
             $station=isset($_GET['station_id']) && $_GET['station_id']!=='' ? filter_var($_GET['station_id'],FILTER_VALIDATE_INT) : null;
             if ($station===false || ($station!==null && !$this->model->activeStation((int)$station))) throw new InvalidArgumentException('Estación inválida.');
             $status=(string)($_GET['status']??'');
-            if ($status!=='' && !in_array($status,self::LOCATIONS,true)) throw new InvalidArgumentException('Estado inválido.');
+            if ($status!=='' && $status!=='sin_serie' && !in_array($status,self::LOCATIONS,true)) throw new InvalidArgumentException('Estado inválido.');
             $payload=$this->model->data(['station_id'=>$station,'status'=>$status,'q'=>mb_substr(trim((string)($_GET['q']??'')),0,120)]);
             $this->respond(['success'=>true]+$payload);
         } catch (Throwable $e) { $this->error($e); }
@@ -45,48 +46,20 @@ class inventario_urovo {
     public function batch(): void {
         try {
             $this->authorize(); $body=$this->jsonPost(); $this->csrf();
-            $location=$this->location($body); $individualize=($body['individualize']??false)===true; $source=null;
-            if ($individualize) {
-                if (!is_array($body['individualize_from']??null)) throw new InvalidArgumentException('Selecciona la existencia anónima que se va a individualizar.');
-                $sourceBody=$body['individualize_from']; $sourceLocation=$this->location($sourceBody);
-                $sourceCondition=(string)($sourceBody['condition']??'desconocida'); if (!in_array($sourceCondition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición del origen inválida.');
-                $source=['model'=>$this->text($sourceBody,'model',100)??'I9000S','condition'=>$sourceCondition]+$sourceLocation;
-            }
+            $location=$this->location($body);
             if (!isset($body['items']) || !is_array($body['items']) || count($body['items'])<1 || count($body['items'])>500) throw new InvalidArgumentException('Se requiere una lista de 1 a 500 terminales.');
             $items=[];
             foreach ($body['items'] as $item) {
                 if (!is_array($item)) throw new InvalidArgumentException('Cada terminal debe ser un objeto.');
-                $serial=trim((string)($item['serial']??'')); if ($serial==='' || mb_strlen($serial)>100) throw new InvalidArgumentException('El número de serie es obligatorio y debe tener máximo 100 caracteres.');
+                $noSerial=($item['no_serial']??false)===true;
+                $serial=trim((string)($item['serial']??''));
+                if (($noSerial && $serial!=='') || (!$noSerial && $serial==='') || mb_strlen($serial)>100) throw new InvalidArgumentException($noSerial?'Una terminal sin serie debe tener vacío el número de serie.':'El número de serie es obligatorio y debe tener máximo 100 caracteres.');
                 $condition=trim((string)($item['condition']??'desconocida')); if (!in_array($condition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición inválida.');
                 $purchase=$this->dateValue($item['purchase_date']??null,false); $warranty=$this->dateValue($item['warranty_until']??null,true);
-                $row=['serial'=>$serial,'model'=>$this->text($item,'model',100)??'I9000S','ip'=>$this->text($item,'ip',45),'mac'=>$this->text($item,'mac',17),'imei'=>$this->text($item,'imei',32),'purchase_date'=>$purchase,'warranty_until'=>$warranty,'condition'=>$condition,'accessories'=>$this->text($item,'accessories',1000),'notes'=>$this->text($item,'notes',2000)];
+                $row=['serial'=>$noSerial?null:$serial,'no_serial'=>$noSerial,'model'=>$this->text($item,'model',100)??'I9000S','ip'=>$this->text($item,'ip',45),'mac'=>$this->text($item,'mac',17),'imei'=>$this->text($item,'imei',32),'purchase_date'=>$purchase,'warranty_until'=>$warranty,'condition'=>$condition,'damage_types'=>$this->damageTypes($item['damage_types']??[],$condition),'mojo_ticket_number'=>$this->ticketNumber($item['mojo_ticket_number']??''),'accessories'=>$this->text($item,'accessories',1000),'notes'=>$this->text($item,'notes',2000)];
                 $this->validateIdentifiers($row); $items[]=$row;
             }
-            $this->respond(['success'=>true]+$this->model->addBatch($items,$location,$source,$this->actor()));
-        } catch (Throwable $e) { $this->error($e); }
-    }
-
-    public function anonymous(): void {
-        try {
-            $this->authorize(); $body=$this->jsonPost(); $this->csrf(); $location=$this->location($body);
-            $delta=filter_var($body['delta']??null,FILTER_VALIDATE_INT); $reason=trim((string)($body['reason']??''));
-            if ($delta===false || $delta===null || $delta===0 || abs($delta)>10000) throw new InvalidArgumentException('La cantidad debe ser un entero distinto de cero.');
-            if ($reason==='' || mb_strlen($reason)>500) throw new InvalidArgumentException('El motivo es obligatorio (máximo 500 caracteres).');
-            $model=$this->text($body,'model',100)??'I9000S'; $condition=(string)($body['condition']??'desconocida');
-            if (!in_array($condition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición inválida.');
-            $this->model->adjustAnonymous(['model'=>$model,'condition'=>$condition,'delta'=>$delta,'reason'=>$reason],$location,$this->actor());
-            $this->respond(['success'=>true]);
-        } catch (Throwable $e) { $this->error($e); }
-    }
-
-    public function anonymous_history(): void {
-        try {
-            $this->authorize(); $this->requireMethod('GET');
-            $location=$this->location(['location_type'=>$_GET['location_type']??'','station_id'=>$_GET['station_id']??null,'provider'=>$_GET['provider']??null]);
-            $model=trim((string)($_GET['model']??'')); $condition=(string)($_GET['condition']??'');
-            if ($model==='' || mb_strlen($model)>100) throw new InvalidArgumentException('Modelo inválido.');
-            if (!in_array($condition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición inválida.');
-            $this->respond(['success'=>true,'history'=>$this->model->anonymousHistory(['model'=>$model,'condition'=>$condition]+$location)]);
+            $this->respond(['success'=>true]+$this->model->addBatch($items,$location,$this->actor()));
         } catch (Throwable $e) { $this->error($e); }
     }
 
@@ -96,7 +69,9 @@ class inventario_urovo {
             $condition=(string)($body['status']??''); $reason=trim((string)($body['reason']??''));
             if (!in_array($condition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición inválida.');
             if ($reason==='' || mb_strlen($reason)>500) throw new InvalidArgumentException('El motivo es obligatorio (máximo 500 caracteres).');
-            $this->model->moveTerminal($id,$location,$condition,$reason,$this->actor()); $this->respond(['success'=>true]);
+            $damageTypes=$this->damageTypes($body['damage_types']??[],$condition);
+            $ticket=$this->ticketNumber($body['mojo_ticket_number']??'');
+            $this->model->moveTerminal($id,$location,$condition,$reason,$this->actor(),$damageTypes,$ticket); $this->respond(['success'=>true]);
         } catch (Throwable $e) { $this->error($e); }
     }
 
@@ -109,7 +84,7 @@ class inventario_urovo {
         try {
             $this->authorize(); $body=$this->jsonPost(); $this->csrf();
             $condition=(string)($body['condition']??'desconocida'); if (!in_array($condition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición inválida.');
-            $changes=['model'=>$this->text($body,'model',100)??'I9000S','ip'=>$this->text($body,'ip',45),'mac'=>$this->text($body,'mac',17),'imei'=>$this->text($body,'imei',32),'purchase_date'=>$this->dateValue($body['purchase_date']??null,false),'warranty_until'=>$this->dateValue($body['warranty_until']??null,true),'condition'=>$condition,'accessories'=>$this->text($body,'accessories',1000),'notes'=>$this->text($body,'notes',2000)];
+            $changes=['model'=>$this->text($body,'model',100)??'I9000S','ip'=>$this->text($body,'ip',45),'mac'=>$this->text($body,'mac',17),'imei'=>$this->text($body,'imei',32),'purchase_date'=>$this->dateValue($body['purchase_date']??null,false),'warranty_until'=>$this->dateValue($body['warranty_until']??null,true),'condition'=>$condition,'damage_types'=>$this->damageTypes($body['damage_types']??[],$condition),'mojo_ticket_number'=>$this->ticketNumber($body['mojo_ticket_number']??''),'accessories'=>$this->text($body,'accessories',1000),'notes'=>$this->text($body,'notes',2000)];
             $this->validateIdentifiers($changes);
             $this->respond(['success'=>true,'row'=>$this->model->editTerminal($id,$changes,$this->actor())]);
         } catch (Throwable $e) { $this->error($e); }
@@ -146,6 +121,29 @@ class inventario_urovo {
     }
     private function text(array $item,string $key,int $max): ?string {
         $value=trim((string)($item[$key]??'')); if (mb_strlen($value)>$max) throw new InvalidArgumentException("El campo $key supera $max caracteres."); return $value===''?null:$value;
+    }
+    private function damageTypes($value,string $condition): array {
+        if (!is_array($value) || (function_exists('array_is_list') && !array_is_list($value))) throw new InvalidArgumentException('Los tipos de daño deben ser una lista.');
+        $types=[];
+        foreach ($value as $type) {
+            if (!is_string($type)) throw new InvalidArgumentException('Tipo de daño inválido.');
+            if (strpos($type,'otro:')===0) {
+                $description=trim(mb_substr($type,5));
+                if ($description==='' || mb_strlen($description)>500) throw new InvalidArgumentException('Describe el daño seleccionado como “Otro” (máximo 500 caracteres).');
+                $type='otro: '.$description;
+            } elseif ($type==='otro') {
+                throw new InvalidArgumentException('Describe el daño seleccionado como “Otro” (máximo 500 caracteres).');
+            } elseif (!in_array($type,self::DAMAGE_TYPES,true)) throw new InvalidArgumentException('Tipo de daño inválido.');
+            if (!in_array($type,$types,true)) $types[]=$type;
+        }
+        if ($condition==='dañada' && !$types) throw new InvalidArgumentException('Selecciona al menos un tipo de daño para la terminal dañada.');
+        return $condition==='dañada'?$types:[];
+    }
+    private function ticketNumber($value): string {
+        if (!is_string($value)) throw new InvalidArgumentException('El número de ticket Mojo debe contener solo dígitos (máximo 30).');
+        $ticket=trim((string)$value);
+        if (strlen($ticket)>30 || ($ticket!=='' && !preg_match('/^[0-9]+$/',$ticket))) throw new InvalidArgumentException('El número de ticket Mojo debe contener solo dígitos (máximo 30).');
+        return $ticket;
     }
     private function validateIdentifiers(array $fields): void {
         if ($fields['ip']!==null && filter_var($fields['ip'],FILTER_VALIDATE_IP)===false) throw new InvalidArgumentException('La IP debe ser una dirección IPv4 o IPv6 válida.');

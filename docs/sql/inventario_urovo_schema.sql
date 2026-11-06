@@ -7,8 +7,8 @@ IF OBJECT_ID(N'[dbo].[inv_urovo_terminales]', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[inv_urovo_terminales] (
         [id] BIGINT IDENTITY(1,1) NOT NULL,
-        [numero_serie] NVARCHAR(100) NOT NULL,
-        [numero_serie_normalizado] NVARCHAR(100) NOT NULL,
+        [numero_serie] NVARCHAR(100) NULL,
+        [numero_serie_normalizado] NVARCHAR(100) NULL,
         [modelo] NVARCHAR(100) NOT NULL,
         [ip] VARCHAR(45) NULL,
         [mac] VARCHAR(17) NULL,
@@ -18,6 +18,8 @@ BEGIN
         [condicion] NVARCHAR(40) NOT NULL,
         [accesorios] NVARCHAR(1000) NULL,
         [notas] NVARCHAR(2000) NULL,
+        [damage_types_json] NVARCHAR(MAX) NULL,
+        [mojo_ticket_number] NVARCHAR(30) NULL,
         [ubicacion_tipo] VARCHAR(20) NOT NULL,
         [estacion_codigo] INT NULL,
         [proveedor] NVARCHAR(200) NULL,
@@ -26,11 +28,23 @@ BEGIN
         [actualizado_por] INT NOT NULL,
         [actualizado_en] DATETIME2(0) NOT NULL CONSTRAINT [DF_inv_urovo_terminales_actualizado] DEFAULT (SYSDATETIME()),
         CONSTRAINT [PK_inv_urovo_terminales] PRIMARY KEY CLUSTERED ([id]),
-        CONSTRAINT [UQ_inv_urovo_terminales_serie_norm] UNIQUE ([numero_serie_normalizado]),
+        CONSTRAINT [CK_inv_urovo_terminales_serie_par] CHECK (
+            ([numero_serie] IS NULL AND [numero_serie_normalizado] IS NULL)
+            OR (
+                [numero_serie] IS NOT NULL
+                AND [numero_serie_normalizado] IS NOT NULL
+                AND LEN(LTRIM(RTRIM([numero_serie]))) > 0
+                AND LEN(LTRIM(RTRIM([numero_serie_normalizado]))) > 0
+            )
+        ),
         CONSTRAINT [CK_inv_urovo_terminales_ubicacion] CHECK ([ubicacion_tipo] IN ('estacion','almacen','reparacion','perdida','baja_definitiva')),
+        CONSTRAINT [CK_inv_urovo_terminales_damage_types_json] CHECK ([damage_types_json] IS NULL OR ISJSON([damage_types_json]) = 1),
         CONSTRAINT [CK_inv_urovo_terminales_estacion] CHECK (([ubicacion_tipo] = 'estacion' AND [estacion_codigo] IS NOT NULL) OR ([ubicacion_tipo] <> 'estacion' AND [estacion_codigo] IS NULL)),
         CONSTRAINT [FK_inv_urovo_terminales_estacion] FOREIGN KEY ([estacion_codigo]) REFERENCES [dbo].[Estaciones] ([Codigo])
     );
+    CREATE UNIQUE INDEX [UX_inv_urovo_terminales_serie_norm]
+        ON [dbo].[inv_urovo_terminales] ([numero_serie_normalizado])
+        WHERE [numero_serie_normalizado] IS NOT NULL;
     CREATE INDEX [IX_inv_urovo_terminales_estacion] ON [dbo].[inv_urovo_terminales] ([estacion_codigo]) INCLUDE ([numero_serie_normalizado],[condicion]);
     CREATE INDEX [IX_inv_urovo_terminales_ubicacion] ON [dbo].[inv_urovo_terminales] ([ubicacion_tipo],[proveedor]);
 END;
@@ -64,29 +78,7 @@ BEGIN
     CREATE INDEX [IX_urovo_mov_terminal_fecha] ON [dbo].[inv_urovo_movimientos] ([terminal_id],[fecha_evento],[id]);
 END;
 
-IF OBJECT_ID(N'[dbo].[inv_urovo_existencias_movimientos]', N'U') IS NULL
-BEGIN
-    CREATE TABLE [dbo].[inv_urovo_existencias_movimientos] (
-        [id] BIGINT IDENTITY(1,1) NOT NULL,
-        [fecha_evento] DATE NOT NULL CONSTRAINT [DF_urovo_cant_fecha] DEFAULT (CONVERT(date, SYSDATETIME())),
-        [modelo] NVARCHAR(100) NOT NULL,
-        [delta_cantidad] INT NOT NULL,
-        [ubicacion_tipo] VARCHAR(20) NOT NULL,
-        [estacion_codigo] INT NULL,
-        [estado] NVARCHAR(40) NOT NULL,
-        [proveedor] NVARCHAR(200) NULL,
-        [motivo] NVARCHAR(1000) NOT NULL,
-        [actor_id] INT NOT NULL,
-        [registrado_en] DATETIME2(0) NOT NULL CONSTRAINT [DF_urovo_cant_registrado] DEFAULT (SYSDATETIME()),
-        CONSTRAINT [PK_inv_urovo_existencias_movimientos] PRIMARY KEY CLUSTERED ([id]),
-        CONSTRAINT [FK_urovo_cant_estacion] FOREIGN KEY ([estacion_codigo]) REFERENCES [dbo].[Estaciones] ([Codigo]),
-        CONSTRAINT [CK_urovo_cant_delta] CHECK ([delta_cantidad] <> 0),
-        CONSTRAINT [CK_urovo_cant_ubicacion] CHECK ([ubicacion_tipo] IN ('estacion','almacen','reparacion','perdida','baja_definitiva')),
-        CONSTRAINT [CK_urovo_cant_estacion] CHECK (([ubicacion_tipo] = 'estacion' AND [estacion_codigo] IS NOT NULL) OR ([ubicacion_tipo] <> 'estacion' AND [estacion_codigo] IS NULL))
-    );
-    CREATE INDEX [IX_urovo_cant_balance] ON [dbo].[inv_urovo_existencias_movimientos] ([modelo],[ubicacion_tipo],[estacion_codigo],[estado],[proveedor]) INCLUDE ([delta_cantidad]);
-    CREATE INDEX [IX_urovo_cant_fecha] ON [dbo].[inv_urovo_existencias_movimientos] ([fecha_evento],[id]);
-END;
+/* The legacy aggregate stock ledger is not created or used by the individual-device inventory. */
 
 /* Seed exact permission tuple. */
 IF NOT EXISTS (SELECT 1 FROM [dbo].[tg_permissions] WHERE [action] = 'update' AND [department] = 'Sistemas' AND [description] = 'Inventario UROVO')
