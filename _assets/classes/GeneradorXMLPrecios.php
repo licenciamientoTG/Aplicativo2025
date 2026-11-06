@@ -21,11 +21,7 @@ class GeneradorXMLPrecios {
     
     // Configuración de correo
     private $emailConfig = [
-        'from' => 'no-reply@totalgas.com',
-        'password' => 'sysdhepknmlkigbs',
-        'smtp_server' => 'smtp.gmail.com',
-        'smtp_port' => 465,
-        'to' => 'aldo.ochoa@totalgas.com,claudia.martinez@totalgas.com'
+        'to' => 'aldo.ochoa@totalgas.com,claudia.martinez@totalgas.com,alejandro.martinez@totalgas.com'
     ];
     
     private $errores = [];
@@ -499,29 +495,22 @@ class GeneradorXMLPrecios {
         $destinatarios = array_map('trim', explode(',', $this->emailConfig['to']));
         $cuerpoHtml = nl2br($cuerpo);
 
-        // Cuentas en cascada: no-reply@totalgas.com -> totalgasdesarrollo@gmail.com ->
-        // alejandro.martinez@totalgas.com (emergencia), igual que send_mail_with_fallback().
-        $cuentas = [
-            ['user' => 'no-reply@totalgas.com',            'pass' => 'sysdhepknmlkigbs'],
-            ['user' => 'totalgasdesarrollo@gmail.com',      'pass' => 'bdppgxrwzhmyfrmf'],
-            ['user' => 'alejandro.martinez@totalgas.com',   'pass' => 'mnnndwnmfbxxdxcf'],
-        ];
-
+        // SMTP Relay de Google Workspace (autoriza por IP, sin usuario ni contraseña),
+        // igual que send_mail() en php_functions.php. Se usa PHPMailer directo porque
+        // send_mail() solo admite 2 adjuntos y aquí van uno por RFC.
         $errorOut = null;
-        foreach ($cuentas as $cuenta) {
+        foreach ([1] as $_) {
             $mail = new PHPMailer(true);
             try {
                 $mail->isSMTP();
                 $mail->SMTPDebug = SMTP::DEBUG_OFF;
-                $mail->Host = 'smtp.gmail.com';
-                $mail->SMTPAuth = true;
-                $mail->Username = $cuenta['user'];
-                $mail->Password = $cuenta['pass'];
-                $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-                $mail->Port = 465;
+                $mail->Host = MAIL_HOST;
+                $mail->Port = MAIL_PORT;
+                $mail->SMTPAuth = false;
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
                 $mail->CharSet = 'UTF-8';
 
-                $mail->setFrom($cuenta['user'], 'TotalGas | Sistema de Gestión de correos');
+                $mail->setFrom(MAIL_FROM, MAIL_FROM_NAME);
 
                 foreach ($destinatarios as $destinatario) {
                     if ($destinatario) { $mail->addAddress($destinatario); }
@@ -664,8 +653,8 @@ class GeneradorXMLPrecios {
                 $archivosEliminados = $this->eliminarArchivosXML($archivosXML);
             }
 
-            return true;
-            
+            return $correoEnviado;
+
         } catch (Exception $e) {
             $this->errores[] = $e->getMessage();
             return false;
