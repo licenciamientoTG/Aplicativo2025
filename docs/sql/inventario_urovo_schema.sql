@@ -18,6 +18,8 @@ BEGIN
         [condicion] NVARCHAR(40) NOT NULL,
         [accesorios] NVARCHAR(1000) NULL,
         [notas] NVARCHAR(2000) NULL,
+        [damage_types_json] NVARCHAR(MAX) NULL,
+        [mojo_ticket_number] NVARCHAR(30) NULL,
         [ubicacion_tipo] VARCHAR(20) NOT NULL,
         [estacion_codigo] INT NULL,
         [proveedor] NVARCHAR(200) NULL,
@@ -28,6 +30,7 @@ BEGIN
         CONSTRAINT [PK_inv_urovo_terminales] PRIMARY KEY CLUSTERED ([id]),
         CONSTRAINT [UQ_inv_urovo_terminales_serie_norm] UNIQUE ([numero_serie_normalizado]),
         CONSTRAINT [CK_inv_urovo_terminales_ubicacion] CHECK ([ubicacion_tipo] IN ('estacion','almacen','reparacion','perdida','baja_definitiva')),
+        CONSTRAINT [CK_inv_urovo_terminales_damage_types_json] CHECK ([damage_types_json] IS NULL OR ISJSON([damage_types_json]) = 1),
         CONSTRAINT [CK_inv_urovo_terminales_estacion] CHECK (([ubicacion_tipo] = 'estacion' AND [estacion_codigo] IS NOT NULL) OR ([ubicacion_tipo] <> 'estacion' AND [estacion_codigo] IS NULL)),
         CONSTRAINT [FK_inv_urovo_terminales_estacion] FOREIGN KEY ([estacion_codigo]) REFERENCES [dbo].[Estaciones] ([Codigo])
     );

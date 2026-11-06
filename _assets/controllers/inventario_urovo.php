@@ -4,6 +4,7 @@ class inventario_urovo {
     private InventarioUrovoModel $model;
     private const LOCATIONS = ['estacion','almacen','reparacion','perdida','baja_definitiva'];
     private const CONDITIONS = ['operativa','dañada','desconocida','extraviada'];
+    private const DAMAGE_TYPES = ['pantalla_quebrada','pantalla_negra','carcasa_exterior','puerto_carga_punta','usb_danado','falta_bateria','touch','modo_seguro','impresora','tapa_impresora','boton_encendido','tapa_bateria','lector_tarjetas','otro'];
 
     public function __construct($twig) { $this->twig=$twig; $this->model=new InventarioUrovoModel(); }
 
@@ -59,7 +60,7 @@ class inventario_urovo {
                 $serial=trim((string)($item['serial']??'')); if ($serial==='' || mb_strlen($serial)>100) throw new InvalidArgumentException('El número de serie es obligatorio y debe tener máximo 100 caracteres.');
                 $condition=trim((string)($item['condition']??'desconocida')); if (!in_array($condition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición inválida.');
                 $purchase=$this->dateValue($item['purchase_date']??null,false); $warranty=$this->dateValue($item['warranty_until']??null,true);
-                $row=['serial'=>$serial,'model'=>$this->text($item,'model',100)??'I9000S','ip'=>$this->text($item,'ip',45),'mac'=>$this->text($item,'mac',17),'imei'=>$this->text($item,'imei',32),'purchase_date'=>$purchase,'warranty_until'=>$warranty,'condition'=>$condition,'accessories'=>$this->text($item,'accessories',1000),'notes'=>$this->text($item,'notes',2000)];
+                $row=['serial'=>$serial,'model'=>$this->text($item,'model',100)??'I9000S','ip'=>$this->text($item,'ip',45),'mac'=>$this->text($item,'mac',17),'imei'=>$this->text($item,'imei',32),'purchase_date'=>$purchase,'warranty_until'=>$warranty,'condition'=>$condition,'damage_types'=>$this->damageTypes($item['damage_types']??[],$condition),'mojo_ticket_number'=>$this->ticketNumber($item['mojo_ticket_number']??''),'accessories'=>$this->text($item,'accessories',1000),'notes'=>$this->text($item,'notes',2000)];
                 $this->validateIdentifiers($row); $items[]=$row;
             }
             $this->respond(['success'=>true]+$this->model->addBatch($items,$location,$source,$this->actor()));
@@ -96,7 +97,9 @@ class inventario_urovo {
             $condition=(string)($body['status']??''); $reason=trim((string)($body['reason']??''));
             if (!in_array($condition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición inválida.');
             if ($reason==='' || mb_strlen($reason)>500) throw new InvalidArgumentException('El motivo es obligatorio (máximo 500 caracteres).');
-            $this->model->moveTerminal($id,$location,$condition,$reason,$this->actor()); $this->respond(['success'=>true]);
+            $damageTypes=$this->damageTypes($body['damage_types']??[],$condition);
+            $ticket=$this->ticketNumber($body['mojo_ticket_number']??'');
+            $this->model->moveTerminal($id,$location,$condition,$reason,$this->actor(),$damageTypes,$ticket); $this->respond(['success'=>true]);
         } catch (Throwable $e) { $this->error($e); }
     }
 
@@ -109,7 +112,7 @@ class inventario_urovo {
         try {
             $this->authorize(); $body=$this->jsonPost(); $this->csrf();
             $condition=(string)($body['condition']??'desconocida'); if (!in_array($condition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición inválida.');
-            $changes=['model'=>$this->text($body,'model',100)??'I9000S','ip'=>$this->text($body,'ip',45),'mac'=>$this->text($body,'mac',17),'imei'=>$this->text($body,'imei',32),'purchase_date'=>$this->dateValue($body['purchase_date']??null,false),'warranty_until'=>$this->dateValue($body['warranty_until']??null,true),'condition'=>$condition,'accessories'=>$this->text($body,'accessories',1000),'notes'=>$this->text($body,'notes',2000)];
+            $changes=['model'=>$this->text($body,'model',100)??'I9000S','ip'=>$this->text($body,'ip',45),'mac'=>$this->text($body,'mac',17),'imei'=>$this->text($body,'imei',32),'purchase_date'=>$this->dateValue($body['purchase_date']??null,false),'warranty_until'=>$this->dateValue($body['warranty_until']??null,true),'condition'=>$condition,'damage_types'=>$this->damageTypes($body['damage_types']??[],$condition),'mojo_ticket_number'=>$this->ticketNumber($body['mojo_ticket_number']??''),'accessories'=>$this->text($body,'accessories',1000),'notes'=>$this->text($body,'notes',2000)];
             $this->validateIdentifiers($changes);
             $this->respond(['success'=>true,'row'=>$this->model->editTerminal($id,$changes,$this->actor())]);
         } catch (Throwable $e) { $this->error($e); }
@@ -146,6 +149,22 @@ class inventario_urovo {
     }
     private function text(array $item,string $key,int $max): ?string {
         $value=trim((string)($item[$key]??'')); if (mb_strlen($value)>$max) throw new InvalidArgumentException("El campo $key supera $max caracteres."); return $value===''?null:$value;
+    }
+    private function damageTypes($value,string $condition): array {
+        if (!is_array($value) || (function_exists('array_is_list') && !array_is_list($value))) throw new InvalidArgumentException('Los tipos de daño deben ser una lista.');
+        $types=[];
+        foreach ($value as $type) {
+            if (!is_string($type) || !in_array($type,self::DAMAGE_TYPES,true)) throw new InvalidArgumentException('Tipo de daño inválido.');
+            if (!in_array($type,$types,true)) $types[]=$type;
+        }
+        if ($condition==='dañada' && !$types) throw new InvalidArgumentException('Selecciona al menos un tipo de daño para la terminal dañada.');
+        return $condition==='dañada'?$types:[];
+    }
+    private function ticketNumber($value): string {
+        if (!is_string($value)) throw new InvalidArgumentException('El número de ticket Mojo debe contener solo dígitos (máximo 30).');
+        $ticket=trim((string)$value);
+        if (strlen($ticket)>30 || ($ticket!=='' && !preg_match('/^[0-9]+$/',$ticket))) throw new InvalidArgumentException('El número de ticket Mojo debe contener solo dígitos (máximo 30).');
+        return $ticket;
     }
     private function validateIdentifiers(array $fields): void {
         if ($fields['ip']!==null && filter_var($fields['ip'],FILTER_VALIDATE_IP)===false) throw new InvalidArgumentException('La IP debe ser una dirección IPv4 o IPv6 válida.');
