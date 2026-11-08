@@ -62,16 +62,19 @@ R.estado.venta = [
   { clase: 'Venta', monto: 1000, facturado_mes: 1000, facturado_mes_anterior: 50, dif_cortes: 0, diferencia: 0, estatus: 'Facturado' },
   { clase: 'Venta', monto: 500, facturado_mes: 400, facturado_mes_anterior: 0, dif_cortes: 10, diferencia: 100, estatus: 'Factura cancelada' },
   { clase: 'Venta', monto: 300, facturado_mes: 0, facturado_mes_anterior: 0, dif_cortes: 0, diferencia: 300, estatus: 'Consumo sin factura' },
+  { clase: 'Venta', monto: 100.01, facturado_mes: 100, facturado_mes_anterior: 0, dif_cortes: 0, diferencia: 0.01, estatus: 'Redondeo' },
   { clase: 'Consumo propio', monto: 200, facturado_mes: 0, facturado_mes_anterior: 0, dif_cortes: 0, diferencia: 200, estatus: 'No se factura' },
   { clase: 'Bonificación', monto: 100, facturado_mes: 0, facturado_mes_anterior: 0, dif_cortes: 0, diferencia: 100, estatus: 'No se factura' },
 ];
 const a = R.calcVenta(R.estado.venta);
-assert.strictEqual(a.venta, 2100); assert.strictEqual(a.neta, 1800);
-assert.strictEqual(a.vigente, 1450); assert.strictEqual(a.fAnt, 50); assert.strictEqual(a.fMes, 1400);
-assert.strictEqual(a.diferencia, 400);
-assert.deepStrictEqual(a.partidas.map((p) => p.estatus), ['Factura cancelada', 'Consumo sin factura']);
+const cerca = (x, y) => assert(Math.abs(x - y) < 0.001, x + ' != ' + y);
+cerca(a.venta, 2200.01); cerca(a.neta, 1900.01);
+assert.strictEqual(a.vigente, 1550); assert.strictEqual(a.fAnt, 50); assert.strictEqual(a.fMes, 1500);
+assert.strictEqual(a.diferencia, 400.01);
+assert.deepStrictEqual(a.partidas.map((p) => p.estatus), ['Factura cancelada', 'Consumo sin factura', 'Redondeo']);
+assert.strictEqual(a.partidas[2].dif, 0.01);
 assert.strictEqual(a.sinExplicar, 0);
-ok('card A: neta 1,800, facturado del mes 1,400, diferencia 400 = partidas 400, sin explicar 0');
+ok('card A: Redondeo (0.01) es partida; diferencia 400.01 = partidas, sin explicar 0');
 
 R.estado.anticipos = [{ estatus: 'Cancelada' }, { estatus: 'Con cobro' }, { estatus: 'Cancelada' }];
 R.estado.partidasAnticipos = { cobros: 100, anticipos: 90, diferencia: 10, otro_mes: { n: 1, importe: 15 }, sin_factura: { n: 0, importe: 0 }, anticipos_sin_cobro: { n: 1, importe: -5 }, canceladas: 2, sin_explicar: 0 };

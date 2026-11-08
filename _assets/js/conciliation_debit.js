@@ -94,7 +94,7 @@ $(function () {
       '<li><b>Venta total, consumo propio y bonificaciones:</b> el Desglose venta (despachos del mes por clasificación). La <b>venta neta</b> es lo que sí debe facturarse.</li>' +
       '<li><b>Facturado Serie E vigente:</b> facturas de consumos vigentes de clientes de venta con fecha del mes. Se resta lo que son <b>facturas del mes anterior emitidas en este mes</b> (consumos de agosto facturados en septiembre) y queda el <b>facturado consumos del mes</b>.</li></ul>' +
       '<b>Cómo interpretarlo</b><ul>' +
-      '<li><b>Diferencia</b> = venta neta − facturado consumos del mes. Se reparte en <b>partidas por estatus</b> (cantidad de clientes e importe de su diferencia); haz clic para ver esos clientes en Desglose venta. No se listan Facturado, Redondeo ni No se factura.</li>' +
+      '<li><b>Diferencia</b> = venta neta − facturado consumos del mes. Se reparte en <b>partidas por estatus</b> (cantidad de clientes e importe de su diferencia); haz clic para ver esos clientes en Desglose venta. No se listan Facturado ni No se factura; <b>Redondeo</b> (diferencias de centavos) sí aparece como partida.</li>' +
       '<li><b>Factura cancelada:</b> las facturas Serie E canceladas se muestran como partida. El Excel contaba como facturadas 24 Serie E canceladas el 30/09 ($786,358.92); el sistema no las cuenta.</li>' +
       '<li><b>Diferencia sin explicar</b> = diferencia − partidas. Con insignia Conciliado ($0.00) o Revisar.</li>' +
       '<li><b>Nota Monto − Cortes:</b> despachos contra lo que entró en los cortes de caja (enlace a Consumos por cliente).</li></ul>'],
@@ -592,6 +592,7 @@ $(function () {
     }).fail(function (x, st) {
       if (st === 'abort' || busqueda !== estado.busqueda) return;
       progresoMarca(k, false);
+      if (CONSULTAS_RESUMEN.indexOf(k) >= 0) $('#resumenVacio').text('No se pudo armar el resumen: alguna consulta falló. Vuelve a presionar Buscar.').show();
       alertify.error('Error al consultar: ' + CONSULTAS.filter(function (c) { return c[0] === k; })[0][1]);
     });
     return xhr;
@@ -734,8 +735,8 @@ $(function () {
   function insignia(ok) { return badge(ok ? 'Conciliado' : 'Revisar', 'display'); }
 
   // Estatus de Desglose venta que no son una partida a explicar
-  var ESTATUS_SIN_PARTIDA = ['Facturado', 'Redondeo', 'No se factura'];
-  var ORDEN_PARTIDAS = ['Se factura al mes siguiente', 'Factura cancelada', 'Facturado con base en cortes', 'Consumo sin corte', 'Consumo sin factura', 'Facturado de menos', 'Facturado de más'];
+  var ESTATUS_SIN_PARTIDA = ['Facturado', 'No se factura'];
+  var ORDEN_PARTIDAS = ['Se factura al mes siguiente', 'Factura cancelada', 'Facturado con base en cortes', 'Consumo sin corte', 'Consumo sin factura', 'Facturado de menos', 'Facturado de más', 'Redondeo'];
 
   // Card A (sin DOM): cascada venta → facturado y partidas por estatus. Todo se calcula sobre las filas por cliente.
   function calcVenta(v) {
