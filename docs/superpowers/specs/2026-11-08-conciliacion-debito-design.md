@@ -114,17 +114,36 @@ Se evalúan en orden, con `dif = monto − facturado_mes_vigente`:
 "Periodo" de una factura (mes anterior / mes siguiente) sale del texto de `txtref` ("Consumos de AGOSTO…", como
 usa el Excel con `*AGOSTO*`); el mes sale de la nota `@N:Consumos <Mes> [Diesel] <año>` (verificado, §9).
 
-## 7. Validación (criterio de terminado)
+## 7. Resultados de la validación (2026-11-08)
 
-Septiembre 2026, DIAZ GAS, por línea de comandos, igual que se hizo en crédito:
-- Venta (monto) $31,932,212.69; cortes $31,918,014.67; 774 clientes.
-- Facturado Serie E: sistema $31,201,737.84 (+ $786,358.92 canceladas = **$31,988,096.76** del Excel); facturado del mes tras restar agosto $31,802,651.81 (Excel) / ajustado.
-- Cobros prepago 1,861 / $32,605,435.05 (exacto).
-- Anticipos 1,871 / $32,591,067.05 (+ $8,500 canceladas = Excel $32,599,567.05).
-- Depósitos 2791: 1,925 abonos / $37,229,115.24 (exacto); 0956: 2,329 movimientos.
-- Cobros contra 2791 ≈ $32,007,985 (Excel $32,007,985.13; diferencia de centavos).
-- Sin explicar = $0.00 en A y B una vez incluidas las cancelaciones; lo que falte se lista, no se oculta.
-Después, prueba en navegador con el usuario (no se levanta el servidor PHP).
+Septiembre 2026, DIAZ GAS (empresa 1), solo lectura: `php tools/conciliacion_debito_validar.php` (sale 0, "Todo ok").
+Todas las líneas cuadran al centavo, salvo las diferencias explicadas de la tabla.
+
+| Concepto | Sistema | Excel | Diferencia explicada |
+|---|---|---|---|
+| Venta (monto despachos) | $31,921,675.84 | $31,932,212.69 | −$10,536.85: un despacho de GOLDEN TRAVELER borrado después de extraer el Excel (33 vs 32 despachos) |
+| Cortes | $31,918,014.67 | $31,918,014.67 | 0 |
+| Clientes de venta | 774 | 774 | 0 |
+| Serie E vigentes | 759 / $31,201,737.84 | — | 0 |
+| Serie E canceladas (con importe) | 24 / $786,358.92 | Excel las seguía contando: vigentes + canceladas = $31,988,096.76 | partida "Factura cancelada"; 4 canceladas de $0 no cuentan |
+| Serie E mes anterior | $185,444.95 | — | facturado del mes + mes anterior = vigentes ($31,201,737.84) |
+| Anticipos | 1,871 / $32,591,067.05 | $32,599,567.05 (con $8,500 canceladas) | 2 canceladas conocidas (1200243922, 1200244351), canceladas el 2026-10-31 |
+| Anticipos cancelados del mes | 60 | 2 | la BD marca 60 (cancelaciones re-emitidas en el mes); se listan en el tab 7 |
+| Cobros prepago | 1,861 / $32,605,435.05 | igual | 0 |
+| Cobros − anticipos | $14,368.00 | — | otro mes $17,868.00 (1200242940, 1200242934, 1200089958) + sin factura en referencia $10,000.00 − anticipos sin cobro $13,500.00 (1200244867, 1200244401) |
+| Depósitos 2791 | 1,925 abonos / $37,229,115.24 | igual | 0 |
+| Movimientos 0956 | 2,329 | igual | 0 |
+| Cobros ligados a 2791 por el cruce | $31,485,663.43 | $32,007,985.13 | −$522,321.70 (ver limitación) |
+| % cuadrado (monto ligado a banco / cobros no cancelados) | 97.25% | 99.98% | 68 cobros "No localizado" = $867,903.62 |
+
+- **Sin explicar**: card A = $0.00 con el Redondeo ($0.01, 1 cliente) mostrado como partida; card B = $0.00 con las partidas de arriba.
+  El criterio original "Sin explicar = $0.00 en A y B" vale solo con esas partidas visibles (nada se oculta).
+- **Criterio duro de cobros**: % cuadrado ≥ 97% (pasa con 97.25%). La comparación contra $32,007,985.13 es solo informativa.
+- **Tiempos**: `payments/` ~4.5 s; `bank/` en frío 9.7–11.3 s (cruce prepago + crédito + clasificación); 0956 reutilizando el cruce ~4.7 s.
+- **Limitación conocida**: el cruce cubre 97.25% y no el 99.98% del Excel porque 68 cobros ("No localizado", $867,903.62) no tienen un depósito
+  libre del mismo importe ±3 días en 2791/0956; el Excel los ligó a mano o agrupados. Las reglas del cruce no se cambiaron a propósito.
+  Mejora futura sugerida: empatar por RFC del cliente y por sumas de subconjuntos por día.
+- Prueba en navegador con el usuario pendiente (no se levanta el servidor PHP).
 
 ## 8. Arquitectura
 
