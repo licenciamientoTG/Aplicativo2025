@@ -90,6 +90,15 @@ assert.strictEqual(c.total, 1000); assert.strictEqual(c.n, 2); assert.strictEqua
 assert.strictEqual(c.cancel.n, 1); assert.strictEqual(c.cancel.monto, 999);
 ok('card C: Cancelado fuera del total y del % cuadrado (70.0 %)');
 
+// 'Depositado en mes anterior' (ligado a banco) cuenta como cuadrado; 'No localizado' no. Definición del validador:
+// monto ligado a banco / cobros no cancelados.
+const c2 = R.calcCobros([
+  { estatus: 'Cuadra', monto: 600 }, { estatus: 'Depositado en mes anterior', monto: 200, cuenta: '0186932791' },
+  { estatus: 'No localizado', monto: 100 }, { estatus: 'Efectivo', monto: 100 }, { estatus: 'Cancelado', monto: 50 },
+]);
+assert.strictEqual(c2.total, 1000); assert.strictEqual(c2.cuadra, 800); assert.strictEqual(c2.pct, 80);
+ok('card C: Depositado en mes anterior cuenta como cuadrado (80.0 %), No localizado y Efectivo no');
+
 const d = R.calcDepositos([
   { abono: 100, cargo: 0, clasificacion: 'Cobro prepago' }, { abono: 50, cargo: 0, clasificacion: 'Cobro crédito' },
   { abono: 20, cargo: 0, clasificacion: 'Traspaso entre cuentas' }, { abono: 10, cargo: 0, clasificacion: 'No identificado' },

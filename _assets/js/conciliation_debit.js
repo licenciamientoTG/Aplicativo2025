@@ -41,10 +41,12 @@ $(function () {
       '<li><b>Mes siguiente:</b> consumos de este mes facturados el mes siguiente.</li>' +
       '<li><b>Sin periodo:</b> la nota no dice el mes; se cuenta como del mes.</li>' +
       '<li><b>Cancelada:</b> factura cancelada; no suma a lo facturado.</li></ul>' +
-      '<p>El card de arriba (colapsable) suma las facturas por periodo.</p>'],
+      '<p>El card de arriba (colapsable) suma las facturas por periodo.</p>' +
+      '<p>Las facturas "Mes siguiente" se buscan hasta 10 días después del fin de mes; una emitida más tarde no aparece.</p>'],
     pendientes: ['Despachos pendientes de facturar', '<p>Equivale a la hoja <b>despachos pendientes de fact</b>: despachos del mes de clientes de débito que todavía no tienen factura (sin folio de factura) y con monto distinto de cero, con su cliente, estación y producto.</p>' +
       '<ul><li>Es el único lugar donde se mira el enlace despacho-factura; en Desglose venta la comparación es por cliente.</li>' +
-      '<li>La Clasificación indica si el cliente es de Venta (debería facturarse) o de consumo propio / bonificación (no se factura).</li></ul>'],
+      '<li>La Clasificación indica si el cliente es de Venta (debería facturarse) o de consumo propio / bonificación (no se factura).</li>' +
+      '<li>Solo clientes de débito (tipval 4); un despacho de un cliente de otro tipo cobrado con vale de débito cuenta en Venta pero no aparece aquí.</li></ul>'],
     anticipos: ['Anticipos', '<p>Facturas de anticipo (serie D, "Facturación Débito Tarjetas") de clientes de débito emitidas en el mes: el mismo reporte de Clientes &gt; Anticipos débito. Es la hoja <b>Anticipos</b> del Excel.</p>' +
       '<b>De dónde viene cada dato</b><ul>' +
       '<li><b>Subtotal, IVA y Total:</b> las líneas de la factura en ControlGas.</li>' +
@@ -96,7 +98,7 @@ $(function () {
       '<b>Cómo interpretarlo</b><ul>' +
       '<li><b>Diferencia</b> = venta neta − facturado consumos del mes. Se reparte en <b>partidas por estatus</b> (cantidad de clientes e importe de su diferencia); haz clic para ver esos clientes en Desglose venta. No se listan Facturado ni No se factura; <b>Redondeo</b> (diferencias de centavos) sí aparece como partida.</li>' +
       '<li><b>Factura cancelada:</b> las facturas Serie E canceladas se muestran como partida. El Excel contaba como facturadas 24 Serie E canceladas el 30/09 ($786,358.92); el sistema no las cuenta.</li>' +
-      '<li><b>Diferencia sin explicar</b> = diferencia − partidas. Con insignia Conciliado ($0.00) o Revisar.</li>' +
+      '<li><b>Diferencia sin explicar</b> = diferencia − partidas. Con insignia Conciliado ($0.00) o Revisar. Es 0.00 por construcción (cada diferencia por cliente queda en alguna partida); no es un control independiente: el control real son las partidas y su revisión.</li>' +
       '<li><b>Nota Monto − Cortes:</b> despachos contra lo que entró en los cortes de caja (enlace a Consumos por cliente).</li></ul>'],
     res_anticipos: ['Cobros vs anticipos facturados', '<p>Compara los cobros prepago del mes (Cobro Clientes de Tarjetas débito) contra las facturas de anticipo (serie D) emitidas en el mes.</p>' +
       '<b>Partidas de la diferencia (cobros − anticipos)</b><ul>' +
@@ -355,9 +357,9 @@ $(function () {
         if (d) return esc(d);
         return SIN_BANCO_NORMAL.indexOf(r.estatus) >= 0 ? '' : '<span class="cv-sinmov">Sin movimiento bancario</span>';
       } },
-    { data: 'cuenta', className: 'cv-mono cv-c-banco' },
+    { data: 'cuenta', className: 'cv-mono cv-c-banco', render: texto },
     { data: 'fecha_banco', className: 'cv-c-banco', render: fecha },
-    { data: 'secuencia', className: 'cv-mono cv-c-banco' },
+    { data: 'secuencia', className: 'cv-mono cv-c-banco', render: texto },
     { data: 'abono', className: 'cv-monto cv-c-banco', render: monto },
     { data: 'diferencia', className: 'cv-monto cv-c-banco', render: montoDif },
     { data: 'candidatos', className: 'cv-monto cv-c-banco', render: function (d, t) {
@@ -382,7 +384,7 @@ $(function () {
   function tablaBanco(sel, titulo) {
     return initTabla(sel, [
       { data: 'fecha', render: fecha },
-      { data: 'secuencia', className: 'cv-mono' },
+      { data: 'secuencia', className: 'cv-mono', render: texto },
       { data: 'descripcion', className: 'cv-wrap', render: texto },
       { data: 'referencia', className: 'cv-mono', render: texto },
       { data: 'abono', className: 'cv-monto', render: monto },
@@ -788,7 +790,8 @@ $(function () {
       if (r.estatus === 'Cancelado') { cancel.n++; cancel.monto += m; return; }
       var g = porEstatus[r.estatus] = porEstatus[r.estatus] || { n: 0, monto: 0 };
       g.n++; g.monto += m; total += m; n++;
-      if (String(r.estatus).indexOf('Cuadra') === 0) cuadra += m;
+      // Cuadrado = ligado a un depósito; el cruce relabela a 'Depositado en mes anterior' los de depósito del mes previo
+      if (String(r.estatus).indexOf('Cuadra') === 0 || r.estatus === 'Depositado en mes anterior') cuadra += m;
     });
     return { porEstatus: porEstatus, cancel: cancel, total: total, n: n, cuadra: cuadra, pct: total ? (cuadra * 100 / total) : 0 };
   }

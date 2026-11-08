@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 /**
  * Valida la conciliación débito contra el Excel de septiembre 2026, DIAZ GAS (empresa 1), solo lectura:
  *   php tools/conciliacion_debito_validar.php

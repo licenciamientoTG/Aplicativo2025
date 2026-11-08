@@ -106,11 +106,12 @@ Se evalúan en orden, con `dif = monto − facturado_mes_vigente`:
 2. **Facturado**: |dif| < 0.01.
 3. **Redondeo**: |dif| < 1.00.
 4. **Se factura al mes siguiente**: tiene facturas "Mes siguiente" que cubren la diferencia (diésel).
-5. **Facturado con base en cortes**: facturado ≈ cortes y monto − cortes ≠ 0.
-6. **Consumo sin corte**: cortes = 0 y facturado = 0.
-7. **Consumo sin factura**: facturado = 0 y cortes > 0.
-8. **Facturado de menos / de más**: resto, según el signo de `dif`.
-9. **Factura cancelada**: el cliente tiene Serie E cancelada en el mes.
+5. **Factura cancelada**: el cliente tiene Serie E cancelada en el mes y `dif` ≥ 1.
+6. **Facturado con base en cortes**: facturado ≈ cortes y monto − cortes ≠ 0.
+7. **Consumo sin corte**: cortes = 0 y facturado = 0.
+8. **Consumo sin factura**: facturado = 0 y cortes > 0.
+9. **Facturado de menos / de más**: resto, según el signo de `dif`.
+(Orden real de `ConciliacionDebito::estatusCliente`. Excepción en 2 y 3: un cliente con monto ≈ 0, cortes > 0 y sin factura no se evalúa como Facturado/Redondeo y cae a Consumo sin factura.)
 "Periodo" de una factura (mes anterior / mes siguiente) sale del texto de `txtref` ("Consumos de AGOSTO…", como
 usa el Excel con `*AGOSTO*`); el mes sale de la nota `@N:Consumos <Mes> [Diesel] <año>` (verificado, §9).
 
