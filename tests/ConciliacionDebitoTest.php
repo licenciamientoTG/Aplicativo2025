@@ -33,6 +33,9 @@ check('periodo: mes anterior facturado fuera del mes = Sin periodo',
 check('referencia: D y E',
     ConciliacionDebito::facturasDeReferencia('Fac.D242940 ($3,500.00); Fac.E101872 ($26,389.99)')
     === [['nro' => 1200242940, 'importe' => 3500.0], ['nro' => 1300101872, 'importe' => 26389.99]]);
+check('referencia: importes negativos',
+    ConciliacionDebito::facturasDeReferencia('Fac.D1 ($-5.00); Fac.E2 (-$5.00)')
+    === [['nro' => 1200000001, 'importe' => -5.0], ['nro' => 1300000002, 'importe' => -5.0]]);
 check('referencia: Sin factura', ConciliacionDebito::facturasDeReferencia('Sin factura') === []);
 check('referencia: serie G se omite', ConciliacionDebito::facturasDeReferencia('Fac.G55 ($10.00)') === []);
 
@@ -60,7 +63,13 @@ check('estatus: Facturado con base en cortes',
 check('estatus: Consumo sin corte', est(['monto' => 6644.18]) === 'Consumo sin corte');
 check('estatus: Consumo sin factura', est(['monto' => 20471.30, 'cortes' => 20471.30]) === 'Consumo sin factura');
 check('estatus: monto 0 con cortes y sin factura = Consumo sin factura', est(['monto' => 0.0, 'cortes' => 300.0]) === 'Consumo sin factura');
-check('estatus: Facturado de menos', est(['monto' => 1000.0, 'cortes' => 800.0, 'facturado_mes' => 500.0]) === 'Facturado de menos');
+check('estatus: monto 0.5, cortes 100, sin facturas = Consumo sin factura (no mes siguiente)',
+    est(['monto' => 0.5, 'cortes' => 100.0]) === ConciliacionDebito::EST_SIN_FACTURA);
+// Orden literal: dif = 0 se evalúa como Facturado antes que cualquier otra regla
+check('estatus: todo en 0 = Facturado (orden literal)', est([]) === 'Facturado');
+check('estatus: monto 0.5, sin cortes ni facturas = Redondeo', est(['monto' => 0.5]) === 'Redondeo');
+check('estatus: mes siguiente con fs>0', est(['monto' => 1000.0, 'cortes' => 1000.0, 'facturado_mes' => 400.0, 'facturado_siguiente' => 600.0]) === 'Se factura al mes siguiente');
+check('estatus: Facturado de menos',est(['monto' => 1000.0, 'cortes' => 800.0, 'facturado_mes' => 500.0]) === 'Facturado de menos');
 check('estatus: Facturado de más (monto 0)', est(['monto' => 0.0, 'facturado_mes' => 500.0]) === 'Facturado de más');
 check('estatus: Facturado de más', est(['monto' => 1000.0, 'cortes' => 1000.0, 'facturado_mes' => 1500.0]) === 'Facturado de más');
 

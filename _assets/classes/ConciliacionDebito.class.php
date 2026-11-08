@@ -40,7 +40,11 @@ class ConciliacionDebito
         return strtr(mb_strtolower($s, 'UTF-8'), ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u']);
     }
 
-    /** Periodo al que pertenece una factura global respecto al mes solicitado. */
+    /**
+     * Periodo al que pertenece una factura global respecto al mes solicitado.
+     * El llamador debe descartar facturas con fecha anterior al mes pedido o posterior al mes pedido que no sean
+     * 'Mes siguiente'; 'Sin periodo' cuenta como del mes solo para facturas emitidas dentro del mes.
+     */
     public static function periodoFactura(string $txtref, string $mes, string $fechaFactura): string
     {
         if (!preg_match('/@N:\s*Consumos\s+(\p{L}+)(?:\s+Diesel)?\s+(\d{4})/iu', $txtref, $m)) {
@@ -67,7 +71,7 @@ class ConciliacionDebito
     public static function facturasDeReferencia(string $referencia): array
     {
         $out = [];
-        if (!preg_match_all('/Fac\.([A-Za-z])(\d+)(?:\s*\(\$?([\d,]*\.?\d*)\))?/', $referencia, $ms, PREG_SET_ORDER)) {
+        if (!preg_match_all('/Fac\.([A-Za-z])(\d+)(?:\s*\(\s*(-?\$?-?[\d,]*\.?\d*)\))?/', $referencia, $ms, PREG_SET_ORDER)) {
             return $out;
         }
         foreach ($ms as $m) {
@@ -77,7 +81,7 @@ class ConciliacionDebito
             else continue;
             $out[] = [
                 'nro' => $base + (int)$m[2],
-                'importe' => (float)str_replace(',', '', $m[3] ?? '0'),
+                'importe' => (float)str_replace([',', '$'], '', $m[3] ?? '0'),
             ];
         }
         return $out;
@@ -99,7 +103,7 @@ class ConciliacionDebito
             if (abs($dif) < 0.01) return self::EST_FACTURADO;
             if (abs($dif) < 1) return self::EST_REDONDEO;
         }
-        if ($dif > 0 && abs($dif - $fs) < 1) return self::EST_MES_SIGUIENTE;
+        if ($dif > 0 && $fs > 0 && abs($dif - $fs) < 1) return self::EST_MES_SIGUIENTE;
         if ($canc > 0 && $dif >= 1) return self::EST_CANCELADA;
         if (abs($fm - $cortes) < 0.01 && $fm > 0 && abs($monto - $cortes) >= 0.01) return self::EST_BASE_CORTES;
         if ($cortes == 0.0 && $fm == 0.0) return self::EST_SIN_CORTE;
