@@ -14,7 +14,7 @@ $(function () {
     'Cobro prepago': 'cv-ok', 'Cobro crédito': 'cv-info', 'Traspaso entre cuentas': 'cv-muted', 'Retiro': 'cv-muted', 'No identificado': 'cv-bad',
   });
 
-  // Ayuda "¿Qué estoy viendo?": un modal compartido, el texto sale de AYUDA. Las llaves de los tabs 7-12 y del Resumen las agregan las tareas siguientes.
+  // Ayuda "¿Qué estoy viendo?": un modal compartido, el texto sale de AYUDA.
   var AYUDA = {
     filtros: ['Filtros de la consulta', '<p>Todo el módulo trabaja con <b>clientes de débito (prepago)</b> del mes y la razón social elegidos.</p><ul>' +
       '<li><b>Mes:</b> los despachos y cortes se toman por su fecha; las facturas Serie E por la fecha de la factura (más las emitidas el mes siguiente que son de consumos de este mes).</li>' +
@@ -85,6 +85,30 @@ $(function () {
       '<li><b>No identificado:</b> abono que no se pudo explicar; es lo que hay que revisar.</li></ul>' +
       '<p>El pie suma abonos y cargos de las filas que ves (respeta el filtro y los chips). Estos movimientos no dependen de la razón social del filtro.</p>'],
     banco0956: ['Banco 0956', '<p>Movimientos del mes de BANORTE <b>0601500956</b> (cobros con tarjeta). Es la hoja <b>0956</b> del Excel. Se consulta al abrir el tab. La clasificación funciona igual que en Banco 2791.</p>'],
+    resumen: ['Resumen de la conciliación', '<p>Tres cuadros con las hojas <b>Conciliación</b>, <b>Conciliación anticipos</b> y el resumen de <b>Conciliación cobros</b> del Excel. Aparecen cuando terminan las consultas de ventas, facturas, anticipos y cobros del mes.</p>' +
+      '<ul><li><b>Insignia Conciliado:</b> la diferencia sin explicar es $0.00. <b>Revisar:</b> queda un importe que ninguna partida explica.</li>' +
+      '<li>Los renglones subrayados con punteado son enlaces: abren el tab de detalle ya filtrado.</li>' +
+      '<li>Un mes o una razón social sin movimientos muestra los cuadros en cero y "Conciliado".</li></ul>'],
+    res_venta: ['Venta vs facturación', '<p>Compara lo despachado a clientes de débito contra lo facturado en Serie E (facturación de consumos).</p>' +
+      '<b>De dónde viene cada dato</b><ul>' +
+      '<li><b>Venta total, consumo propio y bonificaciones:</b> el Desglose venta (despachos del mes por clasificación). La <b>venta neta</b> es lo que sí debe facturarse.</li>' +
+      '<li><b>Facturado Serie E vigente:</b> facturas de consumos vigentes de clientes de venta con fecha del mes. Se resta lo que son <b>facturas del mes anterior emitidas en este mes</b> (consumos de agosto facturados en septiembre) y queda el <b>facturado consumos del mes</b>.</li></ul>' +
+      '<b>Cómo interpretarlo</b><ul>' +
+      '<li><b>Diferencia</b> = venta neta − facturado consumos del mes. Se reparte en <b>partidas por estatus</b> (cantidad de clientes e importe de su diferencia); haz clic para ver esos clientes en Desglose venta. No se listan Facturado, Redondeo ni No se factura.</li>' +
+      '<li><b>Factura cancelada:</b> las facturas Serie E canceladas se muestran como partida. El Excel contaba como facturadas 24 Serie E canceladas el 30/09 ($786,358.92); el sistema no las cuenta.</li>' +
+      '<li><b>Diferencia sin explicar</b> = diferencia − partidas. Con insignia Conciliado ($0.00) o Revisar.</li>' +
+      '<li><b>Nota Monto − Cortes:</b> despachos contra lo que entró en los cortes de caja (enlace a Consumos por cliente).</li></ul>'],
+    res_anticipos: ['Cobros vs anticipos facturados', '<p>Compara los cobros prepago del mes (Cobro Clientes de Tarjetas débito) contra las facturas de anticipo (serie D) emitidas en el mes.</p>' +
+      '<b>Partidas de la diferencia (cobros − anticipos)</b><ul>' +
+      '<li><b>Cobros aplicados a anticipos de otro mes:</b> el cobro paga una factura de anticipo que no es de este mes (Cobros por factura, "¿Existe en Anticipos?" = No).</li>' +
+      '<li><b>Cobros sin factura en la referencia:</b> el cobro no indica factura de anticipo (Cobros por factura, "Sin factura en referencia").</li>' +
+      '<li><b>Anticipos sin cobro aplicado:</b> anticipos facturados cuyo cobro no cubre el total (Anticipos, estatus Sin cobro); restan de la diferencia.</li></ul>' +
+      '<ul><li><b>Sin explicar</b> = diferencia − partidas; Conciliado cuando es $0.00.</li>' +
+      '<li><b>Anticipos cancelados del mes:</b> solo se cuentan; una factura cancelada ya no conserva importe, por eso no suma. El sistema los muestra como estatus Cancelada y el Excel aún los traía con monto.</li></ul>'],
+    res_cobros: ['Cobranza vs banco', '<p>Los cobros prepago del mes agrupados por el estatus del cruce con el banco (como en Conciliación crédito) y la integración de los depósitos de BANORTE 2791.</p>' +
+      '<ul><li><b>% cuadrado:</b> cobros que cuadran con un depósito entre el total de cobros. Los cobros <b>Cancelados</b> se muestran aparte y no suman al total ni al porcentaje. Sin cobros, 0 %.</li>' +
+      '<li>Haz clic en un estatus para ver esos cobros en Conciliación cobros.</li>' +
+      '<li><b>Integración de depósitos 2791:</b> depósitos totales (abonos) − aplicados a cobros prepago − aplicados a cobros de crédito − traspasos entre cuentas = <b>depósitos no identificados</b>, lo que hay que revisar en el tab Banco 2791. Se calcula al consultar ese banco; mientras tanto dice "Cargando…".</li></ul>'],
   };
   Conc.bindAyuda(AYUDA);
 
@@ -389,7 +413,8 @@ $(function () {
     var g = {}, orden = [];
     var ORIGEN = ['Depositado en mes anterior', 'Efectivo', 'Consumo propio', 'No localizado'];
     cobros.forEach(function (r) {
-      var conCuenta = !!r.cuenta && r.estatus !== 'Depositado en mes anterior';
+      // Los cancelados van siempre a su propio renglón (sin cuenta) y no suman al Total
+      var conCuenta = !!r.cuenta && r.estatus !== 'Depositado en mes anterior' && r.estatus !== 'Cancelado';
       var k = conCuenta ? 'c|' + r.cuenta : 's|' + r.estatus;
       if (!g[k]) {
         g[k] = { etiqueta: conCuenta ? (r.banco ? r.banco + ' ' : '') + r.cuenta : r.estatus, conCuenta: conCuenta, n: 0, monto: 0, depositos: {}, estatus: {} };
@@ -407,13 +432,15 @@ $(function () {
       var x = g[k];
       var dep = Object.keys(x.depositos).reduce(function (s, id) { return s + x.depositos[id]; }, 0);
       var est = Object.keys(x.estatus).sort().map(function (e) { return badge(e, 'display') + '<b>' + x.estatus[e] + '</b>'; }).join(' ');
-      html += '<tr><td>' + esc(x.etiqueta) + '</td>' + tdn(x.n) + tdm(x.monto) +
+      var cancelado = !x.conCuenta && x.etiqueta === 'Cancelado';
+      html += '<tr' + (cancelado ? ' class="cv-fila-cancel"' : '') + '><td>' + esc(x.etiqueta) + (cancelado ? ' <small>(no suma al total)</small>' : '') + '</td>' + tdn(x.n) + tdm(x.monto) +
         (x.conCuenta ? tdm(dep) + '<td class="cv-monto">' + montoDif(r2(dep - x.monto), 'display') + '</td>' : '<td></td><td></td>') +
         '<td class="cv-monto">' + est + '</td></tr>';
+      if (cancelado) return;
       t.n += x.n; t.monto += x.monto;
       if (x.conCuenta) { t.dep += dep; t.montoConCuenta += x.monto; }
     });
-    if (cobros.length) html += '<tr class="cv-total"><td>Total</td>' + tdn(t.n) + tdm(t.monto) + tdm(t.dep) +
+    if (t.n) html += '<tr class="cv-total"><td>Total</td>' + tdn(t.n) + tdm(t.monto) + tdm(t.dep) +
       '<td class="cv-monto">' + montoDif(r2(t.dep - t.montoConCuenta), 'display') + '</td><td></td></tr>';
     $('#resCruce tbody').html(html);
   }
@@ -476,8 +503,10 @@ $(function () {
   // partidasAnticipos = card B calculado en el servidor (ConciliacionDebito::partidasAnticipos), lo usa el Resumen.
   var estado = {
     busqueda: 0, venta: [], facturas: [], anticipos: [], cobrosFactura: [], cobros: [], banco2791: [], banco0956: [],
-    partidasAnticipos: null, bancoPedido: {}, xhrs: [], fin: {}, t0: {},
+    partidasAnticipos: null, bancoPedido: {}, bancoListo: {}, bancoError: false, resumenPintado: false, xhrs: [], fin: {}, t0: {},
   };
+  // El Resumen se pinta cuando terminan estas cinco consultas
+  var CONSULTAS_RESUMEN = ['venta', 'facturas', 'anticipos', 'cobros_factura', 'cobros'];
 
   function filtros(extra) {
     return $.extend({ mes: $('#cvMes').val(), empresa: $('#cvEmpresa').val() }, extra || {});
@@ -559,6 +588,7 @@ $(function () {
       if (busqueda !== estado.busqueda) return;
       alOk((r && r.data) || [], r);
       progresoMarca(k, true);
+      if (CONSULTAS_RESUMEN.indexOf(k) >= 0 && CONSULTAS_RESUMEN.every(function (x) { return estado.fin[x] === 'ok'; })) pintarResumen();
     }).fail(function (x, st) {
       if (st === 'abort' || busqueda !== estado.busqueda) return;
       progresoMarca(k, false);
@@ -573,7 +603,11 @@ $(function () {
     estado.xhrs = []; estado.fin = {};
     estado.venta = []; estado.facturas = []; estado.anticipos = []; estado.cobrosFactura = [];
     estado.cobros = []; estado.banco2791 = []; estado.banco0956 = []; estado.partidasAnticipos = null;
-    estado.bancoPedido = {};
+    estado.bancoPedido = {}; estado.bancoListo = {}; estado.bancoError = false; estado.resumenPintado = false;
+    $('#resumenContenido').hide();
+    $('#resumenVacio').text('Consultando…').show();
+    $('#resVenta, #resAnticipos, #resCobros, #resDepositos').empty();
+    $('#resEstatusVenta, #resEstatusAnticipos, #resEstatusCobros').empty();
 
     TABLAS().forEach(function (t) { t.settings()[0].oLanguage.sEmptyTable = 'Consultando…'; t.clear().draw(); });
     $('#cntVenta, #cntFacturas, #cntPendientes, #cntApp, #cntPropio, #cntAnticipos, #cntAnticiposCli, #cntCobrosFactura, #cntCruce').text('…');
@@ -668,11 +702,14 @@ $(function () {
         return m;
       });
       estado[b.clave] = filas;
+      estado.bancoListo[b.clave] = true; estado.bancoError = false;
+      if (b.clave === 'banco2791' && estado.resumenPintado) pintarDepositos();
       cargarTabla(b.tabla, filas, b.cnt);
       pintarChips(b.chips, b.tabla, filas, 'clasificacion', COL_CLASIF_BANCO, 'importe');
     }).fail(function (x, st) {
       if (st === 'abort' || busqueda !== estado.busqueda) return;
       estado.bancoPedido[b.clave] = false;
+      if (b.clave === 'banco2791') { estado.bancoError = true; if (estado.resumenPintado) pintarDepositos(); }
       b.tabla.settings()[0].oLanguage.sEmptyTable = 'Error al consultar; vuelve a abrir el tab';
       b.tabla.clear().draw();
       $(b.cnt).text('!');
@@ -684,5 +721,176 @@ $(function () {
   }
   $('#cvTabs button[data-bs-toggle="tab"]').on('shown.bs.tab', cargarBancoActivo);
 
+  // ---------------------------------------------------------------- resumen (3 cuadros)
+  function fila(etiqueta, valor, clase, extra) {
+    return '<tr class="' + (clase || '') + '"' + (extra || '') + '><td>' + etiqueta + '</td><td>' +
+      (valor === null ? '' : (valor < 0 ? '−$' + fmtMonto(-valor) : '$' + fmtMonto(valor))) + '</td></tr>';
+  }
+  function irA(tab, tabla, col, valor, chips) {
+    abrirTab(tab);
+    tabla.column(col).search('^' + $.fn.dataTable.util.escapeRegex(valor) + '$', true, false).draw();
+    $(chips + ' .cv-chip').removeClass('activo').filter(function () { return $(this).data('estatus') === valor; }).addClass('activo');
+  }
+  function insignia(ok) { return badge(ok ? 'Conciliado' : 'Revisar', 'display'); }
+
+  // Estatus de Desglose venta que no son una partida a explicar
+  var ESTATUS_SIN_PARTIDA = ['Facturado', 'Redondeo', 'No se factura'];
+  var ORDEN_PARTIDAS = ['Se factura al mes siguiente', 'Factura cancelada', 'Facturado con base en cortes', 'Consumo sin corte', 'Consumo sin factura', 'Facturado de menos', 'Facturado de más'];
+
+  // Card A (sin DOM): cascada venta → facturado y partidas por estatus. Todo se calcula sobre las filas por cliente.
+  function calcVenta(v) {
+    var esVenta = function (r) { return r.clase === 'Venta'; };
+    var o = {};
+    o.venta = suma(v, 'monto');
+    o.propio = suma(v, 'monto', function (r) { return r.clase === 'Consumo propio'; });
+    o.bonif = suma(v, 'monto', function (r) { return r.clase === 'Bonificación'; });
+    o.neta = o.venta - o.propio - o.bonif;
+    o.fMes = suma(v, 'facturado_mes', esVenta);
+    o.fAnt = suma(v, 'facturado_mes_anterior', esVenta);
+    o.vigente = o.fMes + o.fAnt;
+    o.diferencia = r2(o.neta - o.fMes);
+    var g = {};
+    v.forEach(function (r) {
+      if (ESTATUS_SIN_PARTIDA.indexOf(r.estatus) >= 0) return;
+      var x = g[r.estatus] = g[r.estatus] || { n: 0, dif: 0 };
+      x.n++; x.dif += Number(r.diferencia) || 0;
+    });
+    o.partidas = Object.keys(g).map(function (k) { return { estatus: k, n: g[k].n, dif: r2(g[k].dif) }; })
+      .sort(function (a, b) {
+        var ia = ORDEN_PARTIDAS.indexOf(a.estatus), ib = ORDEN_PARTIDAS.indexOf(b.estatus);
+        return ((ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)) || (a.estatus < b.estatus ? -1 : 1);
+      });
+    o.sinExplicar = r2(o.diferencia - o.partidas.reduce(function (s, p) { return s + p.dif; }, 0));
+    // Consumo propio / bonificación que sí se facturó: no entra en la venta neta, se avisa en una nota
+    o.noVentaFact = suma(v, 'facturado_mes', function (r) { return !esVenta(r); }) + suma(v, 'facturado_mes_anterior', function (r) { return !esVenta(r); });
+    o.montoCortes = suma(v, 'dif_cortes');
+    return o;
+  }
+
+  // Card B (sin DOM): partidas ya calculadas en el servidor; se tolera que no lleguen (mes sin anticipos).
+  function calcAnticipos(p, anticipos) {
+    var vacio = { n: 0, importe: 0 };
+    p = p || {};
+    return {
+      cobros: Number(p.cobros) || 0, anticipos: Number(p.anticipos) || 0, diferencia: Number(p.diferencia) || 0,
+      otroMes: p.otro_mes || vacio, sinFactura: p.sin_factura || vacio, sinCobro: p.anticipos_sin_cobro || vacio,
+      sinExplicar: Number(p.sin_explicar) || 0,
+      canceladas: anticipos.filter(function (a) { return a.estatus === 'Cancelada'; }).length,
+    };
+  }
+
+  // Card C (sin DOM): cobros por estatus del cruce sin los cancelados; "% cuadrado" = cuadrado / total.
+  function calcCobros(c) {
+    var porEstatus = {}, cancel = { n: 0, monto: 0 }, total = 0, n = 0, cuadra = 0;
+    c.forEach(function (r) {
+      var m = Number(r.monto) || 0;
+      if (r.estatus === 'Cancelado') { cancel.n++; cancel.monto += m; return; }
+      var g = porEstatus[r.estatus] = porEstatus[r.estatus] || { n: 0, monto: 0 };
+      g.n++; g.monto += m; total += m; n++;
+      if (String(r.estatus).indexOf('Cuadra') === 0) cuadra += m;
+    });
+    return { porEstatus: porEstatus, cancel: cancel, total: total, n: n, cuadra: cuadra, pct: total ? (cuadra * 100 / total) : 0 };
+  }
+
+  // Integración de depósitos del banco 2791 (solo abonos).
+  function calcDepositos(movs) {
+    var abonos = movs.filter(function (m) { return Number(m.abono) > 0; });
+    var por = function (clasif) { return suma(abonos, 'abono', function (m) { return m.clasificacion === clasif; }); };
+    var o = { total: suma(abonos, 'abono'), prepago: por('Cobro prepago'), credito: por('Cobro crédito'), traspasos: por('Traspaso entre cuentas') };
+    o.noIdentificados = r2(o.total - o.prepago - o.credito - o.traspasos);
+    return o;
+  }
+
+  function pintarDepositos() {
+    if (!estado.bancoListo.banco2791) {
+      $('#resDepositos').html(estado.bancoError
+        ? '<tr><td class="text-muted">No se pudo consultar el banco 2791; abre el tab Banco 2791 para reintentar.</td></tr>'
+        : '<tr><td class="text-muted">Cargando…</td></tr>');
+      return;
+    }
+    var d = calcDepositos(estado.banco2791);
+    $('#resDepositos').html(
+      fila('Depósitos totales del mes en 2791 (abonos)', d.total, 'cv-total') +
+      fila('(−) Aplicados a cobros prepago', -d.prepago, 'cv-sub cv-link', ' data-ir="deposito" data-clasif="Cobro prepago"') +
+      fila('(−) Aplicados a cobros de crédito', -d.credito, 'cv-sub cv-link', ' data-ir="deposito" data-clasif="Cobro crédito"') +
+      fila('(−) Traspasos entre cuentas', -d.traspasos, 'cv-sub cv-link', ' data-ir="deposito" data-clasif="Traspaso entre cuentas"') +
+      fila('Depósitos no identificados', d.noIdentificados, 'cv-total cv-link', ' data-ir="deposito" data-clasif="No identificado"'));
+  }
+
+  function pintarResumen() {
+    // A. Venta vs facturación
+    var a = calcVenta(estado.venta);
+    var h = fila('Venta total (monto de despachos de débito)', a.venta) +
+      fila('(−) Consumo propio', -a.propio, 'cv-sub') +
+      fila('(−) Bonificaciones', -a.bonif, 'cv-sub') +
+      fila('Venta neta', a.neta, 'cv-total') +
+      fila('Facturado Serie E vigente (clientes de venta)', a.vigente) +
+      fila('(−) Facturas del mes anterior emitidas en el mes', -a.fAnt, 'cv-sub') +
+      fila('Facturado consumos del mes', a.fMes, 'cv-total') +
+      fila('Diferencia (venta neta − facturado del mes)', a.diferencia, 'cv-total') +
+      fila('<b>Partidas</b>', null);
+    a.partidas.forEach(function (p) {
+      h += fila(badge(p.estatus, 'display') + ' ' + p.n.toLocaleString('en-US') + ' clientes<span class="cv-nota">Ver Desglose venta</span>', p.dif,
+        'cv-sub cv-link', ' data-ir="venta" data-estatus="' + esc(p.estatus) + '"');
+    });
+    h += fila('Diferencia sin explicar', a.sinExplicar, 'cv-total');
+    if (Math.abs(a.noVentaFact) >= 0.01) h += fila('Nota: consumo propio / bonificación que sí se facturó (no entra en la venta neta)', a.noVentaFact, 'cv-sub');
+    h += fila('Nota: Monto − Cortes (despachos contra lo cobrado en el corte)<span class="cv-nota">Ver Consumos por cliente</span>', a.montoCortes, 'cv-sub cv-link', ' data-ir="cortes"');
+    $('#resVenta').html(h);
+    $('#resEstatusVenta').html(insignia(Math.abs(a.sinExplicar) < 0.01));
+
+    // B. Cobros vs anticipos facturados
+    var b = calcAnticipos(estado.partidasAnticipos, estado.anticipos);
+    $('#resAnticipos').html(
+      fila('Cobros prepago del mes', b.cobros) +
+      fila('Anticipos facturados', b.anticipos) +
+      fila('Diferencia (cobros − anticipos)', b.diferencia, 'cv-total') +
+      fila('<b>Partidas</b>', null) +
+      fila('Cobros aplicados a anticipos de otro mes (' + Number(b.otroMes.n).toLocaleString('en-US') + ')<span class="cv-nota">Ver Cobros por factura</span>', Number(b.otroMes.importe) || 0,
+        'cv-sub cv-link', ' data-ir="antNo"') +
+      fila('Cobros sin factura en la referencia (' + Number(b.sinFactura.n).toLocaleString('en-US') + ')<span class="cv-nota">Ver Cobros por factura</span>', Number(b.sinFactura.importe) || 0,
+        'cv-sub cv-link', ' data-ir="antSinFactura"') +
+      fila('Anticipos sin cobro aplicado (' + Number(b.sinCobro.n).toLocaleString('en-US') + ')<span class="cv-nota">Ver Anticipos</span>', Number(b.sinCobro.importe) || 0,
+        'cv-sub cv-link', ' data-ir="antSinCobro"') +
+      fila('Sin explicar', b.sinExplicar, 'cv-total') +
+      '<tr class="cv-sub"><td colspan="2">Nota: Anticipos cancelados del mes: ' + b.canceladas.toLocaleString('en-US') + ' (sin importe)</td></tr>');
+    $('#resEstatusAnticipos').html(insignia(Math.abs(b.sinExplicar) < 0.01));
+
+    // C. Cobranza vs banco
+    var c = calcCobros(estado.cobros);
+    var hc = fila('Cobros del mes (' + c.n.toLocaleString('en-US') + ')', c.total, 'cv-total');
+    Object.keys(c.porEstatus).sort().forEach(function (k) {
+      hc += fila(badge(k, 'display') + ' ' + c.porEstatus[k].n.toLocaleString('en-US') + ' cobros', c.porEstatus[k].monto,
+        'cv-sub cv-link', ' data-ir="cobro" data-estatus="' + esc(k) + '"');
+    });
+    hc += fila('Cuadrado contra banco', c.cuadra, 'cv-total');
+    if (c.cancel.n) hc += fila(badge('Cancelado', 'display') + ' ' + c.cancel.n.toLocaleString('en-US') + ' cobros (no suman al total)', c.cancel.monto,
+      'cv-sub cv-link', ' data-ir="cobro" data-estatus="Cancelado"');
+    $('#resCobros').html(hc);
+    $('#resEstatusCobros').html('<span class="cv-badge ' + (c.pct >= 99.99 ? 'cv-ok' : 'cv-warn') + '">' + c.pct.toFixed(1) + '% cuadrado</span>');
+
+    // Integración de depósitos 2791: usa el banco que se consulta al abrir su tab; aquí se dispara y se repinta al llegar
+    estado.resumenPintado = true;
+    pintarDepositos();
+    cargarBanco(BANCOS[0]);
+
+    $('#resumenVacio').hide();
+    $('#resumenContenido').show();
+  }
+
+  $('#resumenContenido').on('click', 'tr.cv-link', function () {
+    var ir = $(this).data('ir'), est = $(this).data('estatus');
+    if (ir === 'venta') irA('#tabVenta', tablaVenta, COL_ESTATUS_VENTA, est, '#chipsVenta');
+    else if (ir === 'cortes') abrirTab('#tabApp');
+    else if (ir === 'cobro') irA('#tabCruce', tablaCruce, COL_ESTATUS_CRUCE, est, '#chipsCruce');
+    else if (ir === 'antNo') irA('#tabCobrosFactura', tablaCobrosFactura, COL_EXISTE_COBROS_FACTURA, 'No', '#chipsCobrosFactura');
+    else if (ir === 'antSinFactura') irA('#tabCobrosFactura', tablaCobrosFactura, COL_EXISTE_COBROS_FACTURA, 'Sin factura en referencia', '#chipsCobrosFactura');
+    else if (ir === 'antSinCobro') irA('#tabAnticipos', tablaAnticipos, COL_ESTATUS_ANTICIPOS, 'Sin cobro', '#chipsAnticipos');
+    else if (ir === 'deposito') irA('#tabBanco2791', tablaBanco2791, COL_CLASIF_BANCO, $(this).data('clasif'), '#chipsBanco2791');
+  });
+
   $('#cvFiltros').on('submit', function (e) { e.preventDefault(); buscar(); });
+
+  // Gancho de pruebas en node (tests/ConciliacionDebitoResumenTest.js); en el navegador no se usa.
+  if (typeof window !== 'undefined') window.ConcDebitoResumen = { estado: estado, pintarResumen: pintarResumen, calcVenta: calcVenta, calcAnticipos: calcAnticipos, calcCobros: calcCobros, calcDepositos: calcDepositos };
 });

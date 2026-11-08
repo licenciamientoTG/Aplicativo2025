@@ -66,6 +66,23 @@ check("CONSULTAS registra la llave 'cobros'", (bool)preg_match("/\\['cobros',\\s
 check('el JS guarda estado.cobros, banco2791 y banco0956', str_contains($js, 'banco2791: []') && str_contains($js, 'banco0956: []') && str_contains($js, 'cobros: []'));
 check('el JS pinta los estatus nuevos', str_contains($js, "'Depositado en mes anterior'") && str_contains($js, "'Consumo propio'") && str_contains($js, "'No localizado'") && str_contains($js, "'Traspaso entre cuentas'"));
 
+// Resumen (3 cuadros) y textos de ayuda
+foreach (['resVenta', 'resAnticipos', 'resCobros', 'resDepositos', 'resumenVacio', 'resumenContenido'] as $id) {
+    check("la vista tiene id=\"$id\"", str_contains($vista, "id=\"$id\""));
+}
+foreach (['resVenta', 'resAnticipos', 'resCobros', 'resDepositos'] as $id) {
+    check("$id es una tabla cv-cascada", (bool)preg_match('/<table class="cv-cascada" id="' . $id . '"/', $vista));
+}
+check('el JS define pintarResumen', str_contains($js, 'function pintarResumen('));
+check('pintarResumen se dispara al terminar las cinco consultas', (bool)preg_match("/CONSULTAS_RESUMEN\s*=\s*\['venta',\s*'facturas',\s*'anticipos',\s*'cobros_factura',\s*'cobros'\]/", $js) && str_contains($js, 'pintarResumen()'));
+foreach (['filtros', 'resumen', 'res_venta', 'res_anticipos', 'res_cobros', 'venta', 'app', 'propio', 'facturas', 'pendientes', 'anticipos',
+          'anticipos_cli', 'cobros_factura', 'cruce', 'banco2791', 'banco0956'] as $k) {
+    check("ayuda: AYUDA tiene la llave $k", str_contains($js, "    $k: ['"));
+    check("ayuda: la vista tiene data-ayuda=\"$k\"", str_contains($vista, "data-ayuda=\"$k\""));
+}
+check('ayuda: menciona la Serie E cancelada que contaba el Excel', str_contains($js, '24 Serie E canceladas el 30/09'));
+check('el Total del cruce excluye los cancelados', str_contains($js, "if (cancelado) return;"));
+
 foreach ($lineas[0] as $l) {
     check('permission: 14 en ' . trim(substr($l, 0, 60)), str_contains($l, 'permission: 14'));
 }

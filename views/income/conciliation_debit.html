@@ -121,10 +121,39 @@
 
 <div class="tab-content">
 
-  {# 1. Resumen (lo llena la tarea del Resumen) #}
+  {# 1. Resumen #}
   <div class="tab-pane fade show active" id="tabResumen" role="tabpanel">
+    <div class="mb-2"><button type="button" class="cv-ayuda" data-ayuda="resumen" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button></div>
     <div id="resumenVacio" class="text-muted p-3">Elige un mes y presiona Buscar.</div>
-    <div class="row g-3" id="resumenContenido" style="display:none"></div>
+    <div class="row g-3" id="resumenContenido" style="display:none">
+      <div class="col-xl-6">
+        <div class="card h-100"><div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="cv-card-title">Venta vs facturación <button type="button" class="cv-ayuda" data-ayuda="res_venta" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button></span>
+            <span id="resEstatusVenta"></span>
+          </div>
+          <table class="cv-cascada" id="resVenta"></table>
+        </div></div>
+      </div>
+      <div class="col-xl-6">
+        <div class="card mb-3"><div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="cv-card-title">Cobros vs anticipos facturados <button type="button" class="cv-ayuda" data-ayuda="res_anticipos" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button></span>
+            <span id="resEstatusAnticipos"></span>
+          </div>
+          <table class="cv-cascada" id="resAnticipos"></table>
+        </div></div>
+        <div class="card"><div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="cv-card-title">Cobranza vs banco <button type="button" class="cv-ayuda" data-ayuda="res_cobros" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button></span>
+            <span id="resEstatusCobros"></span>
+          </div>
+          <table class="cv-cascada" id="resCobros"></table>
+          <div class="cv-card-title mt-3 mb-2">Integración de depósitos 2791</div>
+          <table class="cv-cascada" id="resDepositos"></table>
+        </div></div>
+      </div>
+    </div>
   </div>
 
   {# 2. Desglose venta #}
