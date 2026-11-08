@@ -25,6 +25,15 @@ return [
         route('conciliation/bank/', [Income::class, 'conciliation_bank'], name: 'income.conciliation_bank', methods: ['POST'], permission: 14),
         route('conciliation/app-sales/', [Income::class, 'conciliation_app_sales'], name: 'income.conciliation_app_sales', methods: ['POST'], permission: 14),
         route('conciliation/own-consumption/', [Income::class, 'conciliation_own_consumption'], name: 'income.conciliation_own_consumption', methods: ['POST'], permission: 14),
+
+        // Conciliación débito (prepago): views/income/conciliation_debit.html
+        route('conciliation-debit/', [Income::class, 'conciliation_debit'], name: 'income.conciliation_debit', methods: ['GET'], permission: 14),
+        route('conciliation-debit/sales/', [Income::class, 'conciliation_debit_sales'], name: 'income.conciliation_debit_sales', methods: ['POST'], permission: 14),
+        route('conciliation-debit/consumption/', [Income::class, 'conciliation_debit_consumption'], name: 'income.conciliation_debit_consumption', methods: ['POST'], permission: 14),
+        route('conciliation-debit/own-consumption/', [Income::class, 'conciliation_debit_own'], name: 'income.conciliation_debit_own', methods: ['POST'], permission: 14),
+        route('conciliation-debit/invoices/', [Income::class, 'conciliation_debit_invoices'], name: 'income.conciliation_debit_invoices', methods: ['POST'], permission: 14),
+        route('conciliation-debit/pending-dispatches/', [Income::class, 'conciliation_debit_pending'], name: 'income.conciliation_debit_pending', methods: ['POST'], permission: 14),
+
         route('efc_conc_diferencia_captura', [Income::class, 'efc_conc_diferencia_captura'], name: 'income.efc_conc_diferencia_captura', methods: ['POST'], permission: 14),
         route('efc_conc_cambios_historial', [Income::class, 'efc_conc_cambios_historial'], name: 'income.efc_conc_cambios_historial', methods: ['GET'], permission: 14),
         route('efc_conc_cambios_previsualizar', [Income::class, 'efc_conc_cambios_previsualizar'], name: 'income.efc_conc_cambios_previsualizar', methods: ['GET'], permission: 14),

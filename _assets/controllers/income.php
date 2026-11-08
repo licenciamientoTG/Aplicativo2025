@@ -575,6 +575,93 @@ class Income{
         json_output(['data' => $rows ?: []]);
     }
 
+    /**
+     * Ingresos > Conciliación débito (prepago): venta a clientes de débito vs facturación de consumos (Serie E).
+     * Permiso 14 (routes/income.php). Diseño: docs/superpowers/specs/2026-11-08-conciliacion-debito-design.md
+     */
+    public function conciliation_debit() : void {
+        echo $this->twig->render($this->route . 'conciliation_debit.html', [
+            'mes'      => date('Y-m', strtotime('first day of last month')),
+            'empresas' => $this->clientesModel->get_station_companies(),
+        ]);
+    }
+
+    /** POST: una fila por cliente de débito con consumos, cortes y lo facturado en Serie E por periodo. */
+    public function conciliation_debit_sales() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        $empresa = $this->conciliationEmpresa();
+        $consumos = $this->clientesModel->get_dispatches_summary_by_client($from, $until, 4, 0, $empresa, 'incluir') ?: [];
+        json_output(['data' => ConciliacionDebito::ventaPorCliente($consumos, $this->conciliationDebitFacturas())]);
+    }
+
+    /** POST: el mismo "Resumen por cliente" de Clientes > Consumos Débito. */
+    public function conciliation_debit_consumption() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        json_output(['data' => $this->clientesModel->get_dispatches_summary_by_client($from, $until, 4, 0, $this->conciliationEmpresa(), 'incluir') ?: []]);
+    }
+
+    /** POST: despachos de débito de clientes de consumo propio y bonificaciones. */
+    public function conciliation_debit_own() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        json_output(['data' => $this->clientesModel->get_dispatches_by_client($from, $until, 4, 0, $this->conciliationEmpresa(), 'solo') ?: []]);
+    }
+
+    /** POST: facturas Serie E del mes (y las del mes siguiente que son de consumos del mes), una fila por factura con su Periodo. */
+    public function conciliation_debit_invoices() : void {
+        set_time_limit(300);
+        $subopes = [44 => 'Facturación Consumos', 18 => 'Facturación Débito Tarjetas'];
+        $data = [];
+        foreach ($this->conciliationDebitFacturas() as $r) {
+            $data[] = [
+                'factura'    => get_invoice_series((int)$r['nro']),
+                'fecha'      => $r['fecha'],
+                'codcli'     => (int)$r['codcli'],
+                'cliente'    => trim((string)$r['cliente']),
+                'tipo'       => $subopes[(int)$r['subope']] ?? ('Subope ' . (int)$r['subope']),
+                'total'      => round((float)$r['total'], 2),
+                'cfdi'       => (int)$r['cancelada'] === 1 ? 'Cancelada' : (trim((string)$r['satuid']) === '' ? 'Sin timbrar' : 'Timbrada'),
+                'periodo'    => $r['periodo'],
+                'uuid'       => $r['satuid'] ?? '',
+                'referencia' => $this->txtrefTexto((string)$r['txtref']),
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /** POST: despachos de débito del mes sin factura (nrofac = 0). */
+    public function conciliation_debit_pending() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        $data = [];
+        foreach ((new ConciliacionDebitoModel)->despachos_pendientes($from, $until, $this->conciliationEmpresa()) as $r) {
+            $hora = str_pad((string)$r['hratrn'], 4, '0', STR_PAD_LEFT);
+            $data[] = [
+                'fecha'     => $r['fecha'],
+                'hora'      => substr($hora, 0, 2) . ':' . substr($hora, 2, 2),
+                'nrotrn'    => $r['nrotrn'],
+                'estacion'  => trim((string)$r['estacion']),
+                'producto'  => trim((string)$r['producto']),
+                'litros'    => round((float)$r['litros'], 3),
+                'monto'     => round((float)$r['monto'], 2),
+                'codcli'    => (int)$r['codcli'],
+                'cliente'   => trim((string)$r['cliente']),
+                'clase'     => ConciliacionDebito::clasePorCategoria((string)$r['categoria']),
+                'categoria' => trim((string)$r['categoria']),
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
+    /** Facturas Serie E del mes del POST ya clasificadas por periodo (descarta las que no son del mes; ver ConciliacionDebito::clasificarFacturas). */
+    private function conciliationDebitFacturas() : array {
+        [$from, $until, $desde] = $this->conciliationRange();
+        $facturas = (new ConciliacionDebitoModel)->facturas_serie_e($from, $until, $this->conciliationEmpresa());
+        return ConciliacionDebito::clasificarFacturas($facturas, substr($desde, 0, 7));
+    }
+
     /** Forma de pago SAT (@M: del cobro). */
     private const CONCILIATION_FORMAS_PAGO = [
         '01' => 'Efectivo', '02' => 'Cheque', '03' => 'Transferencia', '04' => 'Tarjeta de crédito', '28' => 'Tarjeta de débito',

@@ -73,6 +73,44 @@ check('estatus: Facturado de menos',est(['monto' => 1000.0, 'cortes' => 800.0, '
 check('estatus: Facturado de más (monto 0)', est(['monto' => 0.0, 'facturado_mes' => 500.0]) === 'Facturado de más');
 check('estatus: Facturado de más', est(['monto' => 1000.0, 'cortes' => 1000.0, 'facturado_mes' => 1500.0]) === 'Facturado de más');
 
+// clasePorCategoria / clasificarFacturas / ventaPorCliente
+check('clase: vacío = Venta', ConciliacionDebito::clasePorCategoria('') === 'Venta');
+check('clase: Bonificaciones', ConciliacionDebito::clasePorCategoria('Bonificaciones') === 'Bonificación');
+check('clase: BONIFICACIÓN con acento', ConciliacionDebito::clasePorCategoria('BONIFICACIÓN MKT') === 'Bonificación');
+check('clase: otra categoría = Consumo propio', ConciliacionDebito::clasePorCategoria('Dollar to go') === 'Consumo propio');
+
+function fac(string $fecha, string $txtref, float $total, int $cli, int $canc = 0, int $nro = 1): array {
+    return ['fecha' => $fecha, 'txtref' => $txtref, 'total' => $total, 'codcli' => $cli, 'cliente' => "C$cli", 'cancelada' => $canc, 'nro' => $nro];
+}
+$facs = ConciliacionDebito::clasificarFacturas([
+    fac('2026-08-31', '@N:Consumos Agosto 2026', 1, 1),                  // antes del mes: se descarta
+    fac('2026-09-02', '@N:Consumos Agosto 2026@t:GLOBAL', 100, 1),       // Mes anterior
+    fac('2026-09-15', '@N:Consumos Septiembre 2026', 200, 1),            // Del mes
+    fac('2026-09-20', 'sin nota', 50, 1),                                // Sin periodo (cuenta del mes)
+    fac('2026-09-30', '@N:CANCELAD', 300, 2, 1),                         // Cancelada
+    fac('2026-10-03', '@N:Consumos Septiembre 2026', 400, 1),            // Mes siguiente
+    fac('2026-10-05', '@N:Consumos Agosto 2026', 9, 1),                  // después del mes y no Mes siguiente: se descarta
+    fac('2026-10-04', 'sin nota', 9, 1),                                 // se descarta
+], '2026-09');
+check('facturas: 5 conservadas', count($facs) === 5);
+check('facturas: periodos', array_column($facs, 'periodo') === ['Mes anterior', 'Del mes', 'Sin periodo', 'Cancelada', 'Mes siguiente']);
+
+$cons = [
+    ['codcli' => 1, 'Cliente' => 'UNO', 'Despachos' => 3, 'Litros' => '10.500', 'Monto' => '250.00', 'MontoCortes' => '250.00', 'Categoria' => ''],
+    ['codcli' => 3, 'Cliente' => 'TRES', 'Despachos' => 1, 'Litros' => '1.000', 'Monto' => '40.00', 'MontoCortes' => '40.00', 'Categoria' => 'Bonificaciones'],
+];
+$venta = ConciliacionDebito::ventaPorCliente($cons, $facs);
+$por = array_column($venta, null, 'codcli');
+check('venta: 3 clientes (uno solo con facturas)', count($venta) === 3);
+check('venta: orden por monto desc', $venta[0]['codcli'] === 1);
+check('venta: cliente 1 facturado mes 250 (Del mes + Sin periodo)', $por[1]['facturado_mes'] === 250.0);
+check('venta: cliente 1 mes anterior 100', $por[1]['facturado_mes_anterior'] === 100.0);
+check('venta: cliente 1 mes siguiente 400', $por[1]['facturado_siguiente'] === 400.0);
+check('venta: cliente 1 facturas = 4 (sin la cancelada)', $por[1]['facturas'] === 4);
+check('venta: cliente 1 Facturado', $por[1]['estatus'] === 'Facturado' && $por[1]['diferencia'] === 0.0);
+check('venta: cliente 2 solo cancelada: monto 0, cancelada 300', $por[2]['monto'] === 0.0 && $por[2]['cancelada'] === 300.0 && $por[2]['facturado_mes'] === 0.0);
+check('venta: bonificación = No se factura', $por[3]['clase'] === 'Bonificación' && $por[3]['estatus'] === 'No se factura');
+
 // clasificarMovimiento
 $propias = ['0601500947', '1155446527', '123'];
 function mov(array $o): array {

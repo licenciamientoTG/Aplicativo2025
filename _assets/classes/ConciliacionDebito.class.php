@@ -87,6 +87,92 @@ class ConciliacionDebito
         return $out;
     }
 
+    const PERIODO_CANCELADA = 'Cancelada';
+
+    /** Clase del cliente según su categoría de consumo propio ('' = Venta; con "bonificación" = Bonificación). */
+    public static function clasePorCategoria(string $categoria): string
+    {
+        $c = trim($categoria);
+        if ($c === '') return 'Venta';
+        return strpos(self::normalizar($c), 'bonificacion') !== false ? 'Bonificación' : 'Consumo propio';
+    }
+
+    /**
+     * Pone 'periodo' a cada factura Serie E (filas de ConciliacionDebitoModel::facturas_serie_e) y descarta las que
+     * no son del mes pedido: fecha anterior al primer día, o posterior al último que no sea 'Mes siguiente'.
+     * Las canceladas quedan con periodo 'Cancelada'.
+     */
+    public static function clasificarFacturas(array $facturas, string $mes): array
+    {
+        $primero = $mes . '-01';
+        $ultimo = date('Y-m-t', strtotime($primero));
+        $out = [];
+        foreach ($facturas as $f) {
+            $fecha = (string)($f['fecha'] ?? '');
+            if ($fecha < $primero) continue;
+            $periodo = self::periodoFactura((string)($f['txtref'] ?? ''), $mes, $fecha);
+            if ($fecha > $ultimo && $periodo !== self::PERIODO_MES_SIGUIENTE) continue;
+            $f['periodo'] = (int)($f['cancelada'] ?? 0) === 1 ? self::PERIODO_CANCELADA : $periodo;
+            $out[] = $f;
+        }
+        return $out;
+    }
+
+    /**
+     * Una fila por cliente: consumos (get_dispatches_summary_by_client) + facturas ya clasificadas.
+     * Cancelada suma a 'cancelada' y no a 'facturado_*'; Mes anterior / Mes siguiente van a su columna;
+     * Del mes y Sin periodo cuentan como del mes. Clientes solo con facturas entran con monto 0.
+     */
+    public static function ventaPorCliente(array $consumos, array $facturasClasificadas): array
+    {
+        $por = [];
+        foreach ($consumos as $r) {
+            $id = (int)$r['codcli'];
+            $por[$id] = [
+                'codcli' => $id,
+                'cliente' => (string)$r['Cliente'],
+                'clase' => self::clasePorCategoria((string)($r['Categoria'] ?? '')),
+                'despachos' => (int)$r['Despachos'],
+                'litros' => (float)$r['Litros'],
+                'monto' => (float)$r['Monto'],
+                'cortes' => (float)$r['MontoCortes'],
+                'facturado_mes' => 0.0, 'facturado_mes_anterior' => 0.0, 'facturado_siguiente' => 0.0,
+                'cancelada' => 0.0, 'facturas' => 0,
+            ];
+        }
+        foreach ($facturasClasificadas as $f) {
+            $id = (int)$f['codcli'];
+            if (!isset($por[$id])) {
+                $por[$id] = [
+                    'codcli' => $id, 'cliente' => trim((string)($f['cliente'] ?? '')) ?: '(Cliente ' . $id . ')',
+                    'clase' => 'Venta', 'despachos' => 0, 'litros' => 0.0, 'monto' => 0.0, 'cortes' => 0.0,
+                    'facturado_mes' => 0.0, 'facturado_mes_anterior' => 0.0, 'facturado_siguiente' => 0.0,
+                    'cancelada' => 0.0, 'facturas' => 0,
+                ];
+            }
+            $total = (float)$f['total'];
+            switch ($f['periodo']) {
+                case self::PERIODO_CANCELADA: $por[$id]['cancelada'] += $total; continue 2;
+                case self::PERIODO_MES_ANTERIOR: $por[$id]['facturado_mes_anterior'] += $total; break;
+                case self::PERIODO_MES_SIGUIENTE: $por[$id]['facturado_siguiente'] += $total; break;
+                default: $por[$id]['facturado_mes'] += $total;
+            }
+            $por[$id]['facturas']++;
+        }
+        $out = [];
+        foreach ($por as $c) {
+            foreach (['litros', 'monto', 'cortes', 'facturado_mes', 'facturado_mes_anterior', 'facturado_siguiente', 'cancelada'] as $k) {
+                $c[$k] = round($c[$k], $k === 'litros' ? 3 : 2);
+            }
+            $c['dif_cortes'] = round($c['monto'] - $c['cortes'], 2);
+            $c['diferencia'] = round($c['monto'] - $c['facturado_mes'], 2);
+            $c['estatus'] = self::estatusCliente($c);
+            $out[] = $c;
+        }
+        usort($out, static fn($a, $b) => $b['monto'] <=> $a['monto']);
+        return $out;
+    }
+
     public static function estatusCliente(array $c): string
     {
         $monto = (float)($c['monto'] ?? 0);
