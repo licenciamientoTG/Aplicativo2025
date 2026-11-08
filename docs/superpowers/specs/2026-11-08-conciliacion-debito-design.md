@@ -134,13 +134,13 @@ Todas las líneas cuadran al centavo, salvo las diferencias explicadas de la tab
 | Depósitos 2791 | 1,925 abonos / $37,229,115.24 | igual | 0 |
 | Movimientos 0956 | 2,329 | igual | 0 |
 | Cobros ligados a 2791 por el cruce | $31,485,663.43 | $32,007,985.13 | −$522,321.70 (ver limitación) |
-| % cuadrado (monto ligado a banco / cobros no cancelados) | 97.25% | 99.98% | 68 cobros "No localizado" = $867,903.62 |
+| % cuadrado (monto ligado a banco / cobros no cancelados) | 97.25% | 98.17% (32,007,985.13 ligados a 2791 de 32,605,435.05) | 68 cobros "No localizado" = $867,903.62 |
 
 - **Sin explicar**: card A = $0.00 con el Redondeo ($0.01, 1 cliente) mostrado como partida; card B = $0.00 con las partidas de arriba.
   El criterio original "Sin explicar = $0.00 en A y B" vale solo con esas partidas visibles (nada se oculta).
 - **Criterio duro de cobros**: % cuadrado ≥ 97% (pasa con 97.25%). La comparación contra $32,007,985.13 es solo informativa.
 - **Tiempos**: `payments/` ~4.5 s; `bank/` en frío 9.7–11.3 s (cruce prepago + crédito + clasificación); 0956 reutilizando el cruce ~4.7 s.
-- **Limitación conocida**: el cruce cubre 97.25% y no el 99.98% del Excel porque 68 cobros ("No localizado", $867,903.62) no tienen un depósito
+- **Limitación conocida**: el cruce cubre 97.25% y no el 98.17% que el Excel liga a 2791 (más 956, efectivo, etc. a mano) porque 68 cobros ("No localizado", $867,903.62) no tienen un depósito
   libre del mismo importe ±3 días en 2791/0956; el Excel los ligó a mano o agrupados. Las reglas del cruce no se cambiaron a propósito.
   Mejora futura sugerida: empatar por RFC del cliente y por sumas de subconjuntos por día.
 - Prueba en navegador con el usuario pendiente (no se levanta el servidor PHP).
