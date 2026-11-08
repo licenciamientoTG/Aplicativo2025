@@ -145,6 +145,17 @@ check('cobrosPorFactura: anticipo de otro mes = No', $cf[3]['existe_en_anticipos
 check('cobrosPorFactura: sin factura = una fila con el monto del cobro', $cf[4]['existe_en_anticipos'] === 'Sin factura en referencia' && $cf[4]['nro_factura'] === null && $cf[4]['importe'] === 10000.0);
 check('cobrosPorFactura: sin DocumentosA usa la Referencia', $cf[5]['nro_factura'] === 1200000100 && $cf[5]['existe_en_anticipos'] === 'No');
 
+// Serie E (consumos) no es un anticipo: no cuenta como 'No' ni entra en otro_mes
+$cf = ConciliacionDebito::cobrosPorFactura([cobroPrepago(1, 500.0, '1300000999:500.00')], [1200000001]);
+check('serie E en DocumentosA: Sin factura en referencia con el monto del cobro',
+    count($cf) === 1 && $cf[0]['existe_en_anticipos'] === 'Sin factura en referencia' && $cf[0]['importe'] === 500.0 && $cf[0]['nro_factura'] === null);
+$cf = ConciliacionDebito::cobrosPorFactura([cobroPrepago(2, 600.0, '', '@N:Fac.E55 ($600.00)')], [1200000001]);
+check('serie E en Referencia: Sin factura en referencia', count($cf) === 1 && $cf[0]['existe_en_anticipos'] === 'Sin factura en referencia' && $cf[0]['importe'] === 600.0);
+$cf = ConciliacionDebito::cobrosPorFactura([cobroPrepago(3, 900.0, '1200000001:400.00,1300000999:500.00')], [1200000001]);
+check('una D y una E: solo la fila D', count($cf) === 1 && $cf[0]['nro_factura'] === 1200000001 && $cf[0]['existe_en_anticipos'] === 'Sí');
+$p = ConciliacionDebito::partidasAnticipos([], ConciliacionDebito::cobrosPorFactura([cobroPrepago(1, 500.0, '1300000999:500.00')], []), 0, 500.0);
+check('serie E no suma a otro_mes', $p['otro_mes']['importe'] === 0.0 && $p['sin_factura']['importe'] === 500.0);
+
 // partidasAnticipos: cobros − anticipos = otro mes + sin factura + anticipos sin cobro + sin explicar
 $ant = [
     ['Factura' => 1, 'Total' => 3500.0, 'cobro_aplicado' => 3500.0, 'estatus' => 'Con cobro'],

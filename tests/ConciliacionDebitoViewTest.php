@@ -40,8 +40,13 @@ foreach (['anticipos', 'anticipos_cli', 'cobros_factura'] as $k) {
     check("ayuda: AYUDA tiene la llave $k", str_contains($js, "$k: ['"));
     check("ayuda: la vista tiene data-ayuda=\"$k\"", str_contains($vista, "data-ayuda=\"$k\""));
 }
+preg_match('/var CONSULTAS = \[(.*?)\n  \];/s', $js, $mc);
+$consultas = $mc[1] ?? '';
+foreach (['anticipos', 'anticipos_cli', 'cobros_factura'] as $k) {
+    check("CONSULTAS registra la llave '$k'", (bool)preg_match("/\\['$k',\\s*'[^']+',\\s*'#tab\\w+',\\s*'#cnt\\w+'\\]/", $consultas));
+}
 foreach (['anticipos', 'anticipos_clients', 'payment_invoices'] as $k) {
-    check("CONSULTAS registra $k", str_contains($js, "income.conciliation_debit_$k"));
+    check("el JS pide income.conciliation_debit_$k", str_contains($js, "income.conciliation_debit_$k"));
 }
 foreach ($lineas[0] as $l) {
     check('permission: 14 en ' . trim(substr($l, 0, 60)), str_contains($l, 'permission: 14'));

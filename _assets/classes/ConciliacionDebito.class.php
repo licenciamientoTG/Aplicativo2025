@@ -218,7 +218,7 @@ class ConciliacionDebito
 
     /**
      * Una fila por (cobro prepago, factura que paga). Las facturas salen de DocumentosA (`facturas` = "nroapl:mto,…",
-     * solo series D y E: DocumentosA también trae el vale/consumo de ControlGas, nro < 1,200,000,000) y, si el cobro
+     * solo serie D (anticipos, 12…): DocumentosA también trae el vale/consumo de ControlGas, nro < 1,200,000,000) y, si el cobro
      * no trae ninguna, de la Referencia (txtref, "Fac.D242940 ($3,500.00)"). Un cobro sin facturas genera UNA fila
      * con existe_en_anticipos = ANT_SIN_FACTURA e importe = monto del cobro.
      * $nrosAnticipos: números de factura de los anticipos del mes (ConciliacionDebitoModel::anticipos).
@@ -233,9 +233,15 @@ class ConciliacionDebito
             foreach (array_filter(explode(',', (string)($c['facturas'] ?? ''))) as $par) {
                 [$nro, $mto] = array_pad(explode(':', $par), 2, '0');
                 $nro = (int)$nro;
-                if ($nro >= 1200000000 && $nro < 1400000000) $facturas[] = ['nro' => $nro, 'importe' => (float)$mto];
+                if ($nro >= 1200000000 && $nro < 1300000000) $facturas[] = ['nro' => $nro, 'importe' => (float)$mto];
             }
-            if (!$facturas) $facturas = self::facturasDeReferencia((string)($c['txtref'] ?? ''));
+            if (!$facturas) {
+                // Solo serie D (anticipos): una E (consumos) en la Referencia no es un anticipo, ni de este mes ni de otro.
+                $facturas = array_values(array_filter(
+                    self::facturasDeReferencia((string)($c['txtref'] ?? '')),
+                    fn($f) => $f['nro'] >= 1200000000 && $f['nro'] < 1300000000
+                ));
+            }
             $base = [
                 'cobro' => (int)$c['nro'], 'fecha' => (string)$c['fecha'], 'codcli' => (int)($c['codopr'] ?? 0),
                 'cliente' => trim((string)($c['cliente'] ?? '')), 'monto' => round((float)$c['monto'], 2),

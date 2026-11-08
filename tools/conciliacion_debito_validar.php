@@ -102,12 +102,12 @@ function validar_anticipos(): void {
     comparar('Otro mes = 1200242940, 1200242934, 1200089958', (float)$esperado($p['otro_mes']['filas'], [1200242940, 1200242934, 1200089958]), 1, 0);
     comparar('Sin cobro = 1200244867, 1200244401', (float)$esperado($p['anticipos_sin_cobro']['filas'], [1200244867, 1200244401]), 1, 0);
 
-    // Las canceladas conservan número pero no importe. La BD marca como canceladas todas las del mes (también las
-    // re-emitidas el mismo mes, flgcon 141/5/7); el Excel solo se diferenciaba en 1200243922 y 1200244351
-    // (canceladas el 2026-10-31, después de extraerlo).
+    // Las canceladas conservan número pero no importe. La BD marca 60 como canceladas en septiembre (empresa 1): son
+    // cancelaciones re-emitidas dentro del mes (flgcon 141/5/7/13); el Excel solo mostraba las 2 sin cobro,
+    // 1200243922 y 1200244351 (canceladas el 2026-10-31, después de extraerlo). Las 60 se listan en el tab 7.
     $nrosCanc = $nros($canceladas);
     comparar('Las 2 canceladas conocidas están en el listado', (float)(in_array(1200243922, $nrosCanc) && in_array(1200244351, $nrosCanc)), 1, 0);
-    comparar('Anticipos cancelados del mes', count($canceladas), 2, 0);
+    comparar('Anticipos cancelados del mes', count($canceladas), 60, 0);
     $tardias = array_filter($canceladas, fn($c) => $c['fecha_cancelacion'] > date('Y-m-t', strtotime($mes . '-01')));
     echo "-- informativo: canceladas con fecha de cancelación posterior al mes: " . count($tardias) . " (" . implode(', ', $nros($tardias)) . ")\n";
 }

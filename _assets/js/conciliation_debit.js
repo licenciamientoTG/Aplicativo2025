@@ -59,7 +59,8 @@ $(function () {
       '<b>¿Existe en Anticipos?</b><ul>' +
       '<li><b>Sí:</b> la factura es un anticipo del mes (tab Anticipos).</li>' +
       '<li><b>No:</b> el cobro paga un anticipo facturado en otro mes; explica parte de la diferencia cobros − anticipos.</li>' +
-      '<li><b>Sin factura en referencia:</b> el cobro no indica factura; la fila trae el monto del cobro.</li></ul>'],
+      '<li><b>Sin factura en referencia:</b> el cobro no indica una factura de anticipo (serie D) ni en sus aplicaciones ni en la Referencia; la fila trae el monto del cobro.</li></ul>' +
+      '<p><b>Ojo:</b> la razón social del filtro se aplica a los anticipos por la factura y a los cobros por la estación del cobro; pueden diferir.</p>'],
   };
   Conc.bindAyuda(AYUDA);
 
@@ -72,6 +73,7 @@ $(function () {
   function r2(n) { return Math.round(n * 100) / 100; }
   function tdm(n) { return '<td class="cv-monto">' + fmtMonto(n) + '</td>'; }
   function tdn(n) { return '<td class="cv-monto">' + Number(n).toLocaleString('en-US') + '</td>'; }
+  // Tolera null (canceladas sin importe, clientes sin saldo): Number(null) || 0; monto/montoSigno pintan '' con null.
   function sumaCol(api, i) {
     return api.column(i, { search: 'applied' }).data().reduce(function (s, v) { return s + (Number(v) || 0); }, 0);
   }
