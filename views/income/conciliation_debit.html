@@ -1,0 +1,309 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Conciliación débito{% endblock %}
+{% block menutitle %}Ingresos — Conciliación de venta de débito (prepago){% endblock %}
+
+{% block mycss %}
+{% include "views/income/_conciliation_styles.html" %}
+{% endblock %}
+
+{% block content %}
+{# Esta vista abre con el sidebar colapsado; el botón de hamburguesa lo vuelve a abrir #}
+<script>
+  (function () {
+    var sb = document.getElementById('sidebar');
+    if (sb && !sb.classList.contains('collapsed')) {
+      sb.style.transition = 'none';
+      sb.classList.add('collapsed');
+      setTimeout(function () { sb.style.transition = ''; }, 300);
+    }
+  })();
+</script>
+
+
+<div class="card mb-3">
+  <div class="card-body position-relative">
+    {# Progreso de las consultas: solo "n/N"; clic para ver cada consulta y abrir los tabs ya listos #}
+    <div id="cvProgreso" style="display:none">
+      <button type="button" class="cv-prog-badge" id="cvProgBadge"><i class="fas fa-circle-notch fa-spin"></i> <span id="cvProgTexto">0/0</span></button>
+      <div id="cvProgPanel" style="display:none">
+        <div class="cv-prog-hint">Clic en una consulta lista (verde) para abrir su tab.</div>
+        <div class="cv-prog-items" id="cvProgItems"></div>
+      </div>
+    </div>
+    <form class="row align-items-end g-2" id="cvFiltros">
+      <div class="col-auto">
+        <label for="cvMes">Mes:</label>
+        <input type="month" class="form-control" id="cvMes" value="{{ mes }}" required>
+      </div>
+      <div class="col-auto">
+        {# Razón social = empresa de la estación (de los despachos) o de la factura, igual que /income/clients #}
+        <label for="cvEmpresa">Razón social:</label>
+        <select class="form-control" id="cvEmpresa">
+          <option value="0">Todas</option>
+          {% for e in empresas %}
+          <option value="{{ e.cod }}">{{ e.den }}</option>
+          {% endfor %}
+          <option value="-1">(Sin razón social)</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Buscar</button>
+      </div>
+      <div class="col-auto pb-1">
+        <button type="button" class="cv-ayuda" data-ayuda="filtros" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<ul class="nav nav-tabs mb-3" role="tablist" id="cvTabs">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabResumen" type="button" role="tab">
+      <i class="fas fa-balance-scale"></i> Resumen
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabVenta" type="button" role="tab">
+      Desglose venta <span class="badge bg-secondary" id="cntVenta">0</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabApp" type="button" role="tab">
+      Consumos por cliente <span class="badge bg-secondary" id="cntApp">–</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPropio" type="button" role="tab">
+      Consumos propios <span class="badge bg-secondary" id="cntPropio">–</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabFacturas" type="button" role="tab">
+      Facturas de consumos (Serie E) <span class="badge bg-secondary" id="cntFacturas">0</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPendientes" type="button" role="tab">
+      Despachos pendientes de facturar <span class="badge bg-secondary" id="cntPendientes">–</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAnticipos" type="button" role="tab">
+      Anticipos <span class="badge bg-secondary" id="cntAnticipos">–</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAnticiposCli" type="button" role="tab">
+      Anticipos por cliente <span class="badge bg-secondary" id="cntAnticiposCli">–</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCobrosFactura" type="button" role="tab">
+      Cobros por factura <span class="badge bg-secondary" id="cntCobrosFactura">–</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCruce" type="button" role="tab">
+      Conciliación cobros <span class="badge bg-secondary" id="cntCruce">–</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabBanco2791" type="button" role="tab">
+      Banco 2791 <span class="badge bg-secondary" id="cntBanco2791">–</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabBanco0956" type="button" role="tab">
+      Banco 0956 <span class="badge bg-secondary" id="cntBanco0956">–</span>
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content">
+
+  {# 1. Resumen (lo llena la tarea del Resumen) #}
+  <div class="tab-pane fade show active" id="tabResumen" role="tabpanel">
+    <div id="resumenVacio" class="text-muted p-3">Elige un mes y presiona Buscar.</div>
+    <div class="row g-3" id="resumenContenido" style="display:none"></div>
+  </div>
+
+  {# 2. Desglose venta #}
+  <div class="tab-pane fade" id="tabVenta" role="tabpanel">
+    <button type="button" class="cv-ayuda" data-ayuda="venta" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
+    <div class="card cv-res-card mb-3">
+      <div class="cv-res-head" role="button" data-bs-toggle="collapse" data-bs-target="#colClase" aria-expanded="true" aria-controls="colClase">
+        <i class="fas fa-chart-pie cv-res-ico"></i>
+        <span class="cv-card-title">Resumen por clasificación</span>
+        <i class="fas fa-chevron-down cv-res-chev ms-auto"></i>
+      </div>
+      <div class="collapse show" id="colClase"><div class="cv-res-body">
+        <table class="table table-sm cv-tabla w-100 mb-0" id="resClase">
+          <thead><tr><th>Clasificación</th><th class="text-end">Clientes</th><th class="text-end">Litros</th><th class="text-end">Monto despachos</th><th class="text-end">Monto cortes</th><th class="text-end">Facturado Serie E (mes)</th><th class="text-end">Diferencia (Monto − Facturado)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div></div>
+    </div>
+    <div class="cv-resumen" id="chipsVenta"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaVenta" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Clasificación</th>
+            <th>Cód.</th>
+            <th>Cliente</th>
+            <th>Despachos</th>
+            <th>Litros</th>
+            <th>Monto despachos</th>
+            <th>Monto cortes</th>
+            <th>Diferencia cortes (Monto − Cortes)</th>
+            <th>Facturado del mes</th>
+            <th>Facturado mes anterior</th>
+            <th>Facturado mes siguiente</th>
+            <th>Factura cancelada</th>
+            <th>Facturas</th>
+            <th>Diferencia (Monto − Facturado del mes)</th>
+            <th>Estatus</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr>
+            <th colspan="3" class="cv-izq">Total (filas filtradas)</th>
+            <th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <small class="text-muted">Una fila por cliente de débito. La factura de consumos se emite por cliente con base en los cortes, por eso se compara por cliente y no por despacho.</small>
+  </div>
+
+  {# 3. Consumos por cliente #}
+  <div class="tab-pane fade" id="tabApp" role="tabpanel">
+    <button type="button" class="cv-ayuda" data-ayuda="app" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
+    <div class="cv-resumen" id="chipsApp"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaApp" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Cód.</th><th>Cliente</th><th>Consumo propio</th><th>Razones soc.</th><th>Estaciones</th>
+            <th>Primer consumo</th><th>Último consumo</th><th>Despachos</th><th>Litros</th><th>Monto</th>
+            <th>Cortes</th><th>Diferencia</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <small class="text-muted">Mismo cálculo que Clientes &gt; Consumos Débito &gt; Resumen por cliente.</small>
+  </div>
+
+  {# 4. Consumos propios #}
+  <div class="tab-pane fade" id="tabPropio" role="tabpanel">
+    <button type="button" class="cv-ayuda" data-ayuda="propio" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
+    <div class="cv-resumen" id="chipsPropio"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaPropio" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Cliente</th><th>Cód.</th><th>Categoría</th><th>Fecha</th><th>Hora</th><th>Nro. despacho</th>
+            <th>Estación</th><th>Razón social</th><th>Litros</th><th>Monto</th><th>Producto</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <small class="text-muted">Clientes de débito del catálogo de consumo propio (marketing, cortesías, bonificaciones, arqueos…).</small>
+  </div>
+
+  {# 5. Facturas de consumos (Serie E) #}
+  <div class="tab-pane fade" id="tabFacturas" role="tabpanel">
+    <button type="button" class="cv-ayuda" data-ayuda="facturas" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
+    <div class="card cv-res-card mb-3">
+      <div class="cv-res-head" role="button" data-bs-toggle="collapse" data-bs-target="#colFacturas" aria-expanded="true" aria-controls="colFacturas">
+        <i class="fas fa-file-invoice-dollar cv-res-ico"></i>
+        <span class="cv-card-title">Resumen de facturas por periodo</span>
+        <small class="text-muted">(Serie E)</small>
+        <i class="fas fa-chevron-down cv-res-chev ms-auto"></i>
+      </div>
+      <div class="collapse show" id="colFacturas"><div class="cv-res-body">
+        <table class="table table-sm cv-tabla w-100 mb-0" id="resFacturas">
+          <thead><tr><th>Periodo</th><th class="text-end">Facturas</th><th class="text-end">Total facturas</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div></div>
+    </div>
+    <div class="cv-resumen" id="chipsFacturas"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaFacturas" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Factura</th><th>Fecha</th><th>Cód.</th><th>Cliente</th><th>Tipo</th>
+            <th>Total factura</th><th>CFDI</th><th>Periodo</th><th>Referencia</th><th>UUID</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr>
+            <th colspan="5" class="cv-izq">Total (filas filtradas)</th>
+            <th></th><th></th><th></th><th></th><th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <small class="text-muted">
+      Facturas Serie E (facturación de consumos) con fecha del mes, más las emitidas el mes siguiente que son de consumos de este mes. El periodo sale de la nota de la factura ("Consumos Agosto 2026").
+    </small>
+  </div>
+
+  {# 6. Despachos pendientes de facturar #}
+  <div class="tab-pane fade" id="tabPendientes" role="tabpanel">
+    <button type="button" class="cv-ayuda" data-ayuda="pendientes" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
+    <div class="cv-resumen" id="chipsPendientes"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaPendientes" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Fecha</th><th>Hora</th><th>Nro. despacho</th><th>Estación</th><th>Producto</th>
+            <th>Litros</th><th>Monto</th><th>Cód.</th><th>Cliente</th><th>Clasificación</th><th>Categoría</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr>
+            <th colspan="5" class="cv-izq">Total (filas filtradas)</th>
+            <th></th><th></th><th></th><th></th><th></th><th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <small class="text-muted">Despachos de clientes de débito del mes que aún no tienen factura (nrofac = 0), con monto distinto de cero.</small>
+  </div>
+
+  {# 7-12: se llenan en las tareas siguientes #}
+  <div class="tab-pane fade" id="tabAnticipos" role="tabpanel"></div>
+  <div class="tab-pane fade" id="tabAnticiposCli" role="tabpanel"></div>
+  <div class="tab-pane fade" id="tabCobrosFactura" role="tabpanel"></div>
+  <div class="tab-pane fade" id="tabCruce" role="tabpanel"></div>
+  <div class="tab-pane fade" id="tabBanco2791" role="tabpanel"></div>
+  <div class="tab-pane fade" id="tabBanco0956" role="tabpanel"></div>
+
+</div>
+
+{# Ayuda: qué se ve en cada tab / cuadro (el texto está en AYUDA, en el JS) #}
+<div class="modal fade" id="modalAyuda" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="far fa-question-circle text-info"></i> <span id="modalAyudaTitulo"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body" id="modalAyudaCuerpo"></div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block myjs %}
+<script src="{{ js_v('conciliation_common.js') }}"></script>
+<script src="{{ js_v('conciliation_debit.js') }}"></script>
+{% endblock %}
