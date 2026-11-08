@@ -35,6 +35,8 @@ return [
         route('conciliation-debit/pending-dispatches/', [Income::class, 'conciliation_debit_pending'], name: 'income.conciliation_debit_pending', methods: ['POST'], permission: 14),
         route('conciliation-debit/anticipos/', [Income::class, 'conciliation_debit_anticipos'], name: 'income.conciliation_debit_anticipos', methods: ['POST'], permission: 14),
         route('conciliation-debit/anticipos-clients/', [Income::class, 'conciliation_debit_anticipos_clients'], name: 'income.conciliation_debit_anticipos_clients', methods: ['POST'], permission: 14),
+        route('conciliation-debit/payments/', [Income::class, 'conciliation_debit_payments'], name: 'income.conciliation_debit_payments', methods: ['POST'], permission: 14),
+        route('conciliation-debit/bank/', [Income::class, 'conciliation_debit_bank'], name: 'income.conciliation_debit_bank', methods: ['POST'], permission: 14),
         route('conciliation-debit/payments-invoices/', [Income::class, 'conciliation_debit_payment_invoices'], name: 'income.conciliation_debit_payment_invoices', methods: ['POST'], permission: 14),
 
         route('efc_conc_diferencia_captura', [Income::class, 'efc_conc_diferencia_captura'], name: 'income.efc_conc_diferencia_captura', methods: ['POST'], permission: 14),

@@ -173,4 +173,15 @@ check('partidas: otro mes 8,368 (1 cobro)', $p['otro_mes']['importe'] === 8368.0
 check('partidas: sin factura 10,000 y sin cobro −13,500', $p['sin_factura']['importe'] === 10000.0 && $p['anticipos_sin_cobro']['importe'] === -13500.0 && $p['anticipos_sin_cobro']['n'] === 2);
 check('partidas: sin explicar 0 y canceladas 2', $p['sin_explicar'] === 0.0 && $p['canceladas'] === 2);
 
+// estatusCruce: estatus extra de los cobros prepago
+$ec = fn(array $f) => ConciliacionDebito::estatusCruce($f + ['estatus' => 'Sin banco', 'cuenta' => null, 'fecha_banco' => null, 'txtref' => '', 'codopr' => 1], [900], '2026-09-01');
+check('estatusCruce: Cancelado se respeta', $ec(['estatus' => 'Cancelado']) === 'Cancelado');
+check('estatusCruce: Cuadra en el mes se respeta', $ec(['estatus' => 'Cuadra', 'cuenta' => 'X', 'fecha_banco' => '2026-09-05']) === 'Cuadra');
+check('estatusCruce: depósito anterior al mes', $ec(['estatus' => 'Cuadra por importe', 'cuenta' => 'X', 'fecha_banco' => '2026-08-31']) === 'Depositado en mes anterior');
+check('estatusCruce: cliente de consumo propio', $ec(['codopr' => 900]) === 'Consumo propio');
+check('estatusCruce: efectivo @M:01', $ec(['txtref' => '@N:x@M:01@B:y']) === 'Efectivo');
+check('estatusCruce: sin depósito = No localizado', $ec(['estatus' => 'Sin MOV']) === 'No localizado');
+check('estatusCruce: Diferencia se respeta', $ec(['estatus' => 'Diferencia', 'txtref' => '@M:03']) === 'Diferencia');
+check('estatusCruce: transferencia sin depósito = No localizado', $ec(['txtref' => '@M:03']) === 'No localizado');
+
 finish();

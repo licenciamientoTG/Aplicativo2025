@@ -198,6 +198,33 @@ class ConciliacionDebito
         return self::EST_DE_MAS;
     }
 
+    // Estatus extra del cruce de cobros prepago (los demás los pone ConciliacionCobros::conciliar).
+    const COB_EFECTIVO = 'Efectivo';
+    const COB_MES_ANTERIOR = 'Depositado en mes anterior';
+    const COB_CONSUMO_PROPIO = 'Consumo propio';
+    const COB_NO_LOCALIZADO = 'No localizado';
+
+    /**
+     * Estatus final de un cobro prepago ya cruzado con el banco. $fila: estatus (de ConciliacionCobros), cuenta,
+     * fecha_banco (Y-m-d), txtref, codopr. $codcliPropio: codcli de TG.clientes_consumo_propio activos. $desde: 'Y-m-01'.
+     * Cancelado y los que cuadran con un depósito conservan el estatus del cruce (salvo depósito anterior al mes);
+     * los que no tienen depósito se explican: Consumo propio, Efectivo (@M:01) o No localizado. Diferencia se respeta.
+     */
+    public static function estatusCruce(array $fila, array $codcliPropio, string $desde): string
+    {
+        $est = (string)($fila['estatus'] ?? '');
+        if ($est === 'Cancelado') return $est;
+        if (strncmp($est, 'Cuadra', 6) === 0) {
+            $fb = (string)($fila['fecha_banco'] ?? '');
+            return $fb !== '' && $fb < $desde ? self::COB_MES_ANTERIOR : $est;
+        }
+        if (in_array((int)($fila['codopr'] ?? 0), array_map('intval', $codcliPropio), true)) return self::COB_CONSUMO_PROPIO;
+        $forma = preg_match('/@M:([^@]*)/', (string)($fila['txtref'] ?? ''), $m) ? trim($m[1]) : '';
+        if ($forma === '01') return self::COB_EFECTIVO;
+        if ($est === 'Diferencia') return $est;
+        return self::COB_NO_LOCALIZADO;
+    }
+
     public static function clasificarMovimiento(array $mov, array $idsPrepago, array $idsCredito, array $cuentasPropias): string
     {
         if ((float)($mov['abono'] ?? 0) <= 0) return self::MOV_RETIRO;

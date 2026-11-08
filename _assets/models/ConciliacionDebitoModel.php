@@ -210,4 +210,115 @@ class ConciliacionDebitoModel extends Model {
         }
         return $out;
     }
+
+    /** Cuentas donde cae el prepago: BANORTE 2791 (depósitos) y 0956 (tarjetas). */
+    public const CUENTAS_DEBITO = ['0186932791', '0601500956'];
+
+    /**
+     * Números de cuenta propios (para detectar traspasos): TG.dbo.CatalogosCuentasBancarias.CuentaLocal con
+     * Tipo = 'Propias' y Activo = 1 (TipoCuenta no sirve: viene NULL en las cuentas de Banorte; ver spec §4).
+     */
+    public function cuentas_propias(): array {
+        $rows = $this->sql->select("SELECT DISTINCT LTRIM(RTRIM(CuentaLocal)) AS cuenta
+                                      FROM TG.dbo.CatalogosCuentasBancarias WITH (NOLOCK)
+                                     WHERE Tipo = 'Propias' AND Activo = 1 AND CuentaLocal IS NOT NULL") ?: [];
+        return array_values(array_filter(array_column($rows, 'cuenta'), fn($c) => $c !== ''));
+    }
+
+    /** codcli de los clientes de consumo propio activos (TG.dbo.clientes_consumo_propio). */
+    public function clientes_consumo_propio(): array {
+        $rows = $this->sql->select("SELECT codcli FROM TG.dbo.clientes_consumo_propio WITH (NOLOCK) WHERE activo = 1") ?: [];
+        return array_map('intval', array_column($rows, 'codcli'));
+    }
+
+    /**
+     * Cruce cobros ↔ depósitos (ConciliacionCobros::conciliar): arma el MOV de cada cobro, trae los depósitos con la
+     * ventana DIAS_* (opcionalmente solo de $cuentas) y devuelve los cobros en el mismo orden con su estatus de cruce.
+     * $desde / $hasta: 'Y-m-d' del mes.
+     */
+    public function cruce(array $cobros, string $desde, string $hasta, array $cuentas = []): array {
+        $cobros = array_map(function ($r) {
+            $r['mov'] = ConciliacionCobros::movDeTxtref((string)$r['txtref']);
+            return $r;
+        }, $cobros);
+        $dias = fn(string $fecha, int $n) => date('Y-m-d', strtotime($fecha . sprintf(' %+d days', $n)));
+        $depositos = (new ConciliacionVentaModel)->depositos(
+            array_column($cobros, 'mov'),
+            array_column($cobros, 'monto'),
+            $dias($desde, -ConciliacionCobros::DIAS_ANTES), $dias($hasta, ConciliacionCobros::DIAS_DESPUES),
+            $dias($desde, -ConciliacionCobros::DIAS_IMPORTE), $dias($hasta, ConciliacionCobros::DIAS_IMPORTE),
+            $cuentas
+        );
+        return ConciliacionCobros::conciliar($cobros, $depositos);
+    }
+
+    /**
+     * Cobros prepago (subope 19) de TODAS las razones sociales cruzados con los depósitos de 2791 y 0956, con el estatus
+     * final de ConciliacionDebito::estatusCruce (Efectivo, Depositado en mes anterior, Consumo propio, No localizado).
+     * El controlador filtra la razón social después, porque un MOV puede juntar cobros de varias.
+     */
+    public function cruce_prepago(int $from, int $until, string $desde, string $hasta): array {
+        $cobros = (new ConciliacionVentaModel)->cobros($from, $until, ConciliacionVentaModel::SUBOPE_COBRO_DEBITO);
+        $propios = $this->clientes_consumo_propio();
+        $rows = $this->cruce($cobros, $desde, $hasta, self::CUENTAS_DEBITO);
+        foreach ($rows as &$r) {
+            $r['estatus_cruce'] = $r['estatus'];
+            $r['estatus'] = ConciliacionDebito::estatusCruce($r, $propios, $desde);
+        }
+        unset($r);
+        return $rows;
+    }
+
+    /** Ids de depósito ligados por el cruce de cobros de crédito (subope 8) del mes, mismo procedimiento que Conciliación crédito. */
+    public function depositos_credito(int $from, int $until, string $desde, string $hasta): array {
+        $cobros = (new ConciliacionVentaModel)->cobros($from, $until, ConciliacionVentaModel::SUBOPE_COBRANZA);
+        $ids = [];
+        foreach ($this->cruce($cobros, $desde, $hasta) as $r) {
+            if (($r['deposito_id'] ?? null) !== null && strncmp((string)$r['estatus'], 'Cuadra', 6) === 0) $ids[$r['deposito_id']] = true;
+        }
+        return array_keys($ids);
+    }
+
+    /** Ids de depósito ligados (Cuadra*, incluso de mes anterior) en filas de cruce_prepago. */
+    public static function ids_ligados(array $filasCruce): array {
+        $ids = [];
+        foreach ($filasCruce as $r) {
+            if (($r['deposito_id'] ?? null) === null) continue;
+            if (strncmp((string)$r['estatus_cruce'], 'Cuadra', 6) === 0) $ids[$r['deposito_id']] = true;
+        }
+        return array_keys($ids);
+    }
+
+    /**
+     * Movimientos del mes de una cuenta de débito con su clasificación (ConciliacionDebito::clasificarMovimiento).
+     * Misma ruta de cálculo que el endpoint: cruce prepago + cruce crédito + cuentas propias.
+     */
+    public function movimientos_clasificados(int $from, int $until, string $desde, string $hasta, string $cuenta, ?array $crucePrepago = null): array {
+        $cruce = $crucePrepago ?? $this->cruce_prepago($from, $until, $desde, $hasta);
+        $idsPrepago = self::ids_ligados($cruce);
+        $idsCredito = $this->depositos_credito($from, $until, $desde, $hasta);
+        $propias = $this->cuentas_propias();
+        $out = [];
+        foreach ((new ConciliacionVentaModel)->movimientos_banco($desde, $hasta, [$cuenta]) as $r) {
+            $mov = [
+                'id'          => (int)$r['id'],
+                'banco'       => $r['banco'],
+                'cuenta'      => $r['cuenta'],
+                'fecha'       => $r['fecha'],
+                'fecha_operacion' => $r['fecha_operacion'] ?? '',
+                'secuencia'   => $r['secuencia'],
+                'descripcion' => trim((string)$r['descripcion']),
+                'referencia'  => trim((string)$r['referencia']),
+                'abono'       => round((float)$r['abono'], 2),
+                'cargo'       => round((float)$r['cargo'], 2),
+                'saldo'       => $r['saldo'] === null ? null : round((float)$r['saldo'], 2),
+                'contraparte' => trim((string)$r['nombre_contraparte']),
+                'rfc'         => trim((string)$r['rfc_contraparte']),
+                'detalle'     => trim((string)$r['detalle']),
+            ];
+            $mov['clasificacion'] = ConciliacionDebito::clasificarMovimiento($mov, $idsPrepago, $idsCredito, $propias);
+            $out[] = $mov;
+        }
+        return $out;
+    }
 }

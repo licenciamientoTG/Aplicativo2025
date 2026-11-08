@@ -528,11 +528,15 @@ class ConciliacionVentaModel extends Model {
      * ConciliacionCobros; traer todos los abonos de la ventana (~25 mil) tardaba 10 s.
      * Fechas 'Y-m-d'. Las listas van en línea ya saneadas (intval / %.2f):
      * SG12 está en nivel de compatibilidad 110, sin STRING_SPLIT.
+     * $cuentas (opcional): si no viene vacío, solo depósitos de esas cuentas (la conciliación débito usa 2791 y 0956);
+     * crédito no lo manda y la consulta queda idéntica.
      */
-    public function depositos(array $movs, array $montos, string $desde, string $hasta, string $desdeImporte, string $hastaImporte): array {
+    public function depositos(array $movs, array $montos, string $desde, string $hasta, string $desdeImporte, string $hastaImporte, array $cuentas = []): array {
         $movs   = array_values(array_unique(array_filter(array_map('intval', $movs), fn($m) => $m > 0)));
         $montos = array_values(array_unique(array_map(fn($m) => sprintf('%.2f', (float)$m), array_filter($montos, fn($m) => (float)$m > 0))));
         if (!$movs && !$montos) return [];
+        $cuentas = array_values(array_unique(array_filter(array_map(fn($c) => preg_replace('/[^0-9A-Za-z]/', '', (string)$c), $cuentas), fn($c) => $c !== '')));
+        $porCuenta = $cuentas ? "\n                     AND cuenta IN ('" . implode("','", $cuentas) . "')" : '';
         $porMov    = $movs   ? 'secuencia IN (' . implode(',', $movs) . ')' : '1 = 0';
         $porImporte = $montos ? '(fecha BETWEEN ? AND ? AND abono IN (' . implode(',', $montos) . '))' : '1 = 0';
         $query = "SELECT id, banco, cuenta, CONVERT(varchar(10), fecha, 23) AS fecha, secuencia, abono,
@@ -540,7 +544,7 @@ class ConciliacionVentaModel extends Model {
                          LEFT(COALESCE(NULLIF(descripcion_larga, ''), NULLIF(concepto, ''), descripcion), 300) AS detalle
                     FROM TG.dbo.movimientos_bancarios WITH (NOLOCK)
                    WHERE fecha BETWEEN ? AND ?
-                     AND abono > 0
+                     AND abono > 0{$porCuenta}
                      AND ({$porMov} OR {$porImporte})
                    ORDER BY cuenta, fecha, secuencia";
         return $this->sql->select($query, $montos ? [$desde, $hasta, $desdeImporte, $hastaImporte] : [$desde, $hasta]) ?: [];

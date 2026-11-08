@@ -58,6 +58,7 @@ ocultarlas en crédito). Todo se muestra; lo que no se explica queda como "Difer
 | Factura del cobro | Referencia `Fac.D242940 ($3,500.00)` → nro **12**00242940 (D = prefijo 12, E = 13); también `DocumentosA` (nroapl/mtoapl) como en crédito | |
 | Banco 2791 | `TG.movimientos_bancarios` cuenta **BANORTE 0186932791**: 2,062 movs, 1,925 abonos, **$37,229,115.24 = Excel** | |
 | Banco 0956 (tarjetas) | cuenta **BANORTE 0601500956**: 2,329 movs (= hoja 0956) | |
+| Cuentas propias (traspasos) | `TG.dbo.CatalogosCuentasBancarias` (SELECT TOP 5 en Task 5): columnas reales `Id, CuentaLocal, Descripcion, TipoCuenta, Banco, TitularCuenta, Activo, Tipo, emp_cod…`. **No existe `TipoCuenta='Propia'` fiable** (solo 7 filas, varias con `Tipo='Terceros'`): las 2791/0956 traen `TipoCuenta` NULL y `Tipo='Propias'`. Se usa `Tipo='Propias' AND Activo=1` sobre `CuentaLocal` | `ConciliacionDebitoModel::cuentas_propias()` |
 
 Salvedades del Excel vs sistema (el Excel es una foto; el sistema ve cancelaciones posteriores):
 - **Serie E:** el Excel suma $31,988,096.76 = vigentes $31,201,737.84 + **24 facturas E 101,823…** canceladas el 30/09 con motivo 02 ($786,358.92) que el reporte aún traía con monto.

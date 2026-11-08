@@ -347,10 +347,103 @@
     <small class="text-muted">Una fila por factura que paga cada cobro prepago del mes. Un cobro que paga varias facturas aparece en varias filas (el monto del cobro se repite; sume el importe aplicado).</small>
   </div>
 
-  {# 10-12: se llenan en las tareas siguientes #}
-  <div class="tab-pane fade" id="tabCruce" role="tabpanel"></div>
-  <div class="tab-pane fade" id="tabBanco2791" role="tabpanel"></div>
-  <div class="tab-pane fade" id="tabBanco0956" role="tabpanel"></div>
+  {# 10. Conciliación cobros (cobros prepago vs depósitos de 2791 / 0956) #}
+  <div class="tab-pane fade" id="tabCruce" role="tabpanel">
+    <button type="button" class="cv-ayuda" data-ayuda="cruce" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
+    <div class="card cv-res-card mb-3">
+      <div class="cv-res-head" role="button" data-bs-toggle="collapse" data-bs-target="#colCruce" aria-expanded="true" aria-controls="colCruce">
+        <i class="fas fa-university cv-res-ico"></i>
+        <span class="cv-card-title">Resumen de cobros por cuenta / origen</span>
+        <i class="fas fa-chevron-down cv-res-chev ms-auto"></i>
+      </div>
+      <div class="collapse show" id="colCruce"><div class="cv-res-body">
+        <table class="table table-sm cv-tabla w-100 mb-0" id="resCruce">
+          <thead><tr><th>Cuenta / origen</th><th class="text-end">Cobros</th><th class="text-end">Importe cobros</th><th class="text-end">Depósito en banco</th><th class="text-end">Diferencia</th><th class="text-end">Estatus</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div></div>
+    </div>
+    <div class="cv-resumen" id="chipsCruce"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaCruce" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr class="banda">
+            <th class="cv-b-cobro" colspan="3"><i class="fas fa-file-invoice-dollar"></i> Cobro</th>
+            <th class="cv-b-res">Resultado</th>
+            <th class="cv-b-cobro" colspan="7"><i class="fas fa-file-invoice-dollar"></i> Cobro (Control Gas)</th>
+            <th class="cv-b-banco" colspan="10"><i class="fas fa-university"></i> Movimiento bancario</th>
+            <th></th>
+          </tr>
+          <tr class="titulos">
+            <th class="cv-b-cobro">Folio</th><th class="cv-b-cobro">Fecha cobro</th><th class="cv-b-cobro">Cliente</th>
+            <th class="cv-b-res">Estatus</th>
+            <th class="cv-b-cobro">Forma de pago</th>
+            <th class="cv-b-cobro" title="Persona que depositó, según el cobro">Ordenante (cobro)</th><th class="cv-b-cobro">Banco ordenante</th><th class="cv-b-cobro">Facturas</th>
+            <th class="cv-b-cobro" title="Número de movimiento que el capturista escribió a mano en el cobro; puede no coincidir con la secuencia del banco">MOV capturado</th>
+            <th class="cv-b-cobro">Monto cobros</th><th class="cv-b-cobro">UUID</th>
+            <th class="cv-b-banco">Banco</th><th class="cv-b-banco">Cuenta</th><th class="cv-b-banco">Fecha banco</th><th class="cv-b-banco">Secuencia banco</th>
+            <th class="cv-b-banco">Depósito banco</th><th class="cv-b-banco">Diferencia</th>
+            <th class="cv-b-banco" title="Depósitos libres del mismo importe a ±3 días cuando se ligó por importe (más de 1 = se desempató por cuenta y fecha)">Candidatos</th>
+            <th class="cv-b-banco">Ordenante en banco</th><th class="cv-b-banco">RFC</th><th class="cv-b-banco">Detalle banco</th>
+            <th title="Cuántos cobros comparten el mismo depósito del banco (1 = el depósito paga solo este cobro)">Cobros del depósito</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <small class="text-muted">
+      Una fila por cobro prepago; el depósito del banco (solo cuentas 2791 y 0956) se repite en los cobros que lo componen. Reglas de ligado, de la más segura a la menos: Cuadra (suma del MOV = depósito) ·
+      centavos (hasta $1) · MOV compartido · MOV vecinos · por importe (depósito libre del mismo importe a ±3 días). Sin depósito se explica como Efectivo, Consumo propio o No localizado.
+    </small>
+  </div>
+
+  {# 11. Banco 2791 #}
+  <div class="tab-pane fade" id="tabBanco2791" role="tabpanel">
+    <button type="button" class="cv-ayuda" data-ayuda="banco2791" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
+    <div class="cv-resumen" id="chipsBanco2791"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaBanco2791" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Fecha</th><th>Secuencia</th><th>Descripción</th><th>Referencia</th><th>Abono</th><th>Cargo</th><th>Saldo</th>
+            <th>Ordenante</th><th>RFC</th><th>Detalle</th><th>Clasificación</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr>
+            <th colspan="4" class="cv-izq">Total (filas filtradas)</th>
+            <th></th><th></th><th colspan="5"></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <small class="text-muted">Movimientos del mes de BANORTE 0186932791 (depósitos de clientes de débito). Se consulta al abrir el tab.</small>
+  </div>
+
+  {# 12. Banco 0956 #}
+  <div class="tab-pane fade" id="tabBanco0956" role="tabpanel">
+    <button type="button" class="cv-ayuda" data-ayuda="banco0956" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
+    <div class="cv-resumen" id="chipsBanco0956"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaBanco0956" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Fecha</th><th>Secuencia</th><th>Descripción</th><th>Referencia</th><th>Abono</th><th>Cargo</th><th>Saldo</th>
+            <th>Ordenante</th><th>RFC</th><th>Detalle</th><th>Clasificación</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr>
+            <th colspan="4" class="cv-izq">Total (filas filtradas)</th>
+            <th></th><th></th><th colspan="5"></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <small class="text-muted">Movimientos del mes de BANORTE 0601500956 (cobros con tarjeta). Se consulta al abrir el tab.</small>
+  </div>
 
 </div>
 

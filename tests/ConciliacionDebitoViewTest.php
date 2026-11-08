@@ -48,6 +48,24 @@ foreach (['anticipos', 'anticipos_cli', 'cobros_factura'] as $k) {
 foreach (['anticipos', 'anticipos_clients', 'payment_invoices'] as $k) {
     check("el JS pide income.conciliation_debit_$k", str_contains($js, "income.conciliation_debit_$k"));
 }
+
+// Tabs 10-12: Conciliación cobros y bancos 2791 / 0956
+foreach (['tablaCruce', 'tablaBanco2791', 'tablaBanco0956'] as $id) {
+    check("la vista tiene id=\"$id\"", str_contains($vista, "id=\"$id\""));
+}
+foreach (['payments' => 'payments/', 'bank' => 'bank/'] as $k => $ruta) {
+    $nombre = "income.conciliation_debit_$k";
+    check("ruta $nombre en conciliation-debit/$ruta", (bool)preg_match("/route\\('conciliation-debit\\/" . preg_quote($ruta, '/') . "'.*name: '" . preg_quote($nombre, '/') . "'.*permission: 14/", $rutas));
+    check("el JS pide $nombre", str_contains($js, $nombre));
+}
+foreach (['cruce', 'banco2791', 'banco0956'] as $k) {
+    check("ayuda: AYUDA tiene la llave $k", str_contains($js, "$k: ['"));
+    check("ayuda: la vista tiene data-ayuda=\"$k\"", str_contains($vista, "data-ayuda=\"$k\""));
+}
+check("CONSULTAS registra la llave 'cobros'", (bool)preg_match("/\\['cobros',\\s*'[^']+',\\s*'#tabCruce',\\s*'#cntCruce'\\]/", $consultas));
+check('el JS guarda estado.cobros, banco2791 y banco0956', str_contains($js, 'banco2791: []') && str_contains($js, 'banco0956: []') && str_contains($js, 'cobros: []'));
+check('el JS pinta los estatus nuevos', str_contains($js, "'Depositado en mes anterior'") && str_contains($js, "'Consumo propio'") && str_contains($js, "'No localizado'") && str_contains($js, "'Traspaso entre cuentas'"));
+
 foreach ($lineas[0] as $l) {
     check('permission: 14 en ' . trim(substr($l, 0, 60)), str_contains($l, 'permission: 14'));
 }

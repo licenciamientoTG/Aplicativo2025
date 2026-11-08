@@ -112,7 +112,90 @@ function validar_anticipos(): void {
     echo "-- informativo: canceladas con fecha de cancelación posterior al mes: " . count($tardias) . " (" . implode(', ', $nros($tardias)) . ")\n";
 }
 
+/**
+ * Tabs 10-12: cruce de cobros prepago con 2791 / 0956 (ConciliacionDebitoModel::cruce_prepago y movimientos_clasificados,
+ * las mismas llamadas que los endpoints payments/ y bank/). Imprime tiempos y los cobros sin banco para revisión.
+ */
+function validar_cobros(): void {
+    $mes = '2026-09';
+    $empresa = 1;
+    $desde = $mes . '-01';
+    $hasta = date('Y-m-t', strtotime($desde));
+    $from = dateToInt($desde);
+    $until = dateToInt($hasta);
+    $model = new ConciliacionDebitoModel;
+    $cta2791 = ConciliacionDebitoModel::CUENTAS_DEBITO[0];
+    $cta0956 = ConciliacionDebitoModel::CUENTAS_DEBITO[1];
+
+    echo "\n== validar_cobros: $mes, empresa $empresa ==\n";
+    $t = microtime(true);
+    $cruce = $model->cruce_prepago($from, $until, $desde, $hasta);
+    printf("-- tiempo endpoint payments/ (cruce prepago, todas las razones sociales): %.1f s\n", microtime(true) - $t);
+    $filas = array_values(array_filter($cruce, fn($r) => ($r['empresa'] === null ? -1 : (int)$r['empresa']) === $empresa));
+
+    // Endpoint bank/ tal cual (en frío: recalcula el cruce prepago y el de crédito) y luego reutilizando el cruce ya calculado.
+    $t = microtime(true);
+    $movs2791 = $model->movimientos_clasificados($from, $until, $desde, $hasta, $cta2791);
+    printf("-- tiempo endpoint bank/ 2791 (en frio: cruce prepago + cruce credito + clasificacion): %.1f s
+", microtime(true) - $t);
+    $t = microtime(true);
+    $movs0956 = $model->movimientos_clasificados($from, $until, $desde, $hasta, $cta0956, $cruce);
+    printf("-- tiempo bank/ 0956 reutilizando el cruce prepago (solo credito + clasificacion): %.1f s
+", microtime(true) - $t);
+
+    $abonos = array_filter($movs2791, fn($m) => $m['abono'] > 0);
+    comparar('Banco 2791: abonos (cantidad)', count($abonos), 1925, 0);
+    comparar('Banco 2791: abonos (importe)', array_sum(array_column($abonos, 'abono')), 37229115.24);
+    comparar('Banco 0956: movimientos', count($movs0956), 2329, 0);
+
+    $vivos = array_filter($filas, fn($r) => $r['estatus'] !== 'Cancelado');
+    $total = array_sum(array_column($vivos, 'monto'));
+    $ligados2791 = array_filter($vivos, fn($r) => $r['cuenta'] === $cta2791 && strncmp((string)$r['estatus_cruce'], 'Cuadra', 6) === 0);
+    $ligados2791Mes = array_filter($ligados2791, fn($r) => $r['estatus'] !== ConciliacionDebito::COB_MES_ANTERIOR);
+    $monto2791 = array_sum(array_column($ligados2791, 'monto'));
+    comparar('Cobros prepago ligados a 2791 por el cruce (Excel 32,007,985.13)', $monto2791, 32007985.13, 50.00);
+
+    $ligados = array_filter($vivos, fn($r) => $r['cuenta'] !== null && $r['cuenta'] !== '' && strncmp((string)$r['estatus_cruce'], 'Cuadra', 6) === 0);
+    $pct = $total > 0 ? 100 * array_sum(array_column($ligados, 'monto')) / $total : 0;
+    printf("%-4s %-52s obtenido %17.2f%%  esperado >= 97%%\n", $pct >= 97 ? 'ok' : 'FALLA', '% cuadrado (monto ligado a banco / cobros no cancelados)', $pct);
+    global $fallas;
+    if ($pct < 97) $fallas++;
+
+    $porEstatus = [];
+    foreach ($filas as $r) {
+        $porEstatus[$r['estatus']]['n'] = ($porEstatus[$r['estatus']]['n'] ?? 0) + 1;
+        $porEstatus[$r['estatus']]['monto'] = ($porEstatus[$r['estatus']]['monto'] ?? 0) + (float)$r['monto'];
+    }
+    ksort($porEstatus);
+    echo "-- informativo: cobros empresa $empresa " . count($filas) . ", no cancelados " . count($vivos) . ", $" . number_format($total, 2) . "; ligados a 2791 en el mes " . count($ligados2791Mes) . "\n";
+    foreach ($porEstatus as $e => $v) printf("   %-32s %5d cobros  $ %16s\n", $e, $v['n'], number_format($v['monto'], 2));
+
+    $porClase = [];
+    foreach (array_merge($movs2791, $movs0956) as $m) {
+        $k = $m['cuenta'] . ' ' . $m['clasificacion'];
+        $porClase[$k]['n'] = ($porClase[$k]['n'] ?? 0) + 1;
+        $porClase[$k]['abono'] = ($porClase[$k]['abono'] ?? 0) + $m['abono'];
+        $porClase[$k]['cargo'] = ($porClase[$k]['cargo'] ?? 0) + $m['cargo'];
+    }
+    ksort($porClase);
+    echo "-- informativo: movimientos por clasificación\n";
+    foreach ($porClase as $k => $v) printf("   %-40s %5d movs  abonos %16s  cargos %16s\n", $k, $v['n'], number_format($v['abono'], 2), number_format($v['cargo'], 2));
+
+    echo "-- cobros sin banco (para revisión; empresa $empresa):\n";
+    $sin = array_filter($filas, fn($r) => in_array($r['estatus'], [ConciliacionDebito::COB_NO_LOCALIZADO, 'Diferencia', 'Sin banco', 'Sin MOV'], true));
+    foreach ($sin as $r) {
+        printf("   %-26s est %-10s cobro %8d  %s  cod %-6s %-28s $ %12s  %s\n", $r['estatus'], trim((string)$r['estacion']), $r['nro'], $r['fecha'], $r['codopr'],
+            mb_substr(trim((string)$r['cliente']), 0, 28), number_format((float)$r['monto'], 2), mb_substr(trim((string)$r['txtref']), 0, 60));
+    }
+    echo "   total sin banco: " . count($sin) . " cobros, $" . number_format(array_sum(array_column($sin, 'monto')), 2) . "\n";
+    foreach ([ConciliacionDebito::COB_EFECTIVO, ConciliacionDebito::COB_CONSUMO_PROPIO, ConciliacionDebito::COB_MES_ANTERIOR] as $e) {
+        $x = array_filter($filas, fn($r) => $r['estatus'] === $e);
+        echo "   $e: " . count($x) . " cobros, $" . number_format(array_sum(array_column($x, 'monto')), 2) . "\n";
+    }
+}
+
 validar_ventas();
 validar_anticipos();
+validar_cobros();
 echo $fallas ? "\n$fallas línea(s) no cuadran\n" : "\nTodo ok\n";
 exit($fallas ? 1 : 0);
