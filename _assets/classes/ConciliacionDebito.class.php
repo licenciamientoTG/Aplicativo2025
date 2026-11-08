@@ -211,4 +211,95 @@ class ConciliacionDebito
         }
         return self::MOV_NO_IDENTIFICADO;
     }
+
+    const ANT_SI = 'Sí';
+    const ANT_NO = 'No';
+    const ANT_SIN_FACTURA = 'Sin factura en referencia';
+
+    /**
+     * Una fila por (cobro prepago, factura que paga). Las facturas salen de DocumentosA (`facturas` = "nroapl:mto,…",
+     * solo series D y E: DocumentosA también trae el vale/consumo de ControlGas, nro < 1,200,000,000) y, si el cobro
+     * no trae ninguna, de la Referencia (txtref, "Fac.D242940 ($3,500.00)"). Un cobro sin facturas genera UNA fila
+     * con existe_en_anticipos = ANT_SIN_FACTURA e importe = monto del cobro.
+     * $nrosAnticipos: números de factura de los anticipos del mes (ConciliacionDebitoModel::anticipos).
+     * Filas: cobro, fecha, codcli, cliente, monto (del cobro), nro_factura (int|null), importe, existe_en_anticipos.
+     */
+    public static function cobrosPorFactura(array $cobros, array $nrosAnticipos): array
+    {
+        $enMes = array_fill_keys(array_map('intval', $nrosAnticipos), true);
+        $out = [];
+        foreach ($cobros as $c) {
+            $facturas = [];
+            foreach (array_filter(explode(',', (string)($c['facturas'] ?? ''))) as $par) {
+                [$nro, $mto] = array_pad(explode(':', $par), 2, '0');
+                $nro = (int)$nro;
+                if ($nro >= 1200000000 && $nro < 1400000000) $facturas[] = ['nro' => $nro, 'importe' => (float)$mto];
+            }
+            if (!$facturas) $facturas = self::facturasDeReferencia((string)($c['txtref'] ?? ''));
+            $base = [
+                'cobro' => (int)$c['nro'], 'fecha' => (string)$c['fecha'], 'codcli' => (int)($c['codopr'] ?? 0),
+                'cliente' => trim((string)($c['cliente'] ?? '')), 'monto' => round((float)$c['monto'], 2),
+            ];
+            if (!$facturas) {
+                $out[] = $base + ['nro_factura' => null, 'importe' => $base['monto'], 'existe_en_anticipos' => self::ANT_SIN_FACTURA];
+                continue;
+            }
+            foreach ($facturas as $f) {
+                $out[] = $base + [
+                    'nro_factura' => $f['nro'], 'importe' => round((float)$f['importe'], 2),
+                    'existe_en_anticipos' => isset($enMes[$f['nro']]) ? self::ANT_SI : self::ANT_NO,
+                ];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Partidas del card B (cobros prepago vs anticipos facturados):
+     *   diferencia = cobros − anticipos = otro_mes + sin_factura + anticipos_sin_cobro + sin_explicar.
+     * $anticipos: filas de ConciliacionDebitoModel::anticipos (Factura, Total, cobro_aplicado, estatus).
+     * $cobrosFactura: salida de cobrosPorFactura. $canceladas: número de anticipos cancelados del mes (solo se cuentan:
+     * no conservan importe). $cobros: total de los cobros prepago. Importes con el signo con que explican la diferencia.
+     */
+    public static function partidasAnticipos(array $anticipos, array $cobrosFactura, int $canceladas, float $cobros): array
+    {
+        $totalAnticipos = 0.0;
+        $sinCobro = ['n' => 0, 'importe' => 0.0, 'filas' => []];
+        foreach ($anticipos as $a) {
+            $total = (float)$a['Total'];
+            $totalAnticipos += $total;
+            if (($a['estatus'] ?? '') === 'Sin cobro') {
+                $resta = round($total - (float)($a['cobro_aplicado'] ?? 0), 2);
+                $sinCobro['n']++;
+                $sinCobro['importe'] -= $resta;
+                $sinCobro['filas'][] = ['nro' => (int)$a['Factura'], 'importe' => -$resta];
+            }
+        }
+        $otroMes = ['n' => 0, 'importe' => 0.0, 'filas' => []];
+        $sinFactura = ['n' => 0, 'importe' => 0.0, 'filas' => []];
+        foreach ($cobrosFactura as $r) {
+            if ($r['existe_en_anticipos'] === self::ANT_NO) {
+                $otroMes['n']++; $otroMes['importe'] += $r['importe'];
+                $otroMes['filas'][] = ['nro' => (int)$r['nro_factura'], 'cobro' => $r['cobro'], 'importe' => $r['importe']];
+            } elseif ($r['existe_en_anticipos'] === self::ANT_SIN_FACTURA) {
+                $sinFactura['n']++; $sinFactura['importe'] += $r['importe'];
+                $sinFactura['filas'][] = ['cobro' => $r['cobro'], 'importe' => $r['importe']];
+            }
+        }
+        $totalAnticipos = round($totalAnticipos, 2);
+        $diferencia = round($cobros - $totalAnticipos, 2);
+        $otroMes['importe'] = round($otroMes['importe'], 2);
+        $sinFactura['importe'] = round($sinFactura['importe'], 2);
+        $sinCobro['importe'] = round($sinCobro['importe'], 2);
+        return [
+            'cobros' => round($cobros, 2),
+            'anticipos' => $totalAnticipos,
+            'diferencia' => $diferencia,
+            'otro_mes' => $otroMes,
+            'sin_factura' => $sinFactura,
+            'anticipos_sin_cobro' => $sinCobro,
+            'canceladas' => $canceladas,
+            'sin_explicar' => round($diferencia - $otroMes['importe'] - $sinFactura['importe'] - $sinCobro['importe'], 2),
+        ];
+    }
 }

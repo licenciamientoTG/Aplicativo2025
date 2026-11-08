@@ -7,6 +7,8 @@ $(function () {
     'Facturado con base en cortes': 'cv-info', 'Consumo sin corte': 'cv-bad', 'Consumo sin factura': 'cv-bad',
     'Facturado de menos': 'cv-warn', 'Facturado de más': 'cv-warn',
     'Mes anterior': 'cv-info', 'Mes siguiente': 'cv-info', 'Sin periodo': 'cv-muted',
+    'Con cobro': 'cv-ok', 'Sin cobro': 'cv-bad',
+    'Sí': 'cv-ok', 'No': 'cv-warn', 'Sin factura en referencia': 'cv-bad',
   });
 
   // Ayuda "¿Qué estoy viendo?": un modal compartido, el texto sale de AYUDA. Las llaves de los tabs 7-12 y del Resumen las agregan las tareas siguientes.
@@ -40,6 +42,24 @@ $(function () {
     pendientes: ['Despachos pendientes de facturar', '<p>Equivale a la hoja <b>despachos pendientes de fact</b>: despachos del mes de clientes de débito que todavía no tienen factura (sin folio de factura) y con monto distinto de cero, con su cliente, estación y producto.</p>' +
       '<ul><li>Es el único lugar donde se mira el enlace despacho-factura; en Desglose venta la comparación es por cliente.</li>' +
       '<li>La Clasificación indica si el cliente es de Venta (debería facturarse) o de consumo propio / bonificación (no se factura).</li></ul>'],
+    anticipos: ['Anticipos', '<p>Facturas de anticipo (serie D, "Facturación Débito Tarjetas") de clientes de débito emitidas en el mes: el mismo reporte de Clientes &gt; Anticipos débito. Es la hoja <b>Anticipos</b> del Excel.</p>' +
+      '<b>De dónde viene cada dato</b><ul>' +
+      '<li><b>Subtotal, IVA y Total:</b> las líneas de la factura en ControlGas.</li>' +
+      '<li><b>Cobro aplicado:</b> lo que los cobros prepago <b>del mismo mes</b> aplicaron a esta factura. Un cobro de otro mes no cuenta aquí.</li></ul>' +
+      '<b>Cómo interpretarlo</b><ul>' +
+      '<li><b>Con cobro:</b> el cobro aplicado cubre el total de la factura. <b>Sin cobro:</b> falta cobro aplicado en el mes (cobro de otro mes o factura sin cobrar).</li>' +
+      '<li><b>Cancelada:</b> la factura se canceló en ControlGas y ya no conserva importe, por eso se muestra vacío; solo se cuentan.</li>' +
+      '<li><b>Pie de la tabla:</b> suma las filas que ves (respeta el filtro y los chips).</li></ul>'],
+    anticipos_cli: ['Anticipos por cliente', '<p>Monto anticipado en el mes por cliente de débito (suma de sus facturas de anticipo vigentes). Es la hoja <b>anticipos x cliente</b> del Excel.</p>' +
+      '<ul><li><b>Saldo actual:</b> el saldo de débito del cliente hoy (Clientes &gt; saldo débito), no el de fin de mes; cambia cada vez que consume o abona.</li>' +
+      '<li>Las facturas canceladas no suman: no conservan importe.</li></ul>'],
+    cobros_factura: ['Cobros por factura', '<p>Cada cobro prepago del mes (Cobro Clientes de Tarjetas débito), con la factura o facturas de anticipo que paga. Es la hoja <b>Cobros x factura</b> del Excel.</p>' +
+      '<b>De dónde viene cada dato</b><ul>' +
+      '<li><b>Factura e Importe aplicado:</b> de las aplicaciones del cobro en ControlGas; si no las hay, de la Referencia ("Fac.D242940 ($3,500.00)"). Un cobro que paga varias facturas genera una fila por factura (el monto del cobro se repite).</li></ul>' +
+      '<b>¿Existe en Anticipos?</b><ul>' +
+      '<li><b>Sí:</b> la factura es un anticipo del mes (tab Anticipos).</li>' +
+      '<li><b>No:</b> el cobro paga un anticipo facturado en otro mes; explica parte de la diferencia cobros − anticipos.</li>' +
+      '<li><b>Sin factura en referencia:</b> el cobro no indica factura; la fila trae el monto del cobro.</li></ul>'],
   };
   Conc.bindAyuda(AYUDA);
 
@@ -212,15 +232,67 @@ $(function () {
   });
   var COL_CLASE_PENDIENTES = 9;
 
+  var tablaAnticipos = initTabla('#tablaAnticipos', [
+    { data: 'factura', className: 'cv-mono' },
+    { data: 'fecha', render: fecha },
+    { data: 'codcli' },
+    { data: 'cliente', className: 'cv-wrap', render: texto },
+    { data: 'estacion', render: texto },
+    { data: 'razon_social', render: texto },
+    { data: 'subtotal', className: 'cv-monto', render: monto },
+    { data: 'iva', className: 'cv-monto', render: monto },
+    { data: 'total', className: 'cv-monto', render: monto },
+    { data: 'cobro_aplicado', className: 'cv-monto', render: monto },
+    { data: 'estatus', render: badge },
+  ], 'Anticipos debito', {
+    fija: true,
+    paging: false,
+    dom: '<"cv-top"Bf>rt<"cv-bottom"i>',
+    footerCallback: function () { pieSumas(this.api(), [[6, 2], [7, 2], [8, 2], [9, 2]]); },
+  });
+  var COL_ESTATUS_ANTICIPOS = 10;
+
+  var tablaAnticiposCli = initTabla('#tablaAnticiposCli', [
+    { data: 'codcli' },
+    { data: 'cliente', className: 'cv-wrap', render: texto },
+    { data: 'anticipos', className: 'cv-monto' },
+    { data: 'monto', className: 'cv-monto', render: monto },
+    { data: 'saldo', className: 'cv-monto', render: montoSigno },
+  ], 'Anticipos por cliente debito', {
+    fija: true,
+    paging: false,
+    dom: '<"cv-top"Bf>rt<"cv-bottom"i>',
+    footerCallback: function () { pieSumas(this.api(), [[2, 0], [3, 2], [4, 2]]); },
+  });
+
+  var tablaCobrosFactura = initTabla('#tablaCobrosFactura', [
+    { data: 'cobro', className: 'cv-mono' },
+    { data: 'fecha', render: fecha },
+    { data: 'codcli' },
+    { data: 'cliente', className: 'cv-wrap', render: texto },
+    { data: 'monto_cobro', className: 'cv-monto', render: monto },
+    { data: 'factura', className: 'cv-mono', render: texto },
+    { data: 'importe', className: 'cv-monto', render: monto },
+    { data: 'existe_en_anticipos', render: badge },
+  ], 'Cobros por factura debito', {
+    fija: true,
+    paging: false,
+    dom: '<"cv-top"Bf>rt<"cv-bottom"i>',
+    // El monto del cobro se repite en cada fila de sus facturas: el pie suma solo el importe aplicado.
+    footerCallback: function () { pieSumas(this.api(), [[6, 2]]); },
+  });
+  var COL_EXISTE_COBROS_FACTURA = 7;
+
   $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
     $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
   });
 
   // ---------------------------------------------------------------- datos
-  // Llaves fijas del estado: las tareas siguientes llenan anticipos, cobrosFactura, cobros, banco2791 y banco0956.
+  // Llaves fijas del estado: las tareas siguientes llenan cobros, banco2791 y banco0956.
+  // partidasAnticipos = card B calculado en el servidor (ConciliacionDebito::partidasAnticipos), lo usa el Resumen.
   var estado = {
     busqueda: 0, venta: [], facturas: [], anticipos: [], cobrosFactura: [], cobros: [], banco2791: [], banco0956: [],
-    xhrs: [], fin: {}, t0: {},
+    partidasAnticipos: null, xhrs: [], fin: {}, t0: {},
   };
 
   function filtros(extra) {
@@ -237,8 +309,13 @@ $(function () {
     ['pendientes', 'Despachos pendientes de facturar', '#tabPendientes', '#cntPendientes'],
     ['app', 'Consumos por cliente', '#tabApp', '#cntApp'],
     ['propio', 'Consumos propios', '#tabPropio', '#cntPropio'],
+    ['anticipos', 'Anticipos', '#tabAnticipos', '#cntAnticipos'],
+    ['anticipos_cli', 'Anticipos por cliente', '#tabAnticiposCli', '#cntAnticiposCli'],
+    ['cobros_factura', 'Cobros por factura', '#tabCobrosFactura', '#cntCobrosFactura'],
   ];
-  var TABLAS = function () { return [tablaVenta, tablaFacturas, tablaPendientes, tablaApp, tablaPropio]; };
+  var TABLAS = function () {
+    return [tablaVenta, tablaFacturas, tablaPendientes, tablaApp, tablaPropio, tablaAnticipos, tablaAnticiposCli, tablaCobrosFactura];
+  };
   var progTimer = null;
 
   function progresoInicio() {
@@ -295,7 +372,7 @@ $(function () {
     estado.xhrs.push(xhr);
     xhr.done(function (r) {
       if (busqueda !== estado.busqueda) return;
-      alOk((r && r.data) || []);
+      alOk((r && r.data) || [], r);
       progresoMarca(k, true);
     }).fail(function (x, st) {
       if (st === 'abort' || busqueda !== estado.busqueda) return;
@@ -310,11 +387,11 @@ $(function () {
     estado.busqueda++;
     estado.xhrs = []; estado.fin = {};
     estado.venta = []; estado.facturas = []; estado.anticipos = []; estado.cobrosFactura = [];
-    estado.cobros = []; estado.banco2791 = []; estado.banco0956 = [];
+    estado.cobros = []; estado.banco2791 = []; estado.banco0956 = []; estado.partidasAnticipos = null;
 
     TABLAS().forEach(function (t) { t.settings()[0].oLanguage.sEmptyTable = 'Consultando…'; t.clear().draw(); });
-    $('#cntVenta, #cntFacturas, #cntPendientes, #cntApp, #cntPropio').text('…');
-    $('#chipsVenta, #chipsFacturas, #chipsPendientes, #chipsApp, #chipsPropio').empty();
+    $('#cntVenta, #cntFacturas, #cntPendientes, #cntApp, #cntPropio, #cntAnticipos, #cntAnticiposCli, #cntCobrosFactura').text('…');
+    $('#chipsVenta, #chipsFacturas, #chipsPendientes, #chipsApp, #chipsPropio, #chipsAnticipos, #chipsAnticiposCli, #chipsCobrosFactura').empty();
     $('#resClase tbody, #resFacturas tbody').empty();
     progresoInicio();
 
@@ -348,6 +425,25 @@ $(function () {
     consultar('propio', pedir('income.conciliation_debit_own'), function (filas) {
       cargarTabla(tablaPropio, filas, '#cntPropio');
       pintarChips('#chipsPropio', tablaPropio, filas, 'Categoria', COL_CATEGORIA_PROPIO, 'Monto');
+    });
+    consultar('anticipos', pedir('income.conciliation_debit_anticipos'), function (filas, resp) {
+      estado.anticipos = filas;
+      estado.partidasAnticipos = (resp && resp.partidas) || null;
+      cargarTabla(tablaAnticipos, filas, '#cntAnticipos');
+      pintarChips('#chipsAnticipos', tablaAnticipos, filas, 'estatus', COL_ESTATUS_ANTICIPOS, 'total');
+    });
+    consultar('anticipos_cli', pedir('income.conciliation_debit_anticipos_clients'), function (filas) {
+      cargarTabla(tablaAnticiposCli, filas, '#cntAnticiposCli');
+      $('#chipsAnticiposCli').html(
+        '<span class="cv-chip">Clientes: <b>' + filas.length.toLocaleString('en-US') + '</b></span>' +
+        '<span class="cv-chip">Anticipos: <b>' + suma(filas, 'anticipos').toLocaleString('en-US') + '</b></span>' +
+        '<span class="cv-chip">Monto anticipado: <b>$' + fmtMonto(suma(filas, 'monto')) + '</b></span>'
+      );
+    });
+    consultar('cobros_factura', pedir('income.conciliation_debit_payment_invoices'), function (filas) {
+      estado.cobrosFactura = filas;
+      cargarTabla(tablaCobrosFactura, filas, '#cntCobrosFactura');
+      pintarChips('#chipsCobrosFactura', tablaCobrosFactura, filas, 'existe_en_anticipos', COL_EXISTE_COBROS_FACTURA, 'importe');
     });
   }
 

@@ -278,10 +278,76 @@
     <small class="text-muted">Despachos de clientes de débito del mes que aún no tienen factura (nrofac = 0), con monto distinto de cero.</small>
   </div>
 
-  {# 7-12: se llenan en las tareas siguientes #}
-  <div class="tab-pane fade" id="tabAnticipos" role="tabpanel"></div>
-  <div class="tab-pane fade" id="tabAnticiposCli" role="tabpanel"></div>
-  <div class="tab-pane fade" id="tabCobrosFactura" role="tabpanel"></div>
+  {# 7. Anticipos #}
+  <div class="tab-pane fade" id="tabAnticipos" role="tabpanel">
+    <button type="button" class="cv-ayuda" data-ayuda="anticipos" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
+    <div class="cv-resumen" id="chipsAnticipos"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaAnticipos" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Factura</th><th>Fecha</th><th>Cód.</th><th>Cliente</th><th>Estación</th><th>Razón social</th>
+            <th>Subtotal</th><th>IVA</th><th>Total</th><th>Cobro aplicado</th><th>Estatus</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr>
+            <th colspan="6" class="cv-izq">Total (filas filtradas)</th>
+            <th></th><th></th><th></th><th></th><th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <small class="text-muted">Facturas de anticipo (serie D) de clientes de débito emitidas en el mes. Las canceladas ya no conservan importe y se cuentan aparte.</small>
+  </div>
+
+  {# 8. Anticipos por cliente #}
+  <div class="tab-pane fade" id="tabAnticiposCli" role="tabpanel">
+    <button type="button" class="cv-ayuda" data-ayuda="anticipos_cli" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
+    <div class="cv-resumen" id="chipsAnticiposCli"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaAnticiposCli" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr><th>Cód.</th><th>Cliente</th><th>Anticipos</th><th>Monto anticipado</th><th>Saldo actual</th></tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr>
+            <th colspan="2" class="cv-izq">Total (filas filtradas)</th>
+            <th></th><th></th><th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <small class="text-muted">Monto anticipado en el mes por cliente y su saldo de débito actual (no del cierre del mes).</small>
+  </div>
+
+  {# 9. Cobros por factura #}
+  <div class="tab-pane fade" id="tabCobrosFactura" role="tabpanel">
+    <button type="button" class="cv-ayuda" data-ayuda="cobros_factura" title="¿Qué estoy viendo?" aria-label="¿Qué estoy viendo?"><i class="far fa-question-circle"></i></button>
+    <div class="cv-resumen" id="chipsCobrosFactura"></div>
+    <div class="cv-tabla-wrap">
+      <table id="tablaCobrosFactura" class="table table-sm table-hover cv-tabla w-100 mb-0">
+        <thead>
+          <tr>
+            <th>Cobro</th><th>Fecha</th><th>Cód.</th><th>Cliente</th><th>Monto del cobro</th>
+            <th>Factura</th><th>Importe aplicado</th><th>¿Existe en Anticipos?</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr>
+            <th colspan="6" class="cv-izq">Total (filas filtradas)</th>
+            <th></th><th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <small class="text-muted">Una fila por factura que paga cada cobro prepago del mes. Un cobro que paga varias facturas aparece en varias filas (el monto del cobro se repite; sume el importe aplicado).</small>
+  </div>
+
+  {# 10-12: se llenan en las tareas siguientes #}
   <div class="tab-pane fade" id="tabCruce" role="tabpanel"></div>
   <div class="tab-pane fade" id="tabBanco2791" role="tabpanel"></div>
   <div class="tab-pane fade" id="tabBanco0956" role="tabpanel"></div>

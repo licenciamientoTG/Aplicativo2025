@@ -127,4 +127,39 @@ check('mov: Traspaso por cuenta en contraparte', cla(['contraparte' => '11554465
 check('mov: cuenta de 4 dígitos no cuenta', cla(['detalle' => 'REF 123 PAGO'], [], [], ['1234', '123']) === 'No identificado');
 check('mov: No identificado', cla(['detalle' => 'DEPOSITO'], [], [], $propias) === 'No identificado');
 
+// cobrosPorFactura: una fila por factura (DocumentosA solo series D/E; el vale 325938 no cuenta)
+function cobroPrepago(int $nro, float $monto, string $facturas, string $txtref = ''): array {
+    return ['nro' => $nro, 'fecha' => '2026-09-01', 'codopr' => 7, 'cliente' => 'D- X', 'monto' => $monto, 'facturas' => $facturas, 'txtref' => $txtref];
+}
+$cf = ConciliacionDebito::cobrosPorFactura([
+    cobroPrepago(1, 3500.0, '1200242940:3500.00,325938:3500.00'),
+    cobroPrepago(2, 9000.0, '1200000001:4000.00,1200000002:5000.00'),
+    cobroPrepago(3, 8368.0, '1200089958:8368.00,277475:8368.00'),
+    cobroPrepago(4, 10000.0, '304421:10000.00'),
+    cobroPrepago(5, 700.0, '', '@N:Fac.D100 ($700.00)'),
+], [1200242940, 1200000001, 1200000002]);
+check('cobrosPorFactura: 1+2+1+1+1 filas', count($cf) === 6);
+check('cobrosPorFactura: Sí contra anticipos del mes', $cf[0]['existe_en_anticipos'] === 'Sí' && $cf[0]['nro_factura'] === 1200242940 && $cf[0]['importe'] === 3500.0);
+check('cobrosPorFactura: dos facturas = dos filas con su importe', $cf[1]['importe'] === 4000.0 && $cf[2]['importe'] === 5000.0 && $cf[2]['cobro'] === 2);
+check('cobrosPorFactura: anticipo de otro mes = No', $cf[3]['existe_en_anticipos'] === 'No' && $cf[3]['nro_factura'] === 1200089958);
+check('cobrosPorFactura: sin factura = una fila con el monto del cobro', $cf[4]['existe_en_anticipos'] === 'Sin factura en referencia' && $cf[4]['nro_factura'] === null && $cf[4]['importe'] === 10000.0);
+check('cobrosPorFactura: sin DocumentosA usa la Referencia', $cf[5]['nro_factura'] === 1200000100 && $cf[5]['existe_en_anticipos'] === 'No');
+
+// partidasAnticipos: cobros − anticipos = otro mes + sin factura + anticipos sin cobro + sin explicar
+$ant = [
+    ['Factura' => 1, 'Total' => 3500.0, 'cobro_aplicado' => 3500.0, 'estatus' => 'Con cobro'],
+    ['Factura' => 2, 'Total' => 3500.0, 'cobro_aplicado' => 0.0, 'estatus' => 'Sin cobro'],
+    ['Factura' => 3, 'Total' => 10000.0, 'cobro_aplicado' => 0.0, 'estatus' => 'Sin cobro'],
+];
+$cfp = [
+    ['cobro' => 10, 'nro_factura' => 1, 'importe' => 3500.0, 'existe_en_anticipos' => 'Sí'],
+    ['cobro' => 11, 'nro_factura' => 99, 'importe' => 8368.0, 'existe_en_anticipos' => 'No'],
+    ['cobro' => 12, 'nro_factura' => null, 'importe' => 10000.0, 'existe_en_anticipos' => 'Sin factura en referencia'],
+];
+$p = ConciliacionDebito::partidasAnticipos($ant, $cfp, 2, 21868.0);
+check('partidas: anticipos 17,000 y diferencia 4,868', $p['anticipos'] === 17000.0 && $p['diferencia'] === 4868.0);
+check('partidas: otro mes 8,368 (1 cobro)', $p['otro_mes']['importe'] === 8368.0 && $p['otro_mes']['n'] === 1);
+check('partidas: sin factura 10,000 y sin cobro −13,500', $p['sin_factura']['importe'] === 10000.0 && $p['anticipos_sin_cobro']['importe'] === -13500.0 && $p['anticipos_sin_cobro']['n'] === 2);
+check('partidas: sin explicar 0 y canceladas 2', $p['sin_explicar'] === 0.0 && $p['canceladas'] === 2);
+
 finish();

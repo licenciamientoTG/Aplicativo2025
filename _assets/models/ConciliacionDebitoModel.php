@@ -108,4 +108,106 @@ class ConciliacionDebitoModel extends Model {
             DROP TABLE IF EXISTS #d;";
         return $this->sql->select($query, [$from, $until, $empresa]) ?: [];
     }
+
+    /**
+     * Facturas de anticipo (serie D, subope 18) del rango: el mismo reporte de Clientes > Anticipos débito
+     * (ClientesModel::get_debit_anticipos_report) más:
+     *  - cobro_aplicado: suma de DocumentosA.mtoapl / 100 de los cobros prepago (tip 4, subope 19, no cancelados)
+     *    del MISMO rango que aplican a la factura (nroapl). Los consumos que la factura va "gastando" (Serie E, tip 3)
+     *    y los cobros de otros meses no cuentan: un cobro de octubre no cubre un anticipo de septiembre.
+     *  - estatus: 'Con cobro' | 'Sin cobro' (aplicado < total − 0.01).
+     */
+    public function anticipos(int $from, int $until, int $empresa): array {
+        $filas = (new ClientesModel)->get_debit_anticipos_report($from, $until, 0, $empresa) ?: [];
+        if (!$filas) return [];
+        $nros = array_map(fn($f) => (int)$f['Factura'], $filas);
+        $query = "
+            SET NOCOUNT ON;
+            SELECT a.nroapl AS nro, SUM(a.mtoapl) / 100.0 AS aplicado
+              FROM SG12.dbo.DocumentosA a WITH (NOLOCK)
+              JOIN SG12.dbo.DocumentosC c WITH (NOLOCK) ON c.nro = a.nro AND c.codgas = a.codgas AND c.tip = a.tip
+             WHERE a.tip = 4
+               AND a.nroapl BETWEEN ? AND ?
+               AND c.subope = " . ConciliacionVentaModel::SUBOPE_COBRO_DEBITO . "
+               AND c.fch BETWEEN ? AND ?
+               AND CAST(c.txtref AS varchar(40)) NOT LIKE '@N:CANCELAD%'
+             GROUP BY a.nroapl
+            OPTION (RECOMPILE);";
+        $aplicado = [];
+        foreach ($this->sql->select($query, [min($nros), max($nros), $from, $until]) ?: [] as $r) {
+            $aplicado[(int)$r['nro']] = (float)$r['aplicado'];
+        }
+        foreach ($filas as &$f) {
+            $total = round((float)$f['Total'], 2);
+            $cobro = round($aplicado[(int)$f['Factura']] ?? 0.0, 2);
+            $f['cobro_aplicado'] = $cobro;
+            $f['estatus'] = $cobro < $total - 0.01 ? 'Sin cobro' : 'Con cobro';
+        }
+        unset($f);
+        return $filas;
+    }
+
+    /**
+     * Facturas de anticipo (serie D, subope 18) canceladas con fecha en el rango. Las canceladas ya no conservan líneas
+     * en Documentos: no se conoce el importe, solo número, fecha y cliente. Razón social por DocumentosC.codemp.
+     */
+    public function anticipos_cancelados(int $from, int $until, int $empresa): array {
+        $emp = self::EMP_FILTER;
+        $query = "
+            SET NOCOUNT ON;
+            DECLARE @d int = ?, @h int = ?, @emp int = ?;
+            SELECT c.nro, CONVERT(varchar(10), DATEADD(day, c.fch - 1, '19000101'), 23) AS fecha,
+                   c.codopr AS codcli, cl.den AS cliente,
+                   CONVERT(varchar(10), c.logfch, 23) AS fecha_cancelacion
+              FROM SG12.dbo.DocumentosC c WITH (NOLOCK)
+              LEFT JOIN SG12.dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = c.codemp
+              LEFT JOIN SG12.dbo.Clientes cl WITH (NOLOCK) ON cl.cod = c.codopr
+             WHERE c.tip = 3 AND c.codgas = 0 AND c.subope = 18
+               AND c.nro BETWEEN 1200000000 AND 1299999999
+               AND CAST(c.txtref AS varchar(40)) LIKE '@N:CANCELAD%'
+               AND c.fch BETWEEN @d AND @h
+               AND {$emp}
+             ORDER BY c.fch, c.nro
+            OPTION (RECOMPILE);";
+        return $this->sql->select($query, [$from, $until, $empresa]) ?: [];
+    }
+
+    /**
+     * Anticipos agrupados por cliente: monto anticipado del rango y saldo actual (Clientes.debsdo, en pesos).
+     * Una fila por cliente, ordenada por nombre.
+     */
+    public function anticipos_clientes(int $from, int $until, int $empresa): array {
+        $por = [];
+        foreach ($this->anticipos($from, $until, $empresa) as $f) {
+            $k = (int)$f['codcli'];
+            $por[$k] ??= ['codcli' => $k, 'cliente' => trim((string)$f['Cliente']), 'anticipos' => 0, 'monto' => 0.0, 'saldo' => null];
+            $por[$k]['anticipos']++;
+            $por[$k]['monto'] += (float)$f['Total'];
+        }
+        if (!$por) return [];
+        $query = "SELECT cod, debsdo FROM SG12.dbo.Clientes WITH (NOLOCK) WHERE cod IN (" . implode(',', array_map('intval', array_keys($por))) . ")";
+        foreach ($this->sql->select($query, []) ?: [] as $r) {
+            $por[(int)$r['cod']]['saldo'] = round((float)$r['debsdo'], 2);
+        }
+        foreach ($por as &$p) $p['monto'] = round($p['monto'], 2);
+        unset($p);
+        usort($por, fn($a, $b) => strcmp($a['cliente'], $b['cliente']));
+        return $por;
+    }
+
+    /**
+     * Cobros prepago (tip 4, subope 19) del rango, sin cancelar, de la razón social pedida
+     * (la de la estación del cobro; 0 = todas, -1 = sin razón social). Cada fila trae `facturas`
+     * ("nroapl:mto,…" de DocumentosA) y txtref, como ConciliacionVentaModel::cobros.
+     */
+    public function cobros_prepago(int $from, int $until, int $empresa): array {
+        $out = [];
+        foreach ((new ConciliacionVentaModel)->cobros($from, $until, ConciliacionVentaModel::SUBOPE_COBRO_DEBITO) as $r) {
+            if ((int)$r['cancelado'] === 1) continue;
+            $emp = $r['empresa'] === null ? -1 : (int)$r['empresa'];
+            if ($empresa !== 0 && $emp !== $empresa) continue;
+            $out[] = $r;
+        }
+        return $out;
+    }
 }

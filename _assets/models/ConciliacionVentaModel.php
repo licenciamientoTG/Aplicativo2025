@@ -26,6 +26,8 @@ class ConciliacionVentaModel extends Model {
     public const SUBOPE_FACTURA_CREDITO = 4;
     /** SG12.EfectosC: subope de "Cobranza a Clientes" (tip 4), lo que trae el reporte de cobros. */
     public const SUBOPE_COBRANZA = 8;
+    /** SG12.EfectosC: subope del cobro de clientes de débito (prepago, tip 4), lo usa la conciliación débito. */
+    public const SUBOPE_COBRO_DEBITO = 19;
     /** ValesR.codval del crédito en los cortes. */
     public const CODVAL_CREDITO = 28;
 
@@ -470,8 +472,8 @@ class ConciliacionVentaModel extends Model {
      * el banco (ConciliacionCobros) va completo y la razón social se filtra
      * después con la columna empresa.
      */
-    public function cobros(int $from, int $until): array {
-        $subopes = self::SUBOPE_COBRANZA;
+    public function cobros(int $from, int $until, int $subope = self::SUBOPE_COBRANZA): array {
+        $subopes = $subope;
         $query = "
             SET NOCOUNT ON;
             DECLARE @d int = ?, @h int = ?;

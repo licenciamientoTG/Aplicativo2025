@@ -655,6 +655,84 @@ class Income{
         json_output(['data' => $data]);
     }
 
+    /**
+     * POST: facturas de anticipo vigentes del mes con el cobro aplicado y su estatus (Con cobro / Sin cobro), más las canceladas
+     * (estatus Cancelada, sin importe: ya no conservan líneas). `partidas` = card B del Resumen (ConciliacionDebito::partidasAnticipos).
+     */
+    public function conciliation_debit_anticipos() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        $empresa = $this->conciliationEmpresa();
+        $model = new ConciliacionDebitoModel;
+        $data = [];
+        foreach ($model->anticipos($from, $until, $empresa) as $r) {
+            $data[] = [
+                'factura'        => get_invoice_series((int)$r['Factura']),
+                'nro'            => (int)$r['Factura'],
+                'fecha'          => $r['Fecha'],
+                'codcli'         => (int)$r['codcli'],
+                'cliente'        => trim((string)$r['Cliente']),
+                'estacion'       => trim((string)$r['Estacion']),
+                'razon_social'   => $r['RazonSocial'],
+                'subtotal'       => round((float)$r['Subtotal'], 2),
+                'iva'            => round((float)$r['IVA'], 2),
+                'total'          => round((float)$r['Total'], 2),
+                'cobro_aplicado' => $r['cobro_aplicado'],
+                'estatus'        => $r['estatus'],
+            ];
+        }
+        $vigentes = $data;
+        $canceladas = $model->anticipos_cancelados($from, $until, $empresa);
+        foreach ($canceladas as $r) {
+            $data[] = [
+                'factura' => get_invoice_series((int)$r['nro']), 'nro' => (int)$r['nro'], 'fecha' => $r['fecha'],
+                'codcli' => (int)$r['codcli'], 'cliente' => trim((string)$r['cliente']), 'estacion' => '', 'razon_social' => '',
+                'subtotal' => null, 'iva' => null, 'total' => null, 'cobro_aplicado' => null, 'estatus' => 'Cancelada',
+            ];
+        }
+        usort($data, fn($a, $b) => [$a['fecha'], $a['nro']] <=> [$b['fecha'], $b['nro']]);
+        $cobros = $model->cobros_prepago($from, $until, $empresa);
+        $porFactura = ConciliacionDebito::cobrosPorFactura($cobros, array_column($vigentes, 'nro'));
+        $partidas = ConciliacionDebito::partidasAnticipos(
+            array_map(fn($a) => ['Factura' => $a['nro'], 'Total' => $a['total'], 'cobro_aplicado' => $a['cobro_aplicado'], 'estatus' => $a['estatus']], $vigentes),
+            $porFactura, count($canceladas), array_sum(array_column($cobros, 'monto'))
+        );
+        json_output(['data' => $data, 'partidas' => $partidas]);
+    }
+
+    /** POST: monto anticipado por cliente en el mes y su saldo actual (Clientes.debsdo). */
+    public function conciliation_debit_anticipos_clients() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        json_output(['data' => (new ConciliacionDebitoModel)->anticipos_clientes($from, $until, $this->conciliationEmpresa())]);
+    }
+
+    /**
+     * POST: cobros prepago del mes, una fila por factura que pagan (DocumentosA / Referencia) y si esa factura
+     * es un anticipo del mes (Sí | No | Sin factura en referencia).
+     */
+    public function conciliation_debit_payment_invoices() : void {
+        set_time_limit(300);
+        [$from, $until] = $this->conciliationRange();
+        $empresa = $this->conciliationEmpresa();
+        $model = new ConciliacionDebitoModel;
+        $nros = array_map(fn($a) => (int)$a['Factura'], $model->anticipos($from, $until, $empresa));
+        $data = [];
+        foreach (ConciliacionDebito::cobrosPorFactura($model->cobros_prepago($from, $until, $empresa), $nros) as $r) {
+            $data[] = [
+                'cobro'               => $r['cobro'],
+                'fecha'               => $r['fecha'],
+                'codcli'              => $r['codcli'],
+                'cliente'             => $r['cliente'],
+                'monto_cobro'         => $r['monto'],
+                'factura'             => $r['nro_factura'] === null ? '' : get_invoice_series($r['nro_factura']),
+                'importe'             => $r['importe'],
+                'existe_en_anticipos' => $r['existe_en_anticipos'],
+            ];
+        }
+        json_output(['data' => $data]);
+    }
+
     /** Facturas Serie E del mes del POST ya clasificadas por periodo (descarta las que no son del mes; ver ConciliacionDebito::clasificarFacturas). */
     private function conciliationDebitFacturas() : array {
         [$from, $until, $desde] = $this->conciliationRange();
