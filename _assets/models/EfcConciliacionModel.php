@@ -525,7 +525,9 @@ class EfcConciliacionModel {
             if($find->fetchColumn()!==false) {
                 $this->db->prepare("UPDATE TG.dbo.efc_conc_diferencias_captura SET excluido_neteo=? WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?")->execute([$excluded?1:0,$stationId,$date,$turn,$concept]);
             } else {
-                $this->db->prepare("INSERT TG.dbo.efc_conc_diferencias_captura(estacion_id,fecha_operativa,turno,concepto,excluido_neteo) VALUES(?,?,?,?,?)")->execute([$stationId,$date,$turn,$concept,$excluded?1:0]);
+                // Algunas instalaciones no tienen DEFAULT para capturado.
+                // Inicializar el estado F8 explícitamente al crear solo el neteo.
+                $this->db->prepare("INSERT TG.dbo.efc_conc_diferencias_captura(estacion_id,fecha_operativa,turno,concepto,capturado,no_aplica,requiere_actualizacion,excluido_neteo,creado_en) VALUES(?,?,?,?,0,0,0,?,SYSDATETIME())")->execute([$stationId,$date,$turn,$concept,$excluded?1:0]);
             }
             $this->db->commit();
         } catch(Throwable $e) { if($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
