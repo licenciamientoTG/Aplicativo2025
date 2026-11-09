@@ -75,7 +75,10 @@
             <div class="col-md-4 ba-dato"><label>Proveedor</label><div class="fw-semibold">{{ solicitud.proveedor }}</div></div>
             <div class="col-md-4 ba-dato"><label>Departamento</label><div>{{ solicitud.departamento }}</div></div>
             <div class="col-md-4 ba-dato"><label>Banco</label><div>{{ solicitud.banco }} <span class="text-muted">({{ solicitud.clave_banco }})</span></div></div>
-            <div class="col-md-4 ba-dato"><label>Número de cuenta</label><div class="ba-mono">{{ solicitud.num_cuenta }}</div></div>
+            <div class="col-md-4 ba-dato"><label>{{ solicitud.moneda == 'DOLARES' ? 'Account number' : 'Cuenta' }}</label><div class="ba-mono">{{ solicitud.num_cuenta }}</div></div>
+            {% if solicitud.clabe %}<div class="col-md-4 ba-dato"><label>CLABE</label><div class="ba-mono">{{ solicitud.clabe }}</div></div>{% endif %}
+            {% if solicitud.routing_number %}<div class="col-md-4 ba-dato"><label>Routing number</label><div class="ba-mono">{{ solicitud.routing_number }}</div></div>{% endif %}
+            {% if solicitud.benef_direccion %}<div class="col-12 ba-dato"><label>Dirección completa</label><div>{{ solicitud.benef_direccion }}</div></div>{% endif %}
             <div class="col-md-2 ba-dato"><label>Moneda</label><div>{{ solicitud.moneda }}</div></div>
             <div class="col-md-3 ba-dato"><label>Solicitó</label><div>{{ solicitud.solicitante }} · {{ solicitud.fecha_solicitud|date('d/m/Y') }}</div></div>
             {% if solicitud.fecha_alta %}<div class="col-md-3 ba-dato"><label>Fecha de alta</label><div>{{ solicitud.fecha_alta|date('d/m/Y') }}</div></div>{% endif %}

@@ -9,6 +9,7 @@ return [
         route('enviar-reporte/', [Petrotal::class, 'enviar_reporte'], name: 'petrotal.enviar_reporte', methods: ['POST'], alias: ['petrotal/enviar_reporte']),
         route('configuracion-fiel/', [Petrotal::class, 'configuracion_fiel'], name: 'petrotal.configuracion_fiel', methods: ['GET'], alias: ['petrotal/configuracion_fiel']),
         route('guardar-fiel/', [Petrotal::class, 'guardar_fiel'], name: 'petrotal.guardar_fiel', methods: ['POST'], alias: ['petrotal/guardar_fiel']),
+        route('guardar-api/', [Petrotal::class, 'guardar_api'], name: 'petrotal.guardar_api', methods: ['POST']),
         route('historial/', [Petrotal::class, 'historial'], name: 'petrotal.historial', methods: ['GET']),
         route('descargar-json/<int:id>/', [Petrotal::class, 'descargar_json'], name: 'petrotal.descargar_json', methods: ['GET'], alias: ['petrotal/descargar_json/<int:id>']),
         route('descargar-acuse/<int:id>/', [Petrotal::class, 'descargar_acuse'], name: 'petrotal.descargar_acuse', methods: ['GET'], alias: ['petrotal/descargar_acuse/<int:id>']),

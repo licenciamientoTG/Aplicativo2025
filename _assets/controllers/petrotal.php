@@ -27,6 +27,18 @@ class Petrotal {
         return [$lunesSemanaAnterior->format('Y-m-d'), $domingoSemanaAnterior->format('Y-m-d')];
     }
 
+    // Permisos elegidos a mano en la vista previa: [FacturaId => permiso].
+    // El modelo solo los acepta si están entre los candidatos del RFC.
+    private function leer_asignaciones(array $origen): array {
+        $asignaciones = [];
+        foreach ((array) ($origen['asignaciones'] ?? []) as $facturaId => $permiso) {
+            if (ctype_digit((string) $facturaId) && is_string($permiso) && $permiso !== '') {
+                $asignaciones[(int) $facturaId] = trim($permiso);
+            }
+        }
+        return $asignaciones;
+    }
+
     public function volumetricos() {
         if (!authorized(98)) {
             echo "No autorizado";
@@ -54,7 +66,7 @@ class Petrotal {
             return;
         }
 
-        $reporte = $this->petrotalObligacionModel->construir_reporte($desde, $hasta);
+        $reporte = $this->petrotalObligacionModel->construir_reporte($desde, $hasta, $this->leer_asignaciones($_REQUEST));
         $envioExistente = $this->petrotalObligacionModel->buscar_envio_periodo($desde, $hasta);
 
         json_output([
@@ -83,13 +95,26 @@ class Petrotal {
             return;
         }
 
-        $reporte = $this->petrotalObligacionModel->construir_reporte($desde, $hasta);
+        $reporte = $this->petrotalObligacionModel->construir_reporte($desde, $hasta, $this->leer_asignaciones($_POST));
         $json = PetrotalCneClient::armar_json(self::NUMERO_PERMISO_PETROTAL, $desde, $hasta, $reporte['ventas'], $reporte['compras']);
 
         $envioExistente = $this->petrotalObligacionModel->buscar_envio_periodo($desde, $hasta);
         $usuarioId = $_SESSION['tg_user']['id'] ?? 0;
 
-        if ($envioExistente) {
+        // Un envío ya presentado a la CNE (enviado / acuse_recibido) NO se
+        // reutiliza ni se sobrescribe su JSON: regenerar crea un envío nuevo
+        // (archivo distinto, el anterior queda en el historial). Solo se
+        // reutiliza el registro si sigue en borrador o error.
+        $yaPresentado = $envioExistente && in_array($envioExistente['Estado'], ['enviado', 'acuse_recibido'], true);
+        if ($yaPresentado && empty($_POST['confirmar_reenvio'])) {
+            json_output([
+                'requiere_confirmacion' => true,
+                'mensaje' => "Este periodo ya fue enviado a la CNE (envío #{$envioExistente['Id']}, estado {$envioExistente['Estado']}). Si continúas se crea un envío nuevo y el anterior se conserva en el historial.",
+            ]);
+            return;
+        }
+
+        if ($envioExistente && !$yaPresentado) {
             $envioId = $envioExistente['Id'];
         } else {
             $envioId = $this->petrotalObligacionModel->crear_envio($desde, $hasta, $usuarioId);
@@ -135,13 +160,32 @@ class Petrotal {
             return;
         }
 
-        $resultado = PetrotalCneClient::enviar(
-            $envio['RutaJson'],
-            $fielConfig['ruta_cer'],
-            $fielConfig['ruta_key'],
-            $fielConfig['password'],
-            self::NUMERO_PERMISO_PETROTAL
-        );
+        // Con ApiKey + obligación configuradas se usa ApiReportes (firma local,
+        // la llave privada no sale del servidor). Sin ellas, sigue el flujo
+        // anterior de api-masivos.
+        if (!empty($fielConfig['api_key']) && !empty($fielConfig['obligacion_id'])) {
+            $resultado = PetrotalCneClient::presentar_reporte(
+                $fielConfig['ambiente'] ?: 'qa',
+                $fielConfig['api_key'],
+                (int) $fielConfig['obligacion_id'],
+                $envio['RutaJson'],
+                $fielConfig['ruta_cer'],
+                $fielConfig['ruta_key'],
+                $fielConfig['password'],
+                self::NUMERO_PERMISO_PETROTAL,
+                substr((string) $envio['PeriodoDesde'], 0, 10),
+                substr((string) $envio['PeriodoHasta'], 0, 10)
+            );
+        } else {
+            $resultado = PetrotalCneClient::enviar(
+                $envio['RutaJson'],
+                $fielConfig['ruta_cer'],
+                $fielConfig['ruta_key'],
+                $fielConfig['password'],
+                self::NUMERO_PERMISO_PETROTAL
+            );
+        }
+        // La ApiKey nunca se guarda en RespuestaRaw (no viaja en la respuesta).
 
         if ($resultado['error_conexion']) {
             $this->petrotalObligacionModel->actualizar_envio($envioId, [
@@ -194,7 +238,42 @@ class Petrotal {
             return;
         }
         $configActual = $this->petrotalFielModel->obtener_config();
-        echo $this->twig->render($this->route . 'configuracion_fiel.html', compact('configActual'));
+        if ($configActual) {
+            // Nunca se manda la ApiKey ni el password a la vista.
+            $configActual = [
+                'ruta_cer' => $configActual['ruta_cer'],
+                'tiene_api_key' => !empty($configActual['api_key']),
+                'obligacion_id' => $configActual['obligacion_id'],
+                'ambiente' => $configActual['ambiente'],
+            ];
+        }
+        $apiDisponible = $this->petrotalFielModel->api_disponible();
+        echo $this->twig->render($this->route . 'configuracion_fiel.html', compact('configActual', 'apiDisponible'));
+    }
+
+    public function guardar_api() {
+        if (!authorized(99)) {
+            setFlashMessage('error', 'No autorizado.');
+            redirect(Router::reverse('petrotal.configuracion_fiel'));
+            return;
+        }
+        $apiKey = trim($_POST['api_key'] ?? '');
+        $obligacionId = (int) ($_POST['obligacion_id'] ?? 0);
+        $ambiente = $_POST['ambiente'] ?? '';
+
+        if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $apiKey)) {
+            setFlashMessage('error', 'La ApiKey debe tener formato GUID (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).');
+        } elseif ($obligacionId < 1) {
+            setFlashMessage('error', 'Indica el ID de obligación.');
+        } elseif (!isset(PetrotalCneClient::URLS_API_REPORTES[$ambiente])) {
+            setFlashMessage('error', 'Ambiente inválido.');
+        } elseif (!$this->petrotalFielModel->obtener_config()) {
+            setFlashMessage('error', 'Primero sube la FIEL (.cer/.key/password).');
+        } else {
+            $ok = $this->petrotalFielModel->guardar_api($apiKey, $obligacionId, $ambiente);
+            setFlashMessage($ok ? 'success' : 'error', $ok ? 'Configuración de ApiReportes guardada.' : 'No se pudo guardar (¿ya corriste el SQL de columnas ApiReportes?).');
+        }
+        redirect(Router::reverse('petrotal.configuracion_fiel'));
     }
 
     public function guardar_fiel() {

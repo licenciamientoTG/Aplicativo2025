@@ -18,7 +18,10 @@
         <div class="col-md-6"><div class="small text-muted">Razón social</div>{{ solicitud.empresa }}</div>
         <div class="col-md-6"><div class="small text-muted">Proveedor</div><strong>{{ solicitud.proveedor }}</strong></div>
         <div class="col-md-6"><div class="small text-muted">Banco</div>{{ solicitud.banco }}</div>
-        <div class="col-md-6"><div class="small text-muted">Cuenta</div><span style="font-family:Consolas,monospace;">{{ solicitud.num_cuenta }}</span> · {{ solicitud.moneda }}</div>
+        <div class="col-md-6"><div class="small text-muted">{{ solicitud.moneda == 'DOLARES' ? 'Account number' : 'Cuenta' }}</div><span style="font-family:Consolas,monospace;">{{ solicitud.num_cuenta }}</span> · {{ solicitud.moneda }}</div>
+        {% if solicitud.clabe %}<div class="col-md-6"><div class="small text-muted">CLABE</div><span style="font-family:Consolas,monospace;">{{ solicitud.clabe }}</span></div>{% endif %}
+        {% if solicitud.routing_number %}<div class="col-md-6"><div class="small text-muted">Routing number</div><span style="font-family:Consolas,monospace;">{{ solicitud.routing_number }}</span></div>{% endif %}
+        {% if solicitud.benef_direccion %}<div class="col-12"><div class="small text-muted">Dirección completa</div>{{ solicitud.benef_direccion }}</div>{% endif %}
         <div class="col-md-6"><div class="small text-muted">Departamento</div>{{ solicitud.departamento }}</div>
         <div class="col-md-6"><div class="small text-muted">Solicitó</div>{{ solicitud.solicitante }} · {{ solicitud.fecha_solicitud|date('d/m/Y') }}</div>
         <div class="col-12"><div class="small text-muted">Carátula</div>

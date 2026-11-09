@@ -44,6 +44,27 @@ class BankAccountRequestsModel extends Model
         return $r ? $r[0] : null;
     }
 
+    /**
+     * Número con el que la solicitud vive en el catálogo (CuentaLocal): la CLABE en cuentas
+     * mexicanas y el account number en las americanas. Las solicitudes anteriores a la
+     * separación de campos solo tienen num_cuenta.
+     */
+    public static function catalog_key(array $req): string
+    {
+        $clabe = trim((string) ($req['clabe'] ?? ''));
+        return $clabe !== '' ? $clabe : (string) $req['num_cuenta'];
+    }
+
+    /** Dígito verificador ABA de un routing number de 9 dígitos. */
+    public static function aba_valido(string $r): bool
+    {
+        if (!preg_match('/^\d{9}$/', $r)) {
+            return false;
+        }
+        $d = array_map('intval', str_split($r));
+        return (3 * ($d[0] + $d[3] + $d[6]) + 7 * ($d[1] + $d[4] + $d[7]) + ($d[2] + $d[5] + $d[8])) % 10 === 0;
+    }
+
     public function get(int $id): ?array
     {
         $r = $this->sql->select(self::SELECT . ' WHERE r.id = ?;', [$id]);
@@ -69,8 +90,9 @@ class BankAccountRequestsModel extends Model
             [$cuenta]
         ) ?: [];
         $sol = $this->sql->select(
-            'SELECT id, proveedor, banco FROM [TG].[dbo].[bank_account_requests] WHERE num_cuenta = ? AND status = ? AND id <> ?;',
-            [$cuenta, self::ST_PENDIENTE, $exceptRequestId]
+            'SELECT id, proveedor, banco FROM [TG].[dbo].[bank_account_requests]
+             WHERE (clabe = ? OR (clabe IS NULL AND num_cuenta = ?)) AND status = ? AND id <> ?;',
+            [$cuenta, $cuenta, self::ST_PENDIENTE, $exceptRequestId]
         ) ?: [];
         return ['catalogo' => $cat, 'solicitudes' => $sol];
     }
@@ -80,13 +102,13 @@ class BankAccountRequestsModel extends Model
     {
         $id = $this->sql->insert(
             'INSERT INTO [TG].[dbo].[bank_account_requests]
-                (user_id, empresa_cod, banco, clave_banco, moneda, tipo_cuenta, num_cuenta, proveedor,
+                (user_id, empresa_cod, banco, clave_banco, moneda, tipo_cuenta, num_cuenta, clabe, routing_number, proveedor,
                  plaza_banxico, sucursal, tipo_cuenta_cod, benef_app_paterno, benef_app_materno, benef_log,
                  benef_direccion, benef_ciudad, departamento, fecha_solicitud, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(GETDATE() AS DATE), ?);',
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(GETDATE() AS DATE), ?);',
             [
                 $userId, $d['empresa_cod'], $d['banco'], $d['clave_banco'], $d['moneda'], $d['tipo_cuenta'],
-                $d['num_cuenta'], $d['proveedor'], $d['plaza_banxico'], $d['sucursal'], $d['tipo_cuenta_cod'],
+                $d['num_cuenta'], $d['clabe'] ?: null, $d['routing_number'] ?: null, $d['proveedor'], $d['plaza_banxico'], $d['sucursal'], $d['tipo_cuenta_cod'],
                 $d['benef_app_paterno'] ?: null, $d['benef_app_materno'] ?: null, $d['benef_log'],
                 $d['benef_direccion'] ?: null, $d['benef_ciudad'], $d['departamento'], $status,
             ]
@@ -187,9 +209,10 @@ class BankAccountRequestsModel extends Model
                 return ['success' => false, 'message' => 'La solicitud ya cambió de estado, recargue la página.'];
             }
 
+            $clave = self::catalog_key($req);
             $existente = $this->sql->select(
                 'SELECT TOP 1 Id, Activo FROM [TG].[dbo].[CatalogosCuentasBancarias] WHERE CuentaLocal = ? ORDER BY Activo DESC, Id ASC;',
-                [$req['num_cuenta']]
+                [$clave]
             );
             $ligada = false;
             if ($existente) {
@@ -206,12 +229,13 @@ class BankAccountRequestsModel extends Model
                 $catId = (int) $this->sql->insert(
                     'INSERT INTO [TG].[dbo].[CatalogosCuentasBancarias]
                         (FechaAlta, CuentaLocal, Descripcion, TipoCuenta, Banco, Divisa,
-                         TitularCuenta, Tipo, Activo, FechaRegistro, UsuarioRegistro)
-                     VALUES (CAST(GETDATE() AS DATE), ?, ?, \'Otros Bancos Nacionales\', ?, ?, ?, \'Terceros\', 1, GETDATE(), ?);',
+                         TitularCuenta, Tipo, Activo, FechaRegistro, UsuarioRegistro, EntidadCuentaLocalABASwift)
+                     VALUES (CAST(GETDATE() AS DATE), ?, ?, \'Otros Bancos Nacionales\', ?, ?, ?, \'Terceros\', 1, GETDATE(), ?, ?);',
                     [
-                        $req['num_cuenta'], $req['proveedor'], $req['banco'],
+                        $clave, $req['proveedor'], $req['banco'],
                         self::DIVISAS[$req['moneda']] ?? self::DIVISAS['PESOS'],
                         $req['proveedor'], (string) $userId,
+                        trim((string) ($req['routing_number'] ?? '')) ?: null,  // ABA / routing number (cuentas USD)
                     ]
                 );
                 if ($catId <= 0) {

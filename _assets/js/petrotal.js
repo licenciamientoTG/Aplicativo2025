@@ -27,21 +27,59 @@ $(function () {
     $container.empty();
     if (!advertencias.length) return;
 
-    const lista = advertencias.map(function (a) {
-      return '<li>' + escapeHtml(a.mensaje) + '</li>';
+    // Un permiso ambiguo se repite por cada concepto de la misma factura:
+    // se muestra una sola vez por factura.
+    const vistos = {};
+    const unicas = advertencias.filter(function (a) {
+      if (a.tipo !== 'permiso_ambiguo') return true;
+      if (vistos[a.factura_id]) return false;
+      vistos[a.factura_id] = true;
+      return true;
+    });
+
+    const lista = unicas.map(function (a) {
+      let extra = '';
+      if (a.tipo === 'permiso_ambiguo') {
+        const opciones = (a.candidatos || []).map(function (p) {
+          return '<option value="' + escapeHtml(p) + '">' + escapeHtml(p) + '</option>';
+        }).join('');
+        extra = ' <select class="form-select form-select-sm d-inline-block w-auto sel-permiso" data-factura="' +
+          escapeHtml(String(a.factura_id)) + '"><option value="">— elegir permiso —</option>' + opciones + '</select>';
+      }
+      return '<li>' + escapeHtml(a.mensaje) + extra + '</li>';
     }).join('');
 
+    const bloqueantes = unicas.filter(function (a) { return a.tipo !== 'comprobantes_omitidos'; }).length;
+    const clase = bloqueantes ? 'alert-warning' : 'alert-info';
+    const titulo = bloqueantes
+      ? bloqueantes + ' advertencia(s) — revisa antes de enviar:'
+      : 'Información del periodo:';
+
     $container.append(
-      '<div class="alert alert-warning">' +
-      '<strong>' + advertencias.length + ' advertencia(s) — revisa antes de enviar:</strong>' +
-      '<ul>' + lista + '</ul>' +
+      '<div class="alert ' + clase + '">' +
+      '<strong>' + titulo + '</strong>' +
+      '<ul class="mb-0">' + lista + '</ul>' +
       '</div>'
     );
   }
 
+  // Permisos elegidos a mano para clientes con varios permisos CRE:
+  // { facturaId: permiso }. Se reenvían al consultar la vista previa y al
+  // generar el JSON; el servidor solo acepta permisos candidatos del RFC.
+  const asignaciones = {};
+
+  $(document).on('change', '.sel-permiso', function () {
+    const facturaId = $(this).data('factura');
+    const permiso = $(this).val();
+    if (permiso) {
+      asignaciones[facturaId] = permiso;
+      $('#btn_preview').trigger('click');
+    }
+  });
+
   function hayAdvertenciasBloqueantes(advertencias) {
     return advertencias.some(function (a) {
-      return a.tipo === 'sin_permiso' || a.tipo === 'permiso_ambiguo' || a.tipo === 'producto_no_clasificado';
+      return a.tipo === 'sin_permiso' || a.tipo === 'permiso_ambiguo' || a.tipo === 'producto_no_clasificado' || a.tipo === 'permiso_formato_invalido' || a.tipo === 'valor_fuera_de_rango';
     });
   }
 
@@ -53,7 +91,7 @@ $(function () {
       return;
     }
 
-    $.get(routeUrl('petrotal.preview_json'), { desde: desde, hasta: hasta })
+    $.get(routeUrl('petrotal.preview_json'), { desde: desde, hasta: hasta, asignaciones: asignaciones })
       .done(function (respuesta) {
         if (respuesta.error) {
           alert(respuesta.error);
@@ -72,15 +110,20 @@ $(function () {
       });
   });
 
-  $('#btn_generar_json').on('click', function () {
-    if (!ultimoReporte) return;
+  function generarJson(confirmarReenvio) {
     $.post(routeUrl('petrotal.generar_json'), {
       desde: $('#periodo_desde').val(),
       hasta: $('#periodo_hasta').val(),
+      asignaciones: asignaciones,
+      confirmar_reenvio: confirmarReenvio ? 1 : 0,
     })
       .done(function (respuesta) {
         if (respuesta.error) {
           alert(respuesta.error);
+          return;
+        }
+        if (respuesta.requiere_confirmacion) {
+          if (confirm(respuesta.mensaje + '\n\n¿Crear un envío nuevo?')) generarJson(true);
           return;
         }
         $('#json_preview').show().text(respuesta.json);
@@ -89,6 +132,11 @@ $(function () {
       .fail(function () {
         alert('Error al generar el JSON.');
       });
+  }
+
+  $('#btn_generar_json').on('click', function () {
+    if (!ultimoReporte) return;
+    generarJson(false);
   });
 
   $('#btn_enviar_cne').on('click', function () {

@@ -22,6 +22,7 @@ class BankAccountRequests
     private const LIM_CUENTA    = 50;
     private const LIM_PROVEEDOR = 200;
     private const LIM_COMENTARIO = 400;
+    private const LIM_DIRECCION  = 300;
 
 
     private const ESTATUS = [
@@ -111,7 +112,7 @@ class BankAccountRequests
         $solicitudes  = $this->model->list_visible($this->user_id(), $es_tesoreria);
         foreach ($solicitudes as &$s) {
             $s['es_propia'] = $this->es_propia($s);
-            $s['busqueda']  = mb_strtolower('#' . $s['id'] . ' ' . $s['proveedor'] . ' ' . $s['num_cuenta'] . ' ' . $s['banco'] . ' ' . $s['solicitante']);
+            $s['busqueda']  = mb_strtolower('#' . $s['id'] . ' ' . $s['proveedor'] . ' ' . $s['num_cuenta'] . ' ' . ($s['clabe'] ?? '') . ' ' . $s['banco'] . ' ' . $s['solicitante']);
         }
         unset($s);
         $estatus = self::ESTATUS;
@@ -139,7 +140,7 @@ class BankAccountRequests
             // Misma respuesta para inexistente y ajena: no revela ids.
             $this->fail(403, 'No tiene acceso a esta solicitud.', false);
         }
-        $duplicados   = $this->model->duplicates((string) $solicitud['num_cuenta'], (int) $solicitud['id']);
+        $duplicados   = $this->model->duplicates(BankAccountRequestsModel::catalog_key($solicitud), (int) $solicitud['id']);
         $pendiente    = (int) $solicitud['status'] === BankAccountRequestsModel::ST_PENDIENTE;
         $puede_decidir = $pendiente && $this->es_tesoreria();
         $puede_subir   = (int) $solicitud['status'] === BankAccountRequestsModel::ST_BORRADOR && $this->es_propia($solicitud);
@@ -178,6 +179,8 @@ class BankAccountRequests
             'banco'             => $this->texto($_POST['banco'] ?? '', 100),
             'moneda'            => $this->texto($_POST['moneda'] ?? '', 10),
             'num_cuenta'        => preg_replace('/\s+/', '', $this->texto($_POST['num_cuenta'] ?? '', self::LIM_CUENTA)),
+            'clabe'             => preg_replace('/\s+/', '', $this->texto($_POST['clabe'] ?? '', 40)),
+            'routing_number'    => preg_replace('/\s+/', '', $this->texto($_POST['routing_number'] ?? '', 40)),
             'proveedor'         => $this->texto($_POST['proveedor'] ?? '', self::LIM_PROVEEDOR),
             'departamento'      => $this->texto($_POST['departamento'] ?? '', 40),
         ];
@@ -196,8 +199,23 @@ class BankAccountRequests
         }
         // El tipo de cuenta ya no se pide: siempre cuenta externa.
         $d['tipo_cuenta'] = 'EXTRNA';
-        if ($d['num_cuenta'] === '' || !preg_match('/^\d{6,50}$/', $d['num_cuenta'])) {
-            return [$d, 'El número de cuenta debe ser numérico (CLABE de 18 dígitos, tarjeta o cuenta).'];
+        // PESOS = cuenta mexicana (cuenta + CLABE); DOLARES = cuenta americana (account number + routing number).
+        if ($d['moneda'] === 'DOLARES') {
+            if (!preg_match('/^\d{4,17}$/', $d['num_cuenta'])) {
+                return [$d, 'Escriba el account number (solo números, de 4 a 17 dígitos).'];
+            }
+            if (!BankAccountRequestsModel::aba_valido($d['routing_number'])) {
+                return [$d, 'El routing number debe ser de 9 dígitos y válido (revise que no haya un dígito mal escrito).'];
+            }
+            $d['clabe'] = '';
+        } else {
+            if (!preg_match('/^\d{6,20}$/', $d['num_cuenta'])) {
+                return [$d, 'La cuenta es obligatoria y debe ser numérica (de 6 a 20 dígitos).'];
+            }
+            if (!preg_match('/^\d{18}$/', $d['clabe'])) {
+                return [$d, 'La CLABE es obligatoria y debe tener 18 dígitos.'];
+            }
+            $d['routing_number'] = '';
         }
         if ($d['proveedor'] === '') {
             return [$d, 'Escriba el nombre del proveedor.'];
@@ -207,7 +225,7 @@ class BankAccountRequests
         $d += [
             'plaza_banxico' => '01001', 'sucursal' => '1234', 'tipo_cuenta_cod' => '40',
             'benef_app_paterno' => '', 'benef_app_materno' => '', 'benef_log' => $d['proveedor'],
-            'benef_direccion' => '', 'benef_ciudad' => 'MEXICO',
+            'benef_direccion' => $this->texto($_POST['direccion'] ?? '', self::LIM_DIRECCION), 'benef_ciudad' => 'MEXICO',
         ];
         if (!in_array($d['departamento'], BankAccountRequestsModel::DEPARTAMENTOS, true)) {
             return [$d, 'Seleccione el departamento.'];
@@ -300,7 +318,7 @@ class BankAccountRequests
     public function decision_modal($id): void
     {
         $solicitud  = $this->solicitud_para_decidir((int) $id);
-        $duplicados = $this->model->duplicates((string) $solicitud['num_cuenta'], (int) $solicitud['id']);
+        $duplicados = $this->model->duplicates(BankAccountRequestsModel::catalog_key($solicitud), (int) $solicitud['id']);
         echo $this->twig->render($this->route . 'modals/decision.html', compact('solicitud', 'duplicados'));
     }
 
