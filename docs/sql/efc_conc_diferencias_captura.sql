@@ -21,3 +21,10 @@ BEGIN
         CONSTRAINT CK_efc_conc_dif_captura_concepto CHECK (concepto IN ('MN','MORRALLA','USD'))
     );
 END;
+
+IF COL_LENGTH(N'dbo.efc_conc_diferencias_captura', N'requiere_actualizacion') IS NULL
+BEGIN
+    ALTER TABLE dbo.efc_conc_diferencias_captura
+        ADD requiere_actualizacion BIT NOT NULL
+            CONSTRAINT DF_efc_conc_dif_captura_requiere_actualizacion DEFAULT (0) WITH VALUES;
+END;

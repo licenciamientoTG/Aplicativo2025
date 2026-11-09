@@ -28,7 +28,7 @@ import xlrd
 from openpyxl import load_workbook
 
 
-VERSION = "2.5-python"
+VERSION = "2.6-python"
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 
@@ -94,15 +94,15 @@ def money(value: object) -> float | None:
 
 
 def remittance_key(value: object) -> str | None:
-    """Normaliza REM NUM numérico y la remesa USD derivada con sufijo -1."""
+    """Identidad de papeleta: REM NUM es numérico, pero Excel suele agregar .0."""
     if value is None or str(value).strip() == "":
         return None
     text = str(int(value)) if isinstance(value, float) and value.is_integer() else str(value).strip()
-    match = re.fullmatch(r"0*(\d+)(?:\.0+)?(-1)?", text)
+    match = re.fullmatch(r"0*(\d+)(?:\.0+)?", text)
     if not match:
         return None
     base = match.group(1).lstrip("0") or "0"
-    return base + (match.group(2) or "")
+    return base
 
 
 def as_date(value: object, datemode: int | None = None) -> date | None:
@@ -340,6 +340,17 @@ def map_headers(values: list[object]) -> dict[str, int]:
     return headers
 
 
+def is_company_summary_row(station: object, station_name: object, account: object, time_value: object) -> bool:
+    """Recognize REGIO's final COUNT row, whose cached result looks like REM NUM."""
+    generic_names = {"", "GASOMEX", "TOTALGAS", "DIASGAS"}
+    return (
+        not str(station or "").strip()
+        and key(station_name) in generic_names
+        and not str(account or "").strip()
+        and not str(time_value or "").strip()
+    )
+
+
 def workbook_rows(content: bytes, filename: str) -> tuple[list[list[object]], int | None]:
     if filename.lower().endswith(".xlsx"):
         workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
@@ -369,19 +380,24 @@ def parse_workbook(content: bytes, filename: str, stations: list[tuple], aliases
         declared_mn, real_mn, declared_usd, real_usd = money(value("declared_mn")), money(value("real_mn")), money(value("declared_usd")), money(value("real_usd"))
         if not any(item is not None for item in (declared_mn, real_mn, declared_usd, real_usd)):
             continue
-        paper_date = as_date(value("date"), datemode) or report_date
+        station_value, station_name_value = value("station"), value("station_name")
+        account_value, time_value = value("account"), value("time")
         raw_json = json.dumps(row, ensure_ascii=False, default=str)
+        if is_company_summary_row(station_value, station_name_value, account_value, time_value):
+            errors.append((source_row, "FILA_RESUMEN", "Fila de total del archivo (sin estación, cuenta ni hora); no es una papeleta.", raw_json))
+            continue
+        paper_date = as_date(value("date"), datemode) or report_date
         if not paper_date:
             errors.append((source_row, "FECHA_NO_IDENTIFICADA", "No fue posible identificar la fecha de la papeleta.", raw_json))
             continue
         station_id, station_status = resolve_station(value("station"), value("station_name"), stations, aliases)
-        account = str(value("account") or "").strip() or None
+        account = str(account_value or "").strip() or None
         remittance_original = str(value("remittance") or "").strip() or None
         remittance = remittance_key(value("remittance"))
         if not remittance:
             errors.append((source_row, "REMESA_NO_IDENTIFICADA", "REM NUM es obligatorio y debe ser numérico para importar una papeleta.", raw_json))
             continue
-        paper = (source_row, paper_date.isoformat(), str(value("date") or "") or None, str(value("time") or "") or None, str(value("station") or "") or None, str(value("station_name") or "") or None, station_id, station_status, account, "".join(char for char in account or "" if char.isdigit()) or None, remittance_original, remittance, declared_mn, real_mn, money(value("difference_mn")), declared_usd, real_usd, money(value("difference_usd")), raw_json)
+        paper = (source_row, paper_date.isoformat(), str(value("date") or "") or None, str(time_value or "") or None, str(station_value or "") or None, str(station_name_value or "") or None, station_id, station_status, account, "".join(char for char in account or "" if char.isdigit()) or None, remittance_original, remittance, declared_mn, real_mn, money(value("difference_mn")), declared_usd, real_usd, money(value("difference_usd")), raw_json)
         output.extend(split_mixed_paper(paper))
     if not output and not errors:
         raise RuntimeError("PLANILLA no contiene papeletas con importes MN o USD.")
@@ -1016,10 +1032,14 @@ def all_mail_folder(mailbox: imaplib.IMAP4_SSL) -> str | None:
     return None
 
 
-def sync(start_date: date | None = None, end_date: date | None = None, include_archived: bool = False, reprocess: bool = False) -> dict:
+def sync(start_date: date | None = None, end_date: date | None = None, include_archived: bool = False, reprocess: bool = False, reprocess_import_ids: set[int] | None = None) -> dict:
     """Importa adjuntos ANALITICOS; el rango, si existe, usa la fecha del archivo."""
     if start_date and end_date and start_date > end_date:
         raise RuntimeError("La fecha inicial no puede ser posterior a la fecha final.")
+    if reprocess_import_ids and (start_date or end_date):
+        raise RuntimeError("El reproceso por ID no se combina con un rango de fechas.")
+    if reprocess_import_ids and reprocess:
+        raise RuntimeError("Use --reprocess o --reprocess-import-ids, no ambos.")
     host = os.environ.get("EFC_CONC_ANALITICOS_IMAP_HOST", "imap.gmail.com")
     port = int(os.environ.get("EFC_CONC_ANALITICOS_IMAP_PORT", "993"))
     folder = os.environ.get("EFC_CONC_ANALITICOS_IMAP_FOLDER", "INBOX")
@@ -1028,7 +1048,21 @@ def sync(start_date: date | None = None, end_date: date | None = None, include_a
         raise RuntimeError("Faltan EFC_CONC_ANALITICOS_MAIL_USER y EFC_CONC_ANALITICOS_MAIL_PASSWORD.")
     totals = {"messages": 0, "attachments": 0, "imported": 0, "duplicates": 0, "duplicate_papers": 0, "errors": 0}
     with db_connection() as connection, imaplib.IMAP4_SSL(host, port) as mailbox:
-        ensure_schema(connection.cursor()); connection.commit()
+        cursor = connection.cursor()
+        ensure_schema(cursor); connection.commit()
+        reprocess_hashes: dict[str, int] = {}
+        if reprocess_import_ids:
+            ids = sorted(reprocess_import_ids)
+            placeholders = ",".join("?" for _ in ids)
+            rows = cursor.execute(
+                f"SELECT id,hash_archivo FROM dbo.efc_conc_analiticos_importaciones WHERE estado='IMPORTADA' AND id IN ({placeholders})",
+                *ids,
+            ).fetchall()
+            reprocess_hashes = {str(row[1]).strip(): int(row[0]) for row in rows}
+            missing = reprocess_import_ids - set(reprocess_hashes.values())
+            if missing:
+                raise RuntimeError("No existen importaciones IMPORTADA con estos IDs: " + ", ".join(map(str, sorted(missing))))
+        matched_import_ids: set[int] = set()
         mailbox.login(user, password)
         if include_archived:
             folder = all_mail_folder(mailbox) or folder
@@ -1056,13 +1090,24 @@ def sync(start_date: date | None = None, end_date: date | None = None, include_a
                 if end_date and (report_date is None or report_date > end_date): continue
                 content = part.get_payload(decode=True) or b""
                 if not content: totals["errors"] += 1; continue
+                if reprocess_import_ids:
+                    import_id = reprocess_hashes.get(hashlib.sha256(content).hexdigest())
+                    if import_id is None or import_id in matched_import_ids:
+                        continue
                 totals["attachments"] += 1
                 try:
-                    result = import_attachment(connection, content, filename, metadata, reprocess=reprocess)
+                    result = import_attachment(connection, content, filename, metadata, reprocess=reprocess or bool(reprocess_import_ids))
                     totals["duplicates" if result["duplicate"] else "imported"] += 1
                     totals["duplicate_papers"] += int(result.get("duplicate_papers", 0))
+                    if reprocess_import_ids and import_id is not None and not result["duplicate"]:
+                        matched_import_ids.add(import_id)
                 except Exception as exc:
                     connection.rollback(); totals["errors"] += 1; print(f"Adjunto {filename}: {exc}", file=sys.stderr)
+        if reprocess_import_ids:
+            totals["requested_import_ids"] = sorted(reprocess_import_ids)
+            totals["reprocessed_import_ids"] = sorted(matched_import_ids)
+            totals["unmatched_import_ids"] = sorted(reprocess_import_ids - matched_import_ids)
+            totals["errors"] += len(reprocess_import_ids - matched_import_ids)
     totals["folder"] = folder
     return totals
 
@@ -1090,6 +1135,19 @@ def parse_cli_date(value: str) -> date:
     if parsed.isoformat() != value:
         raise argparse.ArgumentTypeError("Use formato AAAA-MM-DD.")
     return parsed
+
+
+def parse_import_ids(value: str) -> set[int]:
+    """Parsea IDs separados por coma para reprocesar importaciones puntuales."""
+    try:
+        ids = [int(part.strip()) for part in value.split(",") if part.strip()]
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Use IDs enteros separados por coma.") from exc
+    if not ids or any(import_id < 1 for import_id in ids):
+        raise argparse.ArgumentTypeError("Indique al menos un ID de importación positivo.")
+    if len(ids) != len(set(ids)):
+        raise argparse.ArgumentTypeError("No repita IDs de importación.")
+    return set(ids)
 
 
 def reassign_unidentified_stations() -> dict:
@@ -1145,6 +1203,12 @@ def main() -> int:
         help="Reemplaza y reimporta adjuntos ya registrados, y reevalúa los vínculos automáticos.",
     )
     operation_group.add_argument(
+        "--reprocess-import-ids",
+        type=parse_import_ids,
+        metavar="ID[,ID...]",
+        help="Reprocesa únicamente las importaciones indicadas, localizándolas por hash en el buzón.",
+    )
+    operation_group.add_argument(
         "--relink-praxedis",
         action="store_true",
         help="Recalcula únicamente vínculos automáticos de Praxedis en el rango de fechas indicado.",
@@ -1195,8 +1259,8 @@ def main() -> int:
         parser.error("--station-id solo aplica con --auto-link-range.")
     if args.dry_run and not args.auto_link_range:
         parser.error("--dry-run solo aplica con --auto-link-range.")
-    if (args.start_date or args.end_date) and (args.reassign_stations or args.manual_file):
-        parser.error("--from/--to solo aplican a la sincronización del buzón.")
+    if (args.start_date or args.end_date) and (args.reassign_stations or args.manual_file or args.reprocess_import_ids):
+        parser.error("--from/--to solo aplican a la sincronización del buzón por rango.")
     load_env_file()
     try:
         if args.reassign_stations:
@@ -1213,7 +1277,7 @@ def main() -> int:
                 dry_run=args.dry_run,
             )
         else:
-            result = sync(args.start_date, args.end_date, reprocess=args.reprocess)
+            result = sync(args.start_date, args.end_date, reprocess=args.reprocess, reprocess_import_ids=args.reprocess_import_ids)
         print(json.dumps(result, ensure_ascii=False)); return 0
     except Exception as exc:
         print(str(exc), file=sys.stderr); return 1

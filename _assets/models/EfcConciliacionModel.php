@@ -182,7 +182,9 @@ class EfcConciliacionModel {
         $realMn=(float)($link['real_mn']??0)+(float)($link['real_mn2']??0);$realUsd=(float)($link['real_usd']??0)+(float)($link['real_usd2']??0);$rate=(float)($link['tipo_cambio_usd']??0);
         $regio=$concept==='USD'&&$realUsd>0&&$rate>0?round($realUsd*$rate,2):round($realMn,2);
         if($concept==='MN'&&$realUsd>0&&$rate>0)$regio=round($realMn+$realUsd*$rate,2);
-        return ['id'=>(int)$c['id'],'estacion_id'=>$station,'fecha_operativa'=>$date,'turno'=>$turn,'concepto'=>$concept,'importe_anterior'=>(float)$c['importe_anterior'],'importe_nuevo'=>$after,'importe_cg_actual'=>$before,'importe_cg_proyectado'=>$projected,'tiene_papeleta'=>!empty($link['papeleta_id'])||!empty($link['papeleta_secundaria_id']),'papeletas'=>implode(', ',array_filter([(string)($link['remesa']??''),(string)($link['remesa2']??'')])),'regio'=>$regio,'tiene_deposito'=>!empty($group['id'])&&$bank>0,'deposito'=>$bank,'diferencia_regio_actual'=>round($regio-$cutBefore,2),'diferencia_regio_nueva'=>round($regio-$after,2),'diferencia_deposito_actual'=>round($bank-$before,2),'diferencia_deposito_nueva'=>round($bank-$projected,2)];
+        $capture=$this->db->prepare("SELECT capturado,requiere_actualizacion FROM TG.dbo.efc_conc_diferencias_captura WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?");$capture->execute([$station,$date,$turn,$concept]);$captureState=$capture->fetch(PDO::FETCH_ASSOC)?:[];
+        $f8Affected=!empty($captureState['capturado'])&&abs($after-$cutBefore)>=0.01;
+        return ['id'=>(int)$c['id'],'estacion_id'=>$station,'fecha_operativa'=>$date,'turno'=>$turn,'concepto'=>$concept,'importe_anterior'=>(float)$c['importe_anterior'],'importe_nuevo'=>$after,'importe_cg_actual'=>$before,'importe_cg_proyectado'=>$projected,'tiene_papeleta'=>!empty($link['papeleta_id'])||!empty($link['papeleta_secundaria_id']),'papeletas'=>implode(', ',array_filter([(string)($link['remesa']??''),(string)($link['remesa2']??'')])),'regio'=>$regio,'tiene_deposito'=>!empty($group['id'])&&$bank>0,'deposito'=>$bank,'diferencia_regio_actual'=>round($regio-$cutBefore,2),'diferencia_regio_nueva'=>round($regio-$after,2),'diferencia_deposito_actual'=>round($bank-$before,2),'diferencia_deposito_nueva'=>round($bank-$projected,2),'f8_capturado'=>!empty($captureState['capturado']),'f8_requiere_actualizacion'=>$f8Affected];
     }
 
     /** Searchable append-only change history; a new source revision supersedes the previous pending revision. */
@@ -223,6 +225,7 @@ class EfcConciliacionModel {
                 if($lastAction->fetchColumn()!=='AJUSTE_CORTE_CONTROLGAS_REVERTIDO' || $restoredValue===false || $restoredValue===null || round((float)$restoredValue,2)!==$old) throw new RuntimeException('Este cambio no está revertido actualmente o el importe aceptado ya cambió.');
             }
             $station=(int)$c['estacion_id'];$date=$this->dateValue($c['fecha_operativa']);$turn=(string)$c['turno'];$concept=(string)$c['concepto'];$new=round((float)$c['importe_nuevo'],2);$key='cg-'.$station.'-'.$date.'-'.$turn.'-'.$concept;
+            if(abs($new-$old)>=0.01) $this->db->prepare("UPDATE TG.dbo.efc_conc_diferencias_captura SET requiere_actualizacion=1 WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=? AND capturado=1")->execute([$station,$date,$turn,$concept]);
                 $groupDeltas=[];
                 $this->db->prepare("UPDATE dbo.efc_conc_analiticos_vinculos SET importe_cg=? WHERE estacion_id=? AND fecha_cg=? AND turno=? AND concepto=? AND activo=1")->execute([$new,$station,$date,$turn,$concept]);
                 $transitQuery=$this->db->prepare("SELECT id,mes_origen,estado,importe FROM dbo.efc_conc_transitos WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND clave_externa=? AND estado IN ('PENDIENTE','CONCILIADO')");$transitQuery->execute([$station,$key]);$transits=$transitQuery->fetchAll(PDO::FETCH_ASSOC);$pendingTransitDeltas=[];
@@ -448,9 +451,9 @@ class EfcConciliacionModel {
         foreach($controlGasRows as $source) { $date=$this->reportDate($source['Fecha']??null); if($date!==null) $reportDates[]=$date; }
         $captured=[];
         if($reportDates) {
-            $captureQuery=$this->db->prepare("SELECT fecha_operativa,turno,concepto,capturado FROM TG.dbo.efc_conc_diferencias_captura WHERE estacion_id=? AND fecha_operativa BETWEEN ? AND ?");
+            $captureQuery=$this->db->prepare("SELECT fecha_operativa,turno,concepto,capturado,requiere_actualizacion FROM TG.dbo.efc_conc_diferencias_captura WHERE estacion_id=? AND fecha_operativa BETWEEN ? AND ?");
             $captureQuery->execute([$stationId,min($reportDates),max($reportDates)]);
-            while($capture=$captureQuery->fetch(PDO::FETCH_ASSOC)) $captured[$this->reportTurnKey($this->dateValue($capture['fecha_operativa']),(string)$capture['turno'],(string)$capture['concepto'])]=(bool)$capture['capturado'];
+            while($capture=$captureQuery->fetch(PDO::FETCH_ASSOC)) $captured[$this->reportTurnKey($this->dateValue($capture['fecha_operativa']),(string)$capture['turno'],(string)$capture['concepto'])]=['capturado'=>(bool)$capture['capturado'],'requiere_actualizacion'=>(bool)$capture['requiere_actualizacion']];
         }
         $out=[]; $seen=[];
         foreach ($controlGasRows as $source) {
@@ -476,7 +479,7 @@ class EfcConciliacionModel {
                 $regio=$comparisonAvailable ? ((string)$currency==='MN' ? $realMn+$usdMxn : (float)($link['comparable']??0)) : null;
                 $out[]=[
                     'fecha'=>$date, 'estacion_id'=>$stationId, 'estacion_nombre'=>(string)($link['estacion_nombre'] ?? $stationName), 'turno'=>$turn, 'concepto'=>$currency,
-                    'capturado'=>$captured[$turnKey]??false,
+                    'capturado'=>$captured[$turnKey]['capturado']??false, 'requiere_actualizacion'=>$captured[$turnKey]['requiere_actualizacion']??false,
                     'total_controlgas'=>round($amount,2), 'regio_declarado'=>(float)($link['dice_contener_mn'] ?? 0), 'regio_declarado_usd'=>(float)($link['dice_contener_usd']??0), 'regio_real'=>(float)($link['real_mn'] ?? 0),
                     'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>$regio===null?null:round($regio,2), 'comparacion_regio_disponible'=>$comparisonAvailable, 'tipo_cambio_historico'=>$link['tipo_cambio_historico']??null,
                     'total_banorte'=>round($bank,2), 'referencia'=>implode(', ', array_values(array_unique($references))),
@@ -497,7 +500,7 @@ class EfcConciliacionModel {
         try {
             $find=$this->db->prepare("SELECT capturado FROM TG.dbo.efc_conc_diferencias_captura WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?");
             $find->execute([$stationId,$date,$turn,$concept]);
-            if($find->fetchColumn()!==false) $this->db->prepare("UPDATE TG.dbo.efc_conc_diferencias_captura SET capturado=?,actualizado_por=?,actualizado_en=SYSDATETIME() WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?")->execute([$captured?1:0,$userId?:null,$stationId,$date,$turn,$concept]);
+            if($find->fetchColumn()!==false) $this->db->prepare("UPDATE TG.dbo.efc_conc_diferencias_captura SET capturado=?,requiere_actualizacion=0,actualizado_por=?,actualizado_en=SYSDATETIME() WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?")->execute([$captured?1:0,$userId?:null,$stationId,$date,$turn,$concept]);
             else $this->db->prepare("INSERT TG.dbo.efc_conc_diferencias_captura(estacion_id,fecha_operativa,turno,concepto,capturado,creado_por,creado_en) VALUES(?,?,?,?,?,?,SYSDATETIME())")->execute([$stationId,$date,$turn,$concept,$captured?1:0,$userId?:null]);
             $this->db->commit();
         } catch(Throwable $e) { if($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
