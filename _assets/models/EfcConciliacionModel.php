@@ -98,6 +98,8 @@ class EfcConciliacionModel {
         $statements = [];
 
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_grupos','U') IS NULL CREATE TABLE dbo.efc_conc_grupos (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, fecha_operativa DATE NOT NULL, turno VARCHAR(20) NULL, concepto VARCHAR(20) NULL, tipo VARCHAR(30) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL, total_banorte DECIMAL(18,2) NOT NULL, diferencia DECIMAL(18,2) NOT NULL, estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVA', creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), cancelado_por INT NULL, cancelado_en DATETIME NULL)";
+        $statements[] = "IF OBJECT_ID('TG.dbo.efc_conc_diferencias_captura','U') IS NULL CREATE TABLE TG.dbo.efc_conc_diferencias_captura (estacion_id INT NOT NULL, fecha_operativa DATE NOT NULL, turno VARCHAR(20) NOT NULL, concepto VARCHAR(20) NOT NULL, capturado BIT NOT NULL DEFAULT 0, no_aplica BIT NOT NULL CONSTRAINT DF_efc_conc_dif_captura_no_aplica DEFAULT 0, requiere_actualizacion BIT NOT NULL DEFAULT 0, creado_por INT NULL, creado_en DATETIME2 NULL, actualizado_por INT NULL, actualizado_en DATETIME2 NULL, CONSTRAINT PK_efc_conc_diferencias_captura PRIMARY KEY(estacion_id,fecha_operativa,turno,concepto))";
+        $statements[] = "IF NOT EXISTS(SELECT 1 FROM TG.sys.columns WHERE object_id=OBJECT_ID('TG.dbo.efc_conc_diferencias_captura') AND name='no_aplica') ALTER TABLE TG.dbo.efc_conc_diferencias_captura ADD no_aplica BIT NOT NULL CONSTRAINT DF_efc_conc_dif_captura_no_aplica DEFAULT 0 WITH VALUES";
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_partidas','U') IS NULL CREATE TABLE dbo.efc_conc_partidas (id INT IDENTITY PRIMARY KEY, grupo_id INT NOT NULL, origen VARCHAR(12) NOT NULL, clave_externa VARCHAR(180) NOT NULL, movimiento_bancario_id INT NULL, fecha_operacion DATE NOT NULL, turno VARCHAR(20) NULL, concepto VARCHAR(20) NULL, importe DECIMAL(18,2) NOT NULL, referencia VARCHAR(255) NULL, estacion_id INT NULL, activo BIT NOT NULL DEFAULT 1, CONSTRAINT FK_efc_conc_partidas_grupo FOREIGN KEY(grupo_id) REFERENCES dbo.efc_conc_grupos(id))";
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_correcciones_banco','U') IS NULL CREATE TABLE dbo.efc_conc_correcciones_banco (id INT IDENTITY PRIMARY KEY, movimiento_bancario_id INT NOT NULL UNIQUE, estacion_id INT NOT NULL, creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), actualizado_por INT NULL, actualizado_en DATETIME NULL)";
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_bitacora','U') IS NULL CREATE TABLE dbo.efc_conc_bitacora (id INT IDENTITY PRIMARY KEY, grupo_id INT NULL, movimiento_bancario_id INT NULL, accion VARCHAR(40) NOT NULL, detalle NVARCHAR(MAX) NULL, usuario_id INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE())";
@@ -225,7 +227,7 @@ class EfcConciliacionModel {
                 if($lastAction->fetchColumn()!=='AJUSTE_CORTE_CONTROLGAS_REVERTIDO' || $restoredValue===false || $restoredValue===null || round((float)$restoredValue,2)!==$old) throw new RuntimeException('Este cambio no está revertido actualmente o el importe aceptado ya cambió.');
             }
             $station=(int)$c['estacion_id'];$date=$this->dateValue($c['fecha_operativa']);$turn=(string)$c['turno'];$concept=(string)$c['concepto'];$new=round((float)$c['importe_nuevo'],2);$key='cg-'.$station.'-'.$date.'-'.$turn.'-'.$concept;
-            if(abs($new-$old)>=0.01) $this->db->prepare("UPDATE TG.dbo.efc_conc_diferencias_captura SET requiere_actualizacion=1 WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=? AND capturado=1")->execute([$station,$date,$turn,$concept]);
+            if(abs($new-$old)>=0.01) $this->db->prepare("UPDATE TG.dbo.efc_conc_diferencias_captura SET requiere_actualizacion=1 WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=? AND capturado=1 AND no_aplica=0")->execute([$station,$date,$turn,$concept]);
                 $groupDeltas=[];
                 $this->db->prepare("UPDATE dbo.efc_conc_analiticos_vinculos SET importe_cg=? WHERE estacion_id=? AND fecha_cg=? AND turno=? AND concepto=? AND activo=1")->execute([$new,$station,$date,$turn,$concept]);
                 $transitQuery=$this->db->prepare("SELECT id,mes_origen,estado,importe FROM dbo.efc_conc_transitos WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND clave_externa=? AND estado IN ('PENDIENTE','CONCILIADO')");$transitQuery->execute([$station,$key]);$transits=$transitQuery->fetchAll(PDO::FETCH_ASSOC);$pendingTransitDeltas=[];
@@ -451,9 +453,9 @@ class EfcConciliacionModel {
         foreach($controlGasRows as $source) { $date=$this->reportDate($source['Fecha']??null); if($date!==null) $reportDates[]=$date; }
         $captured=[];
         if($reportDates) {
-            $captureQuery=$this->db->prepare("SELECT fecha_operativa,turno,concepto,capturado,requiere_actualizacion FROM TG.dbo.efc_conc_diferencias_captura WHERE estacion_id=? AND fecha_operativa BETWEEN ? AND ?");
+            $captureQuery=$this->db->prepare("SELECT fecha_operativa,turno,concepto,capturado,no_aplica,requiere_actualizacion FROM TG.dbo.efc_conc_diferencias_captura WHERE estacion_id=? AND fecha_operativa BETWEEN ? AND ?");
             $captureQuery->execute([$stationId,min($reportDates),max($reportDates)]);
-            while($capture=$captureQuery->fetch(PDO::FETCH_ASSOC)) $captured[$this->reportTurnKey($this->dateValue($capture['fecha_operativa']),(string)$capture['turno'],(string)$capture['concepto'])]=['capturado'=>(bool)$capture['capturado'],'requiere_actualizacion'=>(bool)$capture['requiere_actualizacion']];
+            while($capture=$captureQuery->fetch(PDO::FETCH_ASSOC)) $captured[$this->reportTurnKey($this->dateValue($capture['fecha_operativa']),(string)$capture['turno'],(string)$capture['concepto'])]=['capturado'=>(bool)$capture['capturado'],'no_aplica'=>(bool)$capture['no_aplica'],'requiere_actualizacion'=>(bool)$capture['requiere_actualizacion']];
         }
         $out=[]; $seen=[];
         foreach ($controlGasRows as $source) {
@@ -477,9 +479,10 @@ class EfcConciliacionModel {
                 // En USD se conserva el comparable guardado en el vínculo.
                 $comparisonAvailable=!$hasPaper || !empty($link['comparacion_regio_disponible']);
                 $regio=$comparisonAvailable ? ((string)$currency==='MN' ? $realMn+$usdMxn : (float)($link['comparable']??0)) : null;
+                $isCaptured=$captured[$turnKey]['capturado']??false; $noAplica=$captured[$turnKey]['no_aplica']??false;
                 $out[]=[
                     'fecha'=>$date, 'estacion_id'=>$stationId, 'estacion_nombre'=>(string)($link['estacion_nombre'] ?? $stationName), 'turno'=>$turn, 'concepto'=>$currency,
-                    'capturado'=>$captured[$turnKey]['capturado']??false, 'requiere_actualizacion'=>$captured[$turnKey]['requiere_actualizacion']??false,
+                    'capturado'=>$isCaptured, 'no_aplica'=>$noAplica, 'estado_captura'=>$noAplica?'NO_APLICA':($isCaptured?'CAPTURADO':'NO_CAPTURADO'), 'requiere_actualizacion'=>$isCaptured&&!$noAplica?($captured[$turnKey]['requiere_actualizacion']??false):false,
                     'total_controlgas'=>round($amount,2), 'regio_declarado'=>(float)($link['dice_contener_mn'] ?? 0), 'regio_declarado_usd'=>(float)($link['dice_contener_usd']??0), 'regio_real'=>(float)($link['real_mn'] ?? 0),
                     'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>$regio===null?null:round($regio,2), 'comparacion_regio_disponible'=>$comparisonAvailable, 'tipo_cambio_historico'=>$link['tipo_cambio_historico']??null,
                     'total_banorte'=>round($bank,2), 'referencia'=>implode(', ', array_values(array_unique($references))),
@@ -494,14 +497,16 @@ class EfcConciliacionModel {
     }
 
     /** Guarda el estado F8 de una diferencia, serializando altas concurrentes por clave. */
-    public function setDifferenceCaptured(int $stationId,string $date,string $turn,string $concept,bool $captured,int $userId): void {
+    public function setDifferenceCaptured(int $stationId,string $date,string $turn,string $concept,string $state,int $userId): void {
         if(!$stationId || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !in_array($concept,['MN','MORRALLA','USD'],true) || trim($turn)==='' || strlen($turn)>20) throw new RuntimeException('Clave de diferencia inválida.');
+        if(!in_array($state,['CAPTURADO','NO_CAPTURADO','NO_APLICA'],true)) throw new RuntimeException('Estado de captura inválido.');
+        $captured=$state==='CAPTURADO'; $noAplica=$state==='NO_APLICA';
         $this->db->beginTransaction();
         try {
             $find=$this->db->prepare("SELECT capturado FROM TG.dbo.efc_conc_diferencias_captura WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?");
             $find->execute([$stationId,$date,$turn,$concept]);
-            if($find->fetchColumn()!==false) $this->db->prepare("UPDATE TG.dbo.efc_conc_diferencias_captura SET capturado=?,requiere_actualizacion=0,actualizado_por=?,actualizado_en=SYSDATETIME() WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?")->execute([$captured?1:0,$userId?:null,$stationId,$date,$turn,$concept]);
-            else $this->db->prepare("INSERT TG.dbo.efc_conc_diferencias_captura(estacion_id,fecha_operativa,turno,concepto,capturado,creado_por,creado_en) VALUES(?,?,?,?,?,?,SYSDATETIME())")->execute([$stationId,$date,$turn,$concept,$captured?1:0,$userId?:null]);
+            if($find->fetchColumn()!==false) $this->db->prepare("UPDATE TG.dbo.efc_conc_diferencias_captura SET capturado=?,no_aplica=?,requiere_actualizacion=0,actualizado_por=?,actualizado_en=SYSDATETIME() WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?")->execute([$captured?1:0,$noAplica?1:0,$userId?:null,$stationId,$date,$turn,$concept]);
+            else $this->db->prepare("INSERT TG.dbo.efc_conc_diferencias_captura(estacion_id,fecha_operativa,turno,concepto,capturado,no_aplica,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,SYSDATETIME())")->execute([$stationId,$date,$turn,$concept,$captured?1:0,$noAplica?1:0,$userId?:null]);
             $this->db->commit();
         } catch(Throwable $e) { if($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
     }

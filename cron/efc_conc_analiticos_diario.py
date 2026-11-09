@@ -124,14 +124,39 @@ def as_date(value: object, datemode: int | None = None) -> date | None:
 
 
 def report_date_from_filename(filename: str) -> date | None:
-    """Fecha operativa del Analítico: TOTAL GAS dd-mm-aaaa.xls(x)."""
-    match = re.search(r"(?<!\d)(\d{2})-(\d{2})-(\d{4})(?!\d)", filename)
-    if not match:
-        return None
-    try:
-        return date(int(match.group(3)), int(match.group(2)), int(match.group(1)))
-    except ValueError:
-        return None
+    """Devuelve la primera fecha operativa mencionada en el nombre del archivo.
+
+    Acepta fechas completas (dd-mm-aaaa) y rangos con el primer día abreviado,
+    como ``07 Y 08-08-2026``, donde el mes y año se comparten.
+    """
+    candidates: list[tuple[int, date]] = []
+    # Rango con primera fecha dd-mm abreviada: 31-07 Y 01-08-2026.
+    short_range = r"(?<!\d)(\d{1,2})-(\d{1,2})\s*(?:Y|A|AL|&)\s*\d{1,2}-\d{1,2}-(\d{4})(?!\d)"
+    for match in re.finditer(short_range, filename, re.IGNORECASE):
+        day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        try:
+            # Si el rango cruza de diciembre a enero, el primer día es del año previo.
+            second_month = int(re.search(r"(?:Y|A|AL|&)\s*\d{1,2}-(\d{1,2})-\d{4}", match.group(0), re.IGNORECASE).group(1))
+            first_year = year - 1 if month > second_month else year
+            candidates.append((match.start(), date(first_year, month, day)))
+        except (ValueError, AttributeError):
+            pass
+
+    patterns = (
+        # El primer día de un rango puede venir sin mes/año: 07 Y 08-08-2026.
+        r"(?<!\d)(\d{1,2})\s*(?:Y|A|AL|&)\s*\d{1,2}-(\d{1,2})-(\d{4})(?!\d)",
+        # Fechas completas: al tomar la candidata con menor posición se elige
+        # la primera cuando el título contiene dos o más fechas.
+        r"(?<!\d)(\d{1,2})-(\d{1,2})-(\d{4})(?!\d)",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, filename, re.IGNORECASE):
+            day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+            try:
+                candidates.append((match.start(), date(year, month, day)))
+            except ValueError:
+                continue
+    return min(candidates, key=lambda item: item[0])[1] if candidates else None
 
 
 def is_total_gas_excel(filename: str) -> bool:
@@ -370,10 +395,7 @@ def parse_workbook(content: bytes, filename: str, stations: list[tuple], aliases
     header_index, headers = next(((index, mapped) for index, row in enumerate(rows[:60]) if {"station", "declared_mn", "real_mn"}.issubset(mapped := map_headers(row))), (None, {}))
     if header_index is None:
         raise RuntimeError("No se encontraron los encabezados requeridos en PLANILLA.")
-    report_date = next((parsed for row in rows[:8] for parsed in (as_date(value, datemode) for value in row) if parsed), None)
-    if not report_date:
-        try: report_date = datetime.strptime(filename[-14:-4], "%d-%m-%Y").date()
-        except ValueError: pass
+    report_date = report_date_from_filename(filename)
     output, errors = [], []
     for source_row, row in enumerate(rows[header_index + 1:], header_index + 2):
         value = lambda field: row[headers[field]] if field in headers and headers[field] < len(row) else None
@@ -386,7 +408,8 @@ def parse_workbook(content: bytes, filename: str, stations: list[tuple], aliases
         if is_company_summary_row(station_value, station_name_value, account_value, time_value):
             errors.append((source_row, "FILA_RESUMEN", "Fila de total del archivo (sin estación, cuenta ni hora); no es una papeleta.", raw_json))
             continue
-        paper_date = as_date(value("date"), datemode) or report_date
+        # La fecha operativa de todas las papeletas procede del título del archivo.
+        paper_date = report_date
         if not paper_date:
             errors.append((source_row, "FECHA_NO_IDENTIFICADA", "No fue posible identificar la fecha de la papeleta.", raw_json))
             continue

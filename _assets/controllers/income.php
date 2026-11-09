@@ -8103,7 +8103,7 @@ public function stamped_invoices_detail(): void
             $concept=strtoupper(trim((string)($_GET['concepto'] ?? ''))); $concept=$concept === '' ? null : $concept;
             $captura=strtoupper(trim((string)($_GET['captura'] ?? 'TODOS')));
             if (!in_array($report, ['faltantes','diferencias'], true)) throw new RuntimeException('Tipo de reporte inválido.');
-            if (!in_array($captura, ['TODOS','CAPTURADOS','NO_CAPTURADOS'], true)) throw new RuntimeException('Filtro de captura inválido.');
+            if (!in_array($captura, ['TODOS','CAPTURADOS','NO_CAPTURADOS','NO_APLICA'], true)) throw new RuntimeException('Filtro de captura inválido.');
             if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) throw new RuntimeException('Empresa inválida.');
             $companyStations=EfcConciliacionModel::stationIds($company);
             if ($year < 2020 || $month < 1 || $month > 12 || ($station && !in_array($station, $companyStations, true))) throw new RuntimeException('Periodo o estación fuera del alcance de la empresa.');
@@ -8125,7 +8125,11 @@ public function stamped_invoices_detail(): void
             } else {
                 $rows=array_values(array_filter($rows, static fn(array $row): bool => empty($row['sin_papeleta']) && $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
             }
-            if($captura!=='TODOS') $rows=array_values(array_filter($rows,static fn(array $row): bool => $captura==='CAPTURADOS' ? !empty($row['capturado']) : empty($row['capturado'])));
+            if($captura!=='TODOS') {
+                $captureStates=['CAPTURADOS'=>'CAPTURADO','NO_CAPTURADOS'=>'NO_CAPTURADO','NO_APLICA'=>'NO_APLICA'];
+                $targetCaptureState=$captureStates[$captura];
+                $rows=array_values(array_filter($rows,static fn(array $row): bool => $row['estado_captura']===$targetCaptureState));
+            }
             echo json_encode(['status'=>'success','data'=>$rows]);
         } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
         exit;
@@ -8138,8 +8142,14 @@ public function stamped_invoices_detail(): void
             $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);
             if(!is_array($data)) throw new RuntimeException('Solicitud inválida.');
             $station=(int)($data['estacion_id']??0); $date=(string)($data['fecha']??''); $turn=trim((string)($data['turno']??'')); $concept=strtoupper(trim((string)($data['concepto']??'')));
-            if(!array_key_exists('capturado',$data) || !in_array($data['capturado'],[true,false,0,1,'0','1'],true)) throw new RuntimeException('El estado de captura debe ser booleano.');
-            $captured=filter_var($data['capturado'],FILTER_VALIDATE_BOOLEAN); $company=EfcConciliacionModel::stationCompany($station);
+            if(array_key_exists('estado',$data)) {
+                $state=strtoupper(trim((string)$data['estado']));
+                if(!in_array($state,['CAPTURADO','NO_CAPTURADO','NO_APLICA'],true)) throw new RuntimeException('Estado de captura inválido.');
+            } else {
+                if(!array_key_exists('capturado',$data) || !in_array($data['capturado'],[true,false,0,1,'0','1'],true)) throw new RuntimeException('El estado de captura debe ser booleano.');
+                $state=filter_var($data['capturado'],FILTER_VALIDATE_BOOLEAN)?'CAPTURADO':'NO_CAPTURADO';
+            }
+            $company=EfcConciliacionModel::stationCompany($station);
             if($company===null || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !in_array($concept,['MN','MORRALLA','USD'],true) || $turn==='') throw new RuntimeException('Clave de diferencia inválida.');
             $parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
             if(!$parsed || $parsed->format('Y-m-d')!==$date) throw new RuntimeException('Fecha operativa inválida.');
@@ -8150,8 +8160,8 @@ public function stamped_invoices_detail(): void
             $rows=$this->efcConciliacion->reportRows($station,$year,$month,$concept,$source);
             $exists=false; foreach($rows as $row) if($row['fecha']===$date && $row['turno']===$turn && $row['concepto']===$concept) {$exists=true;break;}
             if(!$exists) throw new RuntimeException('La diferencia no existe en el reporte operativo.');
-            $this->efcConciliacion->setDifferenceCaptured($station,$date,$turn,$concept,$captured,(int)($_SESSION['tg_user']['Id']??0));
-            echo json_encode(['status'=>'success','capturado'=>$captured?1:0]);
+            $this->efcConciliacion->setDifferenceCaptured($station,$date,$turn,$concept,$state,(int)($_SESSION['tg_user']['Id']??0));
+            echo json_encode(['status'=>'success','estado_captura'=>$state,'capturado'=>$state==='CAPTURADO'?1:0,'no_aplica'=>$state==='NO_APLICA'?1:0]);
         } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
         exit;
     }
