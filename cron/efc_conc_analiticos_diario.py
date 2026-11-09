@@ -28,7 +28,7 @@ import xlrd
 from openpyxl import load_workbook
 
 
-VERSION = "2.4-python"
+VERSION = "2.5-python"
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 
@@ -94,14 +94,15 @@ def money(value: object) -> float | None:
 
 
 def remittance_key(value: object) -> str | None:
-    """Identidad de papeleta: REM NUM es numérico, pero Excel suele agregar .0."""
+    """Normaliza REM NUM numérico y la remesa USD derivada con sufijo -1."""
     if value is None or str(value).strip() == "":
         return None
     text = str(int(value)) if isinstance(value, float) and value.is_integer() else str(value).strip()
-    match = re.fullmatch(r"0*(\d+)(?:\.0+)?", text)
+    match = re.fullmatch(r"0*(\d+)(?:\.0+)?(-1)?", text)
     if not match:
         return None
-    return match.group(1).lstrip("0") or "0"
+    base = match.group(1).lstrip("0") or "0"
+    return base + (match.group(2) or "")
 
 
 def as_date(value: object, datemode: int | None = None) -> date | None:
@@ -380,10 +381,38 @@ def parse_workbook(content: bytes, filename: str, stations: list[tuple], aliases
         if not remittance:
             errors.append((source_row, "REMESA_NO_IDENTIFICADA", "REM NUM es obligatorio y debe ser numérico para importar una papeleta.", raw_json))
             continue
-        output.append((source_row, paper_date.isoformat(), str(value("date") or "") or None, str(value("time") or "") or None, str(value("station") or "") or None, str(value("station_name") or "") or None, station_id, station_status, account, "".join(char for char in account or "" if char.isdigit()) or None, remittance_original, remittance, declared_mn, real_mn, money(value("difference_mn")), declared_usd, real_usd, money(value("difference_usd")), raw_json))
+        paper = (source_row, paper_date.isoformat(), str(value("date") or "") or None, str(value("time") or "") or None, str(value("station") or "") or None, str(value("station_name") or "") or None, station_id, station_status, account, "".join(char for char in account or "" if char.isdigit()) or None, remittance_original, remittance, declared_mn, real_mn, money(value("difference_mn")), declared_usd, real_usd, money(value("difference_usd")), raw_json)
+        output.extend(split_mixed_paper(paper))
     if not output and not errors:
         raise RuntimeError("PLANILLA no contiene papeletas con importes MN o USD.")
     return output, errors
+
+
+def split_mixed_paper(paper: tuple) -> list[tuple]:
+    """Convierte una remesa con MN y USD en dos papeletas conciliables."""
+    has_mn = any(value is not None and value != 0 for value in (paper[12], paper[13]))
+    has_usd = any(value is not None and value != 0 for value in (paper[15], paper[16]))
+    if not (has_mn and has_usd):
+        return [paper]
+
+    source = json.loads(paper[18])
+    remittance = str(paper[11])
+    pair_id = f"{paper[0]}:{remittance}"
+    split: list[tuple] = []
+    for currency, key_suffix, fields_to_clear in (
+        ("MN", "", (15, 16, 17)),
+        ("USD", "-1", (12, 13, 14)),
+    ):
+        values = list(paper)
+        if currency == "USD":
+            values[10] = remittance + key_suffix
+        values[11] = remittance + key_suffix
+        for index in fields_to_clear:
+            values[index] = None
+        original = source if isinstance(source, dict) and "fila_original" in source else {"fila_original": source}
+        values[18] = json.dumps({**original, "division_moneda": currency, "remesa_original": paper[10], "grupo_division": pair_id}, ensure_ascii=False)
+        split.append(tuple(values))
+    return split
 
 
 def parse_consolidated_tsv(content: bytes, filename: str, stations: list[tuple], aliases: dict[str, int]) -> tuple[list[tuple], list[tuple]]:
@@ -436,6 +465,7 @@ def parse_consolidated_tsv(content: bytes, filename: str, stations: list[tuple],
                 combined[field] = paper[field]
         combined[18] = json.dumps({"filas_originales": [json.loads(previous[18]), json.loads(paper[18])]}, ensure_ascii=False)
         output[index] = tuple(combined)
+    output = [split for paper in output for split in split_mixed_paper(paper)]
     if not output and not errors:
         raise RuntimeError("El archivo consolidado no contiene papeletas con importes MN o USD.")
     return output, errors
@@ -470,16 +500,26 @@ def partition_new_papers(cursor: pyodbc.Cursor, papers: list[tuple]) -> tuple[li
         chunk = key_list[chunk_start:chunk_start + 1000]
         placeholders = ",".join("?" for _ in chunk)
         existing.update(str(row[0]) for row in cursor.execute(f"SELECT remesa_clave FROM dbo.efc_conc_analiticos_papeletas WHERE remesa_clave IN ({placeholders})", *chunk))
-    new_papers, duplicate_errors, seen = [], [], set()
+    grouped: dict[str, list[tuple]] = {}
     for paper in papers:
-        source_row, remittance = paper[0], paper[11]
-        if remittance in seen:
-            duplicate_errors.append((source_row, "REMESA_DUPLICADA", f"REM NUM {remittance} se repite dentro del mismo archivo y se omitió.", paper[-1]))
-        elif remittance in existing:
-            duplicate_errors.append((source_row, "REMESA_DUPLICADA", f"REM NUM {remittance} ya existe en Analíticos y se omitió.", paper[-1]))
+        raw = json.loads(paper[-1])
+        group_id = raw.get("grupo_division") if isinstance(raw, dict) else None
+        grouped.setdefault(f"DIV:{group_id}" if group_id else f"ROW:{len(grouped)}", []).append(paper)
+
+    new_papers, duplicate_errors, seen = [], [], set()
+    for group in grouped.values():
+        conflicts = {
+            paper[11]: ("se repite dentro del mismo archivo" if paper[11] in seen else "ya existe en Analíticos")
+            for paper in group
+            if paper[11] in seen or paper[11] in existing
+        }
+        if conflicts:
+            details = ", ".join(f"{key} {reason}" for key, reason in conflicts.items())
+            for paper in group:
+                duplicate_errors.append((paper[0], "REMESA_DUPLICADA", f"REM NUM {paper[11]} se omitió junto con su papeleta dividida ({details}).", paper[-1]))
         else:
-            new_papers.append(paper)
-        seen.add(remittance)
+            new_papers.extend(group)
+        seen.update(paper[11] for paper in group)
     return new_papers, duplicate_errors
 
 
@@ -942,7 +982,14 @@ def import_attachment(connection: pyodbc.Connection, content: bytes, filename: s
             import_id = int(cursor.execute("INSERT dbo.efc_conc_analiticos_importaciones(hash_archivo,mensaje_uid,correo_origen,asunto,fecha_recepcion,nombre_archivo,archivo,version_lector,estado) OUTPUT INSERTED.id VALUES(?,?,?,?,?,?,?,?, 'PROCESANDO')", hash_value, metadata.get("uid"), metadata.get("from"), metadata.get("subject"), metadata.get("received"), filename, pyodbc.Binary(content), VERSION).fetchone()[0])
         cursor.fast_executemany = True
         if new_papers:
-            cursor.executemany("INSERT dbo.efc_conc_analiticos_papeletas(importacion_id,hoja,fila_origen,fecha_reportada,fecha_original,hora_original,estacion_original,estacion_nombre_original,estacion_id,estado_estacion,cuenta_mn_original,cuenta_mn_normalizada,remesa_numero,remesa_clave,dice_contener_mn,real_mn,diferencia_mn,dice_contener_usd,real_usd,diferencia_usd,datos_originales) VALUES(?, 'PLANILLA',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [(import_id, *paper) for paper in new_papers])
+            insert_sql = "INSERT dbo.efc_conc_analiticos_papeletas(importacion_id,hoja,fila_origen,fecha_reportada,fecha_original,hora_original,estacion_original,estacion_nombre_original,estacion_id,estado_estacion,cuenta_mn_original,cuenta_mn_normalizada,remesa_numero,remesa_clave,dice_contener_mn,real_mn,diferencia_mn,dice_contener_usd,real_usd,diferencia_usd,datos_originales) VALUES(?, ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            insert_rows = []
+            for paper in new_papers:
+                raw = json.loads(paper[-1])
+                currency = raw.get("division_moneda") if isinstance(raw, dict) else None
+                sheet = f"PLANILLA-{currency}" if currency in {"MN", "USD"} else "PLANILLA"
+                insert_rows.append((import_id, sheet, *paper))
+            cursor.executemany(insert_sql, insert_rows)
         if errors:
             cursor.executemany("INSERT dbo.efc_conc_analiticos_errores(importacion_id,hoja,fila_origen,tipo,detalle,datos_originales) VALUES(?, 'PLANILLA',?,?,?,?)", [(import_id, *error) for error in errors])
         cursor.execute("UPDATE dbo.efc_conc_analiticos_importaciones SET estado='IMPORTADA',total_papeletas=?,total_errores=?,actualizado_en=GETDATE() WHERE id=?", len(new_papers), len(errors), import_id)
