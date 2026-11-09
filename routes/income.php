@@ -40,6 +40,7 @@ return [
         route('conciliation-debit/payments-invoices/', [Income::class, 'conciliation_debit_payment_invoices'], name: 'income.conciliation_debit_payment_invoices', methods: ['POST'], permission: 14),
 
         route('efc_conc_diferencia_captura', [Income::class, 'efc_conc_diferencia_captura'], name: 'income.efc_conc_diferencia_captura', methods: ['POST'], permission: 14),
+        route('efc_conc_diferencia_neteo', [Income::class, 'efc_conc_diferencia_neteo'], name: 'income.efc_conc_diferencia_neteo', methods: ['POST'], permission: 14),
         route('efc_conc_cambios_historial', [Income::class, 'efc_conc_cambios_historial'], name: 'income.efc_conc_cambios_historial', methods: ['GET'], permission: 14),
         route('efc_conc_cambios_previsualizar', [Income::class, 'efc_conc_cambios_previsualizar'], name: 'income.efc_conc_cambios_previsualizar', methods: ['GET'], permission: 14),
         route('efc_conc_cortes_aceptados', [Income::class, 'efc_conc_cortes_aceptados'], name: 'income.efc_conc_cortes_aceptados', methods: ['GET'], permission: 14),

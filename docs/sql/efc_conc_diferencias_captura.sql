@@ -47,3 +47,21 @@ BEGIN
         ADD no_aplica BIT NOT NULL
             CONSTRAINT DF_efc_conc_dif_captura_no_aplica DEFAULT (0) WITH VALUES;
 END;
+
+/*
+  Excluye el concepto del neteo sin alterar su captura ni no_aplica.
+  Compatibilidad: los registros existentes reciben 0; el cambio es aditivo
+  y las versiones previas de la app ignoran la columna.
+
+  Rollback: tras retirar el código que usa excluido_neteo, y solo si se acepta
+  perder sus valores, ejecutar:
+  ALTER TABLE dbo.efc_conc_diferencias_captura
+      DROP CONSTRAINT DF_efc_conc_dif_captura_excluido_neteo;
+  ALTER TABLE dbo.efc_conc_diferencias_captura DROP COLUMN excluido_neteo;
+*/
+IF COL_LENGTH(N'dbo.efc_conc_diferencias_captura', N'excluido_neteo') IS NULL
+BEGIN
+    ALTER TABLE dbo.efc_conc_diferencias_captura
+        ADD excluido_neteo BIT NOT NULL
+            CONSTRAINT DF_efc_conc_dif_captura_excluido_neteo DEFAULT (0) WITH VALUES;
+END;

@@ -8107,7 +8107,7 @@ public function stamped_invoices_detail(): void
             if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) throw new RuntimeException('Empresa inválida.');
             $companyStations=EfcConciliacionModel::stationIds($company);
             if ($year < 2020 || $month < 1 || $month > 12 || ($station && !in_array($station, $companyStations, true))) throw new RuntimeException('Periodo o estación fuera del alcance de la empresa.');
-            if ($concept !== null && !in_array($concept, ['MN','MORRALLA','USD'], true)) throw new RuntimeException('Concepto inválido.');
+            if ($concept !== null && !in_array($concept, ['MN','MORRALLA','USD','MN_MORRALLA'], true)) throw new RuntimeException('Concepto inválido.');
             // estacion_id=0 significa todas las estaciones de la empresa.
             $reportStations=$station ? [$station] : $companyStations;
             $rows=[];
@@ -8162,6 +8162,33 @@ public function stamped_invoices_detail(): void
             if(!$exists) throw new RuntimeException('La diferencia no existe en el reporte operativo.');
             $this->efcConciliacion->setDifferenceCaptured($station,$date,$turn,$concept,$state,(int)($_SESSION['tg_user']['Id']??0));
             echo json_encode(['status'=>'success','estado_captura'=>$state,'capturado'=>$state==='CAPTURADO'?1:0,'no_aplica'=>$state==='NO_APLICA'?1:0]);
+        } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
+        exit;
+    }
+
+    /** POST /income/efc_conc_diferencia_neteo */
+    public function efc_conc_diferencia_neteo(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);
+            if(!is_array($data)) throw new RuntimeException('Solicitud inválida.');
+            $station=(int)($data['estacion_id']??0); $date=(string)($data['fecha']??''); $turn=trim((string)($data['turno']??'')); $concept=strtoupper(trim((string)($data['concepto']??'')));
+            $excludedValue=$data['excluido_neteo']??null;
+            if(!in_array($excludedValue,[true,false,0,1,'0','1'],true)) throw new RuntimeException('La exclusión del neteo debe ser booleana.');
+            $excluded=filter_var($excludedValue,FILTER_VALIDATE_BOOLEAN);
+            $company=EfcConciliacionModel::stationCompany($station);
+            if($company===null || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !in_array($concept,['MN','MORRALLA','USD'],true) || $turn==='' || strlen($turn)>20) throw new RuntimeException('Clave de diferencia inválida.');
+            $parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
+            if(!$parsed || $parsed->format('Y-m-d')!==$date) throw new RuntimeException('Fecha operativa inválida.');
+            $year=(int)$parsed->format('Y'); $month=(int)$parsed->format('m');
+            if($year<2020) throw new RuntimeException('Fecha operativa fuera de rango.');
+            $source=$this->efcConcReportControlGas($station,$year,$month);
+            $source=$this->efcConciliacion->applyAcceptedCutAmounts($station,$source);
+            $rows=$this->efcConciliacion->reportRows($station,$year,$month,$concept,$source);
+            $exists=false; foreach($rows as $row) if($row['fecha']===$date && $row['turno']===$turn && $row['concepto']===$concept) {$exists=true;break;}
+            if(!$exists) throw new RuntimeException('La diferencia no existe en el reporte operativo.');
+            $this->efcConciliacion->setDifferenceNeteoExcluded($station,$date,$turn,$concept,$excluded);
+            echo json_encode(['status'=>'success','excluido_neteo'=>$excluded]);
         } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
         exit;
     }
