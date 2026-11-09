@@ -54,28 +54,78 @@ class EfcAnaliticosModel {
     public function workspace(int $stationId, int $year, int $month, ?string $company=null): array {
         if (!$stationId || $year < 2020 || $month < 1 || $month > 12) throw new RuntimeException('Estación o periodo inválidos.');
         $period=sprintf('%04d-%02d',$year,$month);
+        $monthStart=sprintf('%04d-%02d-01',$year,$month);
+        $monthEnd=(new DateTimeImmutable($monthStart))->modify('+1 month')->format('Y-m-d');
+        $workspaceStarted=hrtime(true);
         $gasomex=strtoupper(trim((string)$company))==='GASOMEX';
         $range=$gasomex
             ? "P.effective_date>=DATEADD(day,-2,DATEFROMPARTS(?, ?, 1)) AND P.effective_date<DATEADD(day,2,EOMONTH(DATEFROMPARTS(?, ?, 1)))"
             : "P.effective_date>=DATEFROMPARTS(?, ?, 1) AND P.effective_date<DATEADD(day,2,EOMONTH(DATEFROMPARTS(?, ?, 1)))";
         $linkRange=$gasomex
             ? "V.fecha_cg>=DATEADD(day,-2,DATEFROMPARTS(?, ?, 1)) AND V.fecha_cg<DATEADD(day,2,EOMONTH(DATEFROMPARTS(?, ?, 1)))"
-            : "YEAR(V.fecha_cg)=? AND MONTH(V.fecha_cg)=?";
+            : "V.fecha_cg>=? AND V.fecha_cg<?";
         $paperLinkRange=str_replace('V.','R.',$linkRange);
+        $paperLinkRangeSecondary=str_replace('R.','R2.',$paperLinkRange);
         // Un tránsito sigue siendo el turno de su mes de origen. Al abrir el
         // mes receptor traemos además su papeleta y vínculo originales, sin
         // duplicarlos ni alterar la fecha persistida del vínculo.
-        $papers=$this->db->prepare("SELECT P.id,P.importacion_id,P.source_date AS fecha_original,P.effective_date AS fecha_efectiva,P.effective_time AS hora_original,P.effective_remittance AS remesa_numero,P.effective_account AS cuenta_mn_original,P.effective_declared_mn AS dice_contener_mn,P.effective_real_mn AS real_mn,P.effective_declared_usd AS dice_contener_usd,P.effective_real_usd AS real_usd,CASE WHEN EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos AV WHERE (AV.papeleta_id=P.id OR AV.papeleta_secundaria_id=P.id) AND AV.activo=1) THEN 1 ELSE 0 END AS vinculada,I.nombre_archivo FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id WHERE (P.effective_station_id=? OR EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos AV WHERE (AV.papeleta_id=P.id OR AV.papeleta_secundaria_id=P.id) AND AV.estacion_id=? AND AV.activo=1)) AND I.estado='IMPORTADA' AND ((($range)) OR EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos R WHERE (R.papeleta_id=P.id OR R.papeleta_secundaria_id=P.id) AND R.activo=1 AND R.estacion_id=? AND ($paperLinkRange)) OR EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos V JOIN dbo.efc_conc_transitos T ON T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto WHERE (V.papeleta_id=P.id OR V.papeleta_secundaria_id=P.id) AND V.activo=1 AND T.estacion_id=? AND T.mes_destino=? AND T.estado IN ('PENDIENTE','CONCILIADO'))) ORDER BY P.id DESC");
-        $papers->execute(array_merge([$stationId,$stationId,$year,$month,$year,$month],[$stationId],$gasomex?[$year,$month,$year,$month]:[$year,$month],[$stationId,$period])); $items=[];
-        while($row=$papers->fetch(PDO::FETCH_ASSOC)) $items[]=['id'=>(int)$row['id'],'importation_id'=>(int)$row['importacion_id'],'date'=>$this->dateValue($row['fecha_efectiva'] ?: $row['fecha_original']),'original_date'=>$this->dateValue($row['fecha_original']),'effective_date'=>$row['fecha_efectiva']?$this->dateValue($row['fecha_efectiva']):null,'time'=>$row['hora_original'],'remittance'=>$this->normaliseRemittance($row['remesa_numero']),'account'=>$row['cuenta_mn_original'],'declared_mn'=>(float)($row['dice_contener_mn']??0),'real_mn'=>(float)($row['real_mn']??0),'declared_usd'=>(float)($row['dice_contener_usd']??0),'real_usd'=>(float)($row['real_usd']??0),'linked'=>(bool)$row['vinculada'],'file'=>$row['nombre_archivo']];
+        // Primero se obtienen candidatos por mes desde ramas independientes. Evita
+        // que los OR correlacionados mezclen toda la tabla de vínculos en un scan.
+        $paperCandidates=$this->db->prepare("SELECT P.id FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id WHERE I.estado='IMPORTADA' AND ($range)
+            UNION SELECT V.papeleta_id FROM dbo.efc_conc_analiticos_vinculos V WHERE V.estacion_id=? AND V.activo=1 AND V.papeleta_id IS NOT NULL AND ($linkRange)
+            UNION SELECT V.papeleta_secundaria_id FROM dbo.efc_conc_analiticos_vinculos V WHERE V.estacion_id=? AND V.activo=1 AND V.papeleta_secundaria_id IS NOT NULL AND ($linkRange)
+            UNION SELECT V.papeleta_id FROM dbo.efc_conc_analiticos_vinculos V JOIN dbo.efc_conc_transitos T ON T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto WHERE V.activo=1 AND V.papeleta_id IS NOT NULL AND T.estacion_id=? AND T.mes_destino=? AND T.estado IN ('PENDIENTE','CONCILIADO')
+            UNION SELECT V.papeleta_secundaria_id FROM dbo.efc_conc_analiticos_vinculos V JOIN dbo.efc_conc_transitos T ON T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto WHERE V.activo=1 AND V.papeleta_secundaria_id IS NOT NULL AND T.estacion_id=? AND T.mes_destino=? AND T.estado IN ('PENDIENTE','CONCILIADO')");
+        $dateParams=[$year,$month,$year,$month];
+        $linkParams=$gasomex?[$stationId,$year,$month,$year,$month]:[$stationId,$monthStart,$monthEnd];
+        $started=hrtime(true);
+        $paperCandidates->execute(array_merge($dateParams,$linkParams,$linkParams,[$stationId,$period,$stationId,$period]));
+        $candidateIds=array_values(array_unique(array_map('intval',$paperCandidates->fetchAll(PDO::FETCH_COLUMN))));
+        $timings=['papers_query_ms'=>round((hrtime(true)-$started)/1e6,2),'paper_candidate_rows'=>count($candidateIds)];
+        $started=hrtime(true);
+        $paperRows=[]; $candidateStations=[];
+        foreach(array_chunk($candidateIds,400) as $idBatch) {
+            $marks=implode(',',array_fill(0,count($idBatch),'?'));
+            $q=$this->db->prepare("SELECT P.id,P.effective_station_id FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id WHERE P.id IN ($marks) AND I.estado='IMPORTADA'");
+            $q->execute($idBatch); foreach($q->fetchAll(PDO::FETCH_ASSOC) as $row)$candidateStations[(int)$row['id']]=(int)$row['effective_station_id'];
+        }
+        $linkedIds=[]; $stationLinkedIds=[];
+        foreach(array_chunk(array_keys($candidateStations),400) as $idBatch) {
+            $marks=implode(',',array_fill(0,count($idBatch),'?'));
+            foreach(['papeleta_id','papeleta_secundaria_id'] as $key) {
+                $q=$this->db->prepare("SELECT V.$key AS paper_id,V.estacion_id FROM dbo.efc_conc_analiticos_vinculos V WHERE V.activo=1 AND V.$key IN ($marks)");
+                $q->execute($idBatch);
+                foreach($q->fetchAll(PDO::FETCH_ASSOC) as $link) { $pid=(int)$link['paper_id']; $linkedIds[$pid]=true; if((int)$link['estacion_id']===$stationId)$stationLinkedIds[$pid]=true; }
+            }
+        }
+        $eligibleIds=[]; foreach($candidateStations as $id=>$effectiveStation) if($effectiveStation===$stationId || isset($stationLinkedIds[$id]))$eligibleIds[]=$id;
+        foreach(array_chunk($eligibleIds,400) as $idBatch) {
+            $marks=implode(',',array_fill(0,count($idBatch),'?'));
+            $q=$this->db->prepare("SELECT P.id,P.importacion_id,P.source_date AS fecha_original,P.effective_date AS fecha_efectiva,P.effective_station_id,P.effective_time AS hora_original,P.effective_remittance AS remesa_numero,P.effective_account AS cuenta_mn_original,P.effective_declared_mn AS dice_contener_mn,P.effective_real_mn AS real_mn,P.effective_declared_usd AS dice_contener_usd,P.effective_real_usd AS real_usd,I.nombre_archivo FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id WHERE P.id IN ($marks) AND I.estado='IMPORTADA' ORDER BY P.id DESC");
+            $q->execute($idBatch); array_push($paperRows,...$q->fetchAll(PDO::FETCH_ASSOC));
+        }
+        usort($paperRows,static fn($a,$b)=>(int)$b['id']<=>(int)$a['id']);
+        $timings['papers_hydrate_ms']=round((hrtime(true)-$started)/1e6,2);
+        $started=hrtime(true); $items=[];
+        foreach($paperRows as $row) $items[]=['id'=>(int)$row['id'],'importation_id'=>(int)$row['importacion_id'],'date'=>$this->dateValue($row['fecha_efectiva'] ?: $row['fecha_original']),'original_date'=>$this->dateValue($row['fecha_original']),'effective_date'=>$row['fecha_efectiva']?$this->dateValue($row['fecha_efectiva']):null,'time'=>$row['hora_original'],'remittance'=>$this->normaliseRemittance($row['remesa_numero']),'account'=>$row['cuenta_mn_original'],'declared_mn'=>(float)($row['dice_contener_mn']??0),'real_mn'=>(float)($row['real_mn']??0),'declared_usd'=>(float)($row['dice_contener_usd']??0),'real_usd'=>(float)($row['real_usd']??0),'linked'=>isset($linkedIds[(int)$row['id']]),'file'=>$row['nombre_archivo']];
+        $timings['papers_map_ms']=round((hrtime(true)-$started)/1e6,2);
         $links=$this->db->prepare("SELECT V.id,V.papeleta_id,V.papeleta_secundaria_id,V.fecha_cg,V.turno,V.concepto,V.importe_cg,V.criterio,V.tipo_cambio_usd AS exchange_rate FROM dbo.efc_conc_analiticos_vinculos V WHERE V.estacion_id=? AND V.activo=1 AND (($linkRange) OR EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WHERE T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto AND T.mes_destino=? AND T.estado IN ('PENDIENTE','CONCILIADO')))");
-        $links->execute($gasomex?[$stationId,$year,$month,$year,$month,$period]:[$stationId,$year,$month,$period]);
-        $blocked=$this->db->prepare("SELECT V.fecha_cg,V.turno,V.concepto FROM dbo.efc_conc_analiticos_vinculos V WHERE V.estacion_id=? AND V.activo=0 AND V.bloqueado_auto=1 AND (YEAR(V.fecha_cg)=? AND MONTH(V.fecha_cg)=? OR EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WHERE T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto AND T.mes_destino=? AND T.estado IN ('PENDIENTE','CONCILIADO'))) AND NOT EXISTS (SELECT 1 FROM dbo.efc_conc_analiticos_vinculos A WHERE A.activo=1 AND A.estacion_id=V.estacion_id AND A.fecha_cg=V.fecha_cg AND A.turno=V.turno AND A.concepto=V.concepto)");
-        $blocked->execute([$stationId,$year,$month,$period]);
+        $started=hrtime(true);
+        $links->execute($gasomex?[$stationId,$year,$month,$year,$month,$period]:[$stationId,$monthStart,$monthEnd,$period]);
         $linkRows=$links->fetchAll(PDO::FETCH_ASSOC);
+        $timings['links_query_ms']=round((hrtime(true)-$started)/1e6,2);
+        $blocked=$this->db->prepare("SELECT V.fecha_cg,V.turno,V.concepto FROM dbo.efc_conc_analiticos_vinculos V WHERE V.estacion_id=? AND V.activo=0 AND V.bloqueado_auto=1 AND ((V.fecha_cg>=? AND V.fecha_cg<?) OR EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WHERE T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto AND T.mes_destino=? AND T.estado IN ('PENDIENTE','CONCILIADO'))) AND NOT EXISTS (SELECT 1 FROM dbo.efc_conc_analiticos_vinculos A WHERE A.activo=1 AND A.estacion_id=V.estacion_id AND A.fecha_cg=V.fecha_cg AND A.turno=V.turno AND A.concepto=V.concepto)");
+        $started=hrtime(true);
+        $blocked->execute([$stationId,$monthStart,$monthEnd,$period]);
+        $blockedRows=$blocked->fetchAll(PDO::FETCH_ASSOC);
+        $timings['blocked_query_ms']=round((hrtime(true)-$started)/1e6,2);
+        $started=hrtime(true);
         foreach($linkRows as &$r) $r['paired']=!empty($r['papeleta_secundaria_id']); unset($r);
-        foreach($blocked->fetchAll(PDO::FETCH_ASSOC) as $row) {$row['blocked']=1; $linkRows[]=$row;}
-        return ['papers'=>$items,'links'=>$linkRows];
+        foreach($blockedRows as $row) {$row['blocked']=1; $linkRows[]=$row;}
+        $timings['links_map_ms']=round((hrtime(true)-$started)/1e6,2);
+        $timings['workspace_total_ms']=round((hrtime(true)-$workspaceStarted)/1e6,2);
+        $timings['papers_rows']=count($items); $timings['links_rows']=count($linkRows);
+        return ['papers'=>$items,'links'=>$linkRows,'_timings_ms'=>$timings];
     }
 
     /**

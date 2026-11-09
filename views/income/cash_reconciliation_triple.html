@@ -426,6 +426,7 @@ async function consult(){
   state.rawTurns=rawTurns;state.rates=rates.data||[];state.work=work.data||{};state.groups=groups.data||[];state.rows=makeRows(rawTurns,state.work,map,state.groups,station,state.transits,company);
   const originKeys=new Set((state.transits.origin||[]).map(item=>String(item.source_key||'')));state.analyticsOriginRows=makeRows(rawTurns,state.work,map,state.groups,station,{},company).filter(row=>originKeys.has(row.id));state.banks=bank.data||[];state.selected=null;state.selectedSide=null;state.open.clear();sumMode.selected.clear();sumMode.anchor=null;
   const renderStarted=performance.now();render();updateSum($('tr-board'),sumMode,'tr-sum-result','tr-sum-operation');timings['Preparación del tablero']=Math.round(performance.now()-renderStarted);
+  Object.entries(work.data?._timings_ms||{}).forEach(([stationId,measurements])=>Object.entries(measurements).forEach(([name,value])=>{timings[`REGIO ${stationId} · ${name}`]=value}));
   console.info('[Conciliación triple] Duración por fuente (ms)',Object.fromEntries(Object.entries(timings).sort((a,b)=>b[1]-a[1])));loadSucceeded=true
  }catch(error){$('tr-board').innerHTML=`<div class="empty">${esc(error.message||'No fue posible consultar.')}</div>`}
  finally{button.disabled=false;button.innerHTML='<i class="fas fa-search mr-1"></i>Consultar';finishLoadProgress(loadSucceeded)}

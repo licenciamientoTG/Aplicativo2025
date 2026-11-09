@@ -8025,8 +8025,8 @@ public function stamped_invoices_detail(): void
             $company=strtoupper(trim((string)($_GET['empresa']??($station>0?(EfcConciliacionModel::stationCompany($station)??'DIAZ GAS'):'DIAZ GAS'))));
             if(!in_array($company,['DIAZ GAS','FORANEAS','GASOMEX'],true)) throw new RuntimeException('Empresa inválida.');
             if($station>0 && EfcConciliacionModel::stationCompany($station)!==$company) throw new RuntimeException('Estación fuera de la empresa seleccionada.');
-            $result=['papers'=>[],'links'=>[]]; $stations=$station>0?[$station]:EfcConciliacionModel::stationIds($company);
-            foreach($stations as $id){$part=$this->efcAnaliticos->workspace($id,$year,$month,$company); foreach($part['papers'] as &$row)$row['station_id']=$id; unset($row); foreach($part['links'] as &$row)$row['station_id']=$id; unset($row); $result['papers']=array_merge($result['papers'],$part['papers']);$result['links']=array_merge($result['links'],$part['links']);}
+            $result=['papers'=>[],'links'=>[],'_timings_ms'=>[]]; $stations=$station>0?[$station]:EfcConciliacionModel::stationIds($company);
+            foreach($stations as $id){$part=$this->efcAnaliticos->workspace($id,$year,$month,$company);$result['_timings_ms'][$id]=$part['_timings_ms']??[];foreach($part['papers'] as &$row)$row['station_id']=$id;unset($row);foreach($part['links'] as &$row)$row['station_id']=$id;unset($row);$result['papers']=array_merge($result['papers'],$part['papers']);$result['links']=array_merge($result['links'],$part['links']);}
             echo json_encode(['status'=>'success','data'=>$result]);
         }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
