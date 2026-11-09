@@ -98,6 +98,9 @@ class EfcConciliacionModel {
         $statements = [];
 
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_grupos','U') IS NULL CREATE TABLE dbo.efc_conc_grupos (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, fecha_operativa DATE NOT NULL, turno VARCHAR(20) NULL, concepto VARCHAR(20) NULL, tipo VARCHAR(30) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL, total_banorte DECIMAL(18,2) NOT NULL, diferencia DECIMAL(18,2) NOT NULL, estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVA', creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), cancelado_por INT NULL, cancelado_en DATETIME NULL)";
+        // Daily company-wide USD deposits are separate from station/turn groups.
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_usd_globales','U') IS NULL CREATE TABLE dbo.efc_conc_usd_globales (id INT IDENTITY PRIMARY KEY, fecha_operativa DATE NOT NULL, movimiento_bancario_id INT NOT NULL, estado VARCHAR(12) NOT NULL CONSTRAINT DF_efc_conc_usd_globales_estado DEFAULT 'ACTIVA', creado_por INT NULL, creado_en DATETIME NOT NULL CONSTRAINT DF_efc_conc_usd_globales_creado DEFAULT GETDATE(), liberado_por INT NULL, liberado_en DATETIME NULL)";
+        $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.efc_conc_usd_globales') AND name='UX_efc_conc_usd_globales_movimiento_activo') CREATE UNIQUE INDEX UX_efc_conc_usd_globales_movimiento_activo ON dbo.efc_conc_usd_globales(movimiento_bancario_id) WHERE estado='ACTIVA'";
         $statements[] = "IF OBJECT_ID('TG.dbo.efc_conc_diferencias_captura','U') IS NULL CREATE TABLE TG.dbo.efc_conc_diferencias_captura (estacion_id INT NOT NULL, fecha_operativa DATE NOT NULL, turno VARCHAR(20) NOT NULL, concepto VARCHAR(20) NOT NULL, capturado BIT NOT NULL DEFAULT 0, no_aplica BIT NOT NULL CONSTRAINT DF_efc_conc_dif_captura_no_aplica DEFAULT 0, requiere_actualizacion BIT NOT NULL DEFAULT 0, excluido_neteo BIT NOT NULL CONSTRAINT DF_efc_conc_dif_captura_excluido_neteo DEFAULT 0, creado_por INT NULL, creado_en DATETIME2 NULL, actualizado_por INT NULL, actualizado_en DATETIME2 NULL, CONSTRAINT PK_efc_conc_diferencias_captura PRIMARY KEY(estacion_id,fecha_operativa,turno,concepto))";
         $statements[] = "IF NOT EXISTS(SELECT 1 FROM TG.sys.columns WHERE object_id=OBJECT_ID('TG.dbo.efc_conc_diferencias_captura') AND name='no_aplica') ALTER TABLE TG.dbo.efc_conc_diferencias_captura ADD no_aplica BIT NOT NULL CONSTRAINT DF_efc_conc_dif_captura_no_aplica DEFAULT 0 WITH VALUES";
         $statements[] = "IF NOT EXISTS(SELECT 1 FROM TG.sys.columns WHERE object_id=OBJECT_ID('TG.dbo.efc_conc_diferencias_captura') AND name='excluido_neteo') ALTER TABLE TG.dbo.efc_conc_diferencias_captura ADD excluido_neteo BIT NOT NULL CONSTRAINT DF_efc_conc_dif_captura_excluido_neteo DEFAULT 0 WITH VALUES";
@@ -390,6 +393,57 @@ class EfcConciliacionModel {
     }
 
     public function summaryGrouped(?int $year=null, ?int $month=null, ?int $stationId=null, ?string $concept=null): array { $where=[];$params=[];if($year){$where[]='C.mes LIKE ?';$params[]=sprintf('%04d-%02d',$year,$month?:1).'%';}if($month&&$year){$where=['C.mes=?'];$params=[sprintf('%04d-%02d',$year,$month)];}if($stationId){$where[]='C.estacion_id=?';$params[]=$stationId;}if($concept&&in_array($concept,['MN','MORRALLA','USD'],true)){$where[]='C.concepto=?';$params[]=$concept;} $sql="SELECT C.estacion_id,C.mes,C.concepto,C.total_controlgas,C.total_banco,C.total_regio_declarado,C.total_regio_real,C.total_diferencia,C.total_transito,C.operaciones,C.pendientes,C.estado,C.cerrado_en FROM dbo.efc_conc_cierres C".($where?' WHERE '.implode(' AND ',$where):'')." ORDER BY C.mes DESC,C.estacion_id,C.concepto";$q=$this->db->prepare($sql);$q->execute($params);$rows=$q->fetchAll(PDO::FETCH_ASSOC);foreach($rows as &$r){foreach(['estacion_id','operaciones','pendientes'] as $k)$r[$k]=(int)$r[$k];foreach(['total_controlgas','total_banco','total_regio_declarado','total_regio_real','total_diferencia','total_transito'] as $k)$r[$k]=(float)$r[$k];}return $rows; }
+
+    /** Global Díaz Gas USD reconciliation by REGIO effective date; account is USD in this operation. */
+    public function globalUsdDaily(int $year,int $month): array {
+        if($year<2020||$year>9998||$month<1||$month>12) throw new RuntimeException('Periodo inválido.');
+        $start=sprintf('%04d-%02d-01',$year,$month); $end=(new DateTimeImmutable($start))->modify('+1 month')->format('Y-m-d');
+        $ids=implode(',',self::stationIds('DIAZ GAS'));
+        $q=$this->db->prepare("SELECT P.effective_date fecha_operativa,COUNT(*) papeletas,CAST(SUM(P.effective_real_usd) AS DECIMAL(18,2)) real_usd FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id WHERE I.estado='IMPORTADA' AND P.effective_station_id IN ($ids) AND P.effective_real_usd>0 AND P.effective_date>=? AND P.effective_date<? GROUP BY P.effective_date ORDER BY P.effective_date");
+        $q->execute([$start,$end]); $days=[];
+        while($r=$q->fetch(PDO::FETCH_ASSOC)) { $date=$this->dateValue($r['fecha_operativa']); $days[$date]=['fecha_operativa'=>$date,'papeletas'=>(int)$r['papeletas'],'real_usd'=>(float)$r['real_usd'],'depositado_usd'=>0.0,'diferencia_usd'=>0.0,'estado'=>'PENDIENTE','movimientos'=>[],'disponibles'=>[]]; }
+        $alloc=$this->db->prepare("SELECT A.id asignacion_id,A.fecha_operativa,M.id movimiento_id,M.fecha,M.abono importe_usd,M.referencia,M.descripcion,M.descripcion_larga FROM dbo.efc_conc_usd_globales A JOIN TG.dbo.movimientos_bancarios M ON M.id=A.movimiento_bancario_id WHERE A.estado='ACTIVA' AND A.fecha_operativa>=? AND A.fecha_operativa<? ORDER BY A.fecha_operativa,A.id");
+        $alloc->execute([$start,$end]);
+        while($r=$alloc->fetch(PDO::FETCH_ASSOC)) { $date=$this->dateValue($r['fecha_operativa']); if(!isset($days[$date])) $days[$date]=['fecha_operativa'=>$date,'papeletas'=>0,'real_usd'=>0.0,'depositado_usd'=>0.0,'diferencia_usd'=>0.0,'estado'=>'PENDIENTE','movimientos'=>[],'disponibles'=>[]]; $movement=$this->globalUsdMovementShape($r); $days[$date]['movimientos'][]=$movement; $days[$date]['depositado_usd']+=$movement['importe_usd']; }
+        $candidateEnd=(new DateTimeImmutable($end))->modify('+7 days')->format('Y-m-d');
+        $cashFilter="(UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EFECTIVO%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO EFECTIVO%' OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEP EN EFECTIV%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEP EN EFECTIV%' OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO VTAS%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO VTAS%')";
+        $bank=$this->db->prepare("SELECT M.id movimiento_id,M.fecha,M.abono importe_usd,M.referencia,M.descripcion,M.descripcion_larga FROM TG.dbo.movimientos_bancarios M WHERE M.banco='BANORTE' AND M.abono>0 AND M.fecha>=? AND M.fecha<? AND RIGHT(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(M.cuenta)),' ',''),'-',''),'.',''),10)='0601500741' AND $cashFilter AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_usd_globales A WHERE A.movimiento_bancario_id=M.id AND A.estado='ACTIVA') AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.movimiento_bancario_id=M.id AND P.origen='BANCO' AND P.activo=1 AND G.estado='ACTIVA') ORDER BY M.fecha,M.id");
+        $bank->execute([$start,$candidateEnd]); $available=[];
+        while($r=$bank->fetch(PDO::FETCH_ASSOC)) { $candidate=$this->globalUsdMovementShape($r); unset($candidate['asignacion_id']); $available[]=$candidate; }
+        foreach($days as &$day) { $day['diferencia_usd']=round($day['depositado_usd']-$day['real_usd'],2); $day['depositado_usd']=round($day['depositado_usd'],2); $day['estado']=$day['papeletas']===0?'SIN_PAPELETAS':($day['depositado_usd']===0.0?'PENDIENTE_DEPOSITO':(abs($day['diferencia_usd'])<=1.00?'CONCILIADO':'DIFERENCIA')); $latest=(new DateTimeImmutable($day['fecha_operativa']))->modify('+7 days')->format('Y-m-d'); $day['disponibles']=array_values(array_filter($available,fn($m)=>$m['fecha'] >= $day['fecha_operativa'] && $m['fecha'] <= $latest)); } unset($day);
+        usort($days,fn($a,$b)=>strcmp($a['fecha_operativa'],$b['fecha_operativa']));
+        return ['dias'=>array_values($days)];
+    }
+
+    private function globalUsdMovementShape(array $r): array {
+        $date=$this->dateValue($r['fecha']);
+        return ['asignacion_id'=>isset($r['asignacion_id'])?(int)$r['asignacion_id']:null,'movimiento_id'=>(int)$r['movimiento_id'],'fecha'=>$date,'importe_usd'=>(float)$r['importe_usd'],'referencia'=>(string)($r['referencia']??''),'descripcion'=>trim((string)($r['descripcion_larga']??$r['descripcion']??''))];
+    }
+
+    public function associateGlobalUsdMovement(string $date,int $movementId,int $userId): int {
+        $this->assertIsoDate($date);
+        if($movementId<1) throw new RuntimeException('Movimiento inválido.');
+        $this->db->beginTransaction();
+        try {
+            $ids=implode(',',self::stationIds('DIAZ GAS'));
+            $paper=$this->db->prepare("SELECT COUNT(*) FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id WHERE I.estado='IMPORTADA' AND P.effective_station_id IN ($ids) AND P.effective_date=? AND P.effective_real_usd>0");
+            $paper->execute([$date]);
+            if((int)$paper->fetchColumn()===0) throw new RuntimeException('No hay papeletas USD reales de Díaz Gas para esa fecha operativa.');
+            $q=$this->db->prepare("SELECT M.id,M.abono,M.fecha FROM TG.dbo.movimientos_bancarios M WITH (UPDLOCK,HOLDLOCK) WHERE M.id=? AND M.banco='BANORTE' AND M.abono>0 AND RIGHT(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(M.cuenta)),' ',''),'-',''),'.',''),10)='0601500741' AND (UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EFECTIVO%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO EFECTIVO%' OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEP EN EFECTIV%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEP EN EFECTIV%' OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO VTAS%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO VTAS%') AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id WHERE P.movimiento_bancario_id=M.id AND P.origen='BANCO' AND P.activo=1 AND G.estado='ACTIVA')"); $q->execute([$movementId]); $movement=$q->fetch(PDO::FETCH_ASSOC);
+            if(!$movement) throw new RuntimeException('El movimiento no pertenece a un depósito Banorte USD de Díaz Gas (cuenta terminación 0601500741), o ya está usado.');
+            $bankDate=$this->dateValue($movement['fecha']); $latest=(new DateTimeImmutable($date))->modify('+7 days')->format('Y-m-d'); if($bankDate<$date||$bankDate>$latest) throw new RuntimeException('La fecha del depósito debe ser entre la fecha operativa y los 7 días siguientes.');
+            $ins=$this->db->prepare("INSERT dbo.efc_conc_usd_globales(fecha_operativa,movimiento_bancario_id,creado_por) OUTPUT INSERTED.id VALUES(?,?,?)"); $ins->execute([$date,$movementId,$userId]); $id=(int)$ins->fetchColumn();
+            $this->db->commit(); return $id;
+        } catch(Throwable $e) { if($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
+    }
+
+    public function releaseGlobalUsdMovement(int $assignmentId,int $userId): void {
+        if($assignmentId<1) throw new RuntimeException('Asignación inválida.');
+        $q=$this->db->prepare("UPDATE dbo.efc_conc_usd_globales SET estado='LIBERADA',liberado_por=?,liberado_en=GETDATE() WHERE id=? AND estado='ACTIVA'"); $q->execute([$userId,$assignmentId]);
+        if(!$q->rowCount()) throw new RuntimeException('La asignación no existe o ya fue liberada.');
+    }
+
+    private function assertIsoDate(string $date): void { $d=DateTimeImmutable::createFromFormat('!Y-m-d',$date); if(!$d||$d->format('Y-m-d')!==$date||$d->format('Y')<'2020') throw new RuntimeException('Fecha operativa inválida; use YYYY-MM-DD.'); }
 
     /**
      * Filas operativas para los reportes de excepción. Parte de los turnos de

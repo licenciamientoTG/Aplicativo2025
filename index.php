@@ -101,6 +101,7 @@ if ($routeMatch !== null) {
         'efc_conc_grupos_activos',
         'efc_conc_transitos',
         'efc_conc_analiticos_bandeja',
+        'efc_conc_usd_globales',
         'efc_conc_tipo_cambio_turnos',
         'get_cash_banorte_deposits',
     ];
