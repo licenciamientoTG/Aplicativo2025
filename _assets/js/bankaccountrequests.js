@@ -107,22 +107,41 @@
         var $info = $('#ba_cuenta_info');
         var timer = null;
 
-        // Largos habituales: 18 CLABE, 16 tarjeta, 10-11 cuenta del mismo banco
-        function describirCuenta(n) {
-            if (n === 0) { return ['', '']; }
-            if (n === 18) { return ['CLABE de 18 dígitos', 'ok']; }
-            if (n === 16) { return ['Tarjeta de 16 dígitos', 'ok']; }
-            if (n === 10 || n === 11) { return ['Cuenta de ' + n + ' dígitos', 'ok']; }
-            return [n + ' dígitos: revise, una CLABE tiene 18 y una tarjeta 16', 'mal'];
+        var $moneda = $form.find('[name=moneda]');
+        var $cuenta = $form.find('[name=num_cuenta]');
+        var $clabe = $form.find('[name=clabe]');
+        var $routing = $form.find('[name=routing_number]');
+
+        // PESOS = cuenta mexicana (cuenta + CLABE); DOLARES = americana (account number + routing number)
+        function esUsd() { return $moneda.val() === 'DOLARES'; }
+        function aplicarMoneda() {
+            var usd = esUsd();
+            $('#ba_lbl_cuenta').text(usd ? 'Account number' : 'Cuenta');
+            $cuenta.attr('maxlength', usd ? 17 : 20).attr('placeholder', usd ? 'Solo números (4 a 17)' : 'Solo números');
+            $('#ba_grp_clabe').toggleClass('d-none', usd);
+            $clabe.prop('disabled', usd);
+            $('#ba_grp_routing').toggleClass('d-none', !usd);
+            $routing.prop('disabled', !usd);
+            avisoDuplicado();
         }
 
-        $form.find('[name=num_cuenta]').on('input', function () {
-            // Solo dígitos: al pegar se quitan espacios, guiones y cualquier otro carácter
-            var limpio = $(this).val().replace(/\D+/g, '');
-            if ($(this).val() !== limpio) { $(this).val(limpio); }
-            var d = describirCuenta(limpio.length);
-            $info.text(d[0] || 'Pegue o escriba la cuenta; se limpian espacios y guiones.').removeClass('ok mal').addClass(d[1]);
-            var cuenta = limpio;
+        // Dígito verificador ABA del routing number
+        function abaValido(r) {
+            if (!/^\d{9}$/.test(r)) { return false; }
+            var d = r.split('').map(Number);
+            return (3 * (d[0] + d[3] + d[6]) + 7 * (d[1] + d[4] + d[7]) + (d[2] + d[5] + d[8])) % 10 === 0;
+        }
+        function soloDigitos($el) {
+            var limpio = $el.val().replace(/\D+/g, '');
+            if ($el.val() !== limpio) { $el.val(limpio); }
+            return limpio;
+        }
+        function info($el, texto, clase) { $el.text(texto).removeClass('ok mal').addClass(clase || ''); }
+
+        // Número con el que se busca duplicado en el catálogo: CLABE (MXN) o account number (USD)
+        function claveDuplicado() { return esUsd() ? $cuenta.val() : $clabe.val(); }
+        function avisoDuplicado() {
+            var cuenta = claveDuplicado();
             clearTimeout(timer);
             if (cuenta.length < 6) { $aviso.addClass('d-none'); return; }
             timer = setTimeout(function () {
@@ -139,7 +158,31 @@
                     }
                 });
             }, 400);
+        }
+
+        $cuenta.on('input', function () {
+            var n = soloDigitos($(this)).length;
+            if (esUsd()) {
+                info($info, n === 0 ? '' : (n >= 4 ? n + ' dígitos' : 'Mínimo 4 dígitos'), n === 0 ? '' : (n >= 4 ? 'ok' : 'mal'));
+                avisoDuplicado();
+            } else {
+                info($info, n === 0 ? '' : (n >= 6 ? n + ' dígitos' : 'Mínimo 6 dígitos'), n === 0 ? '' : (n >= 6 ? 'ok' : 'mal'));
+            }
         });
+        $clabe.on('input', function () {
+            var n = soloDigitos($(this)).length;
+            info($('#ba_clabe_info'), n === 0 ? '' : (n === 18 ? 'CLABE de 18 dígitos' : n + ' de 18 dígitos'), n === 0 ? '' : (n === 18 ? 'ok' : 'mal'));
+            avisoDuplicado();
+        });
+        $routing.on('input', function () {
+            var r = soloDigitos($(this));
+            var $i = $('#ba_routing_info');
+            if (r.length === 0) { info($i, ''); }
+            else if (r.length < 9) { info($i, r.length + ' de 9 dígitos', 'mal'); }
+            else { abaValido(r) ? info($i, 'Routing number válido', 'ok') : info($i, 'Dígito verificador inválido: revise el número', 'mal'); }
+        });
+        $moneda.on('change', aplicarMoneda);
+        aplicarMoneda();
 
         // El botón dice qué pasará: sin carátula queda como borrador
         var $archivo = $form.find('[name=caratula]');

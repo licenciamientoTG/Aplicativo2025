@@ -29,16 +29,34 @@ class PetrotalFielModel extends Model {
     // en vez de un arreglo vacío; también usamos delete() en vez de update()
     // porque update() exige que el texto de la consulta contenga la palabra
     // "update" (chequeo por stristr), cosa que un DELETE no cumple.
+    // Las columnas de ApiReportes (ApiKeyCifrada, ObligacionId, Ambiente) se
+    // agregan con docs/sql/2026-11-08_petrotal_apireportes.sql. Mientras no
+    // existan, el módulo sigue funcionando solo con la FIEL.
+    private function tiene_columnas_api(): bool {
+        $rows = $this->sql->select("SELECT COL_LENGTH('TG.dbo.PetrotalFielConfig', 'ApiKeyCifrada') AS L", []);
+        return !empty($rows[0]['L']);
+    }
+
     public function guardar_config(string $rutaCer, string $rutaKey, string $password, int $usuarioId): bool {
         $passwordCifrado = $this->cifrar($password);
+        $conApi = $this->tiene_columnas_api();
+        // Resubir la FIEL no debe borrar la ApiKey ya configurada.
+        $previa = $conApi ? ($this->sql->select("SELECT TOP 1 ApiKeyCifrada, ObligacionId, Ambiente FROM TG.dbo.PetrotalFielConfig ORDER BY UpdatedAt DESC", [])[0] ?? null) : null;
 
         $this->sql->beginTransaction();
         try {
             $this->sql->delete("DELETE FROM TG.dbo.PetrotalFielConfig WHERE 1 = ?", [1]);
-            $this->sql->insert(
-                "INSERT INTO TG.dbo.PetrotalFielConfig (RutaCer, RutaKey, PasswordCifrado, ActualizadoPor) VALUES (?, ?, ?, ?)",
-                [$rutaCer, $rutaKey, $passwordCifrado, $usuarioId]
-            );
+            if ($conApi) {
+                $this->sql->insert(
+                    "INSERT INTO TG.dbo.PetrotalFielConfig (RutaCer, RutaKey, PasswordCifrado, ActualizadoPor, ApiKeyCifrada, ObligacionId, Ambiente) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [$rutaCer, $rutaKey, $passwordCifrado, $usuarioId, $previa['ApiKeyCifrada'] ?? null, $previa['ObligacionId'] ?? null, $previa['Ambiente'] ?? null]
+                );
+            } else {
+                $this->sql->insert(
+                    "INSERT INTO TG.dbo.PetrotalFielConfig (RutaCer, RutaKey, PasswordCifrado, ActualizadoPor) VALUES (?, ?, ?, ?)",
+                    [$rutaCer, $rutaKey, $passwordCifrado, $usuarioId]
+                );
+            }
             $this->sql->commit();
             return true;
         } catch (Exception $e) {
@@ -50,10 +68,28 @@ class PetrotalFielModel extends Model {
     public function obtener_config(): ?array {
         $rows = $this->sql->select("SELECT TOP 1 * FROM TG.dbo.PetrotalFielConfig ORDER BY UpdatedAt DESC", []);
         if (!$rows) return null;
+        $apiKeyCifrada = $rows[0]['ApiKeyCifrada'] ?? null;
         return [
             'ruta_cer' => $rows[0]['RutaCer'],
             'ruta_key' => $rows[0]['RutaKey'],
             'password' => $this->descifrar($rows[0]['PasswordCifrado']),
+            'api_key' => $apiKeyCifrada ? $this->descifrar($apiKeyCifrada) : null,
+            'obligacion_id' => isset($rows[0]['ObligacionId']) ? (int) $rows[0]['ObligacionId'] : null,
+            'ambiente' => $rows[0]['Ambiente'] ?? null,
         ];
+    }
+
+    public function api_disponible(): bool {
+        return $this->tiene_columnas_api();
+    }
+
+    // Guarda ApiKey/obligación/ambiente sobre la configuración existente
+    // (requiere que ya se haya subido la FIEL).
+    public function guardar_api(string $apiKey, int $obligacionId, string $ambiente): bool {
+        if (!$this->tiene_columnas_api()) return false;
+        return (bool) $this->sql->update(
+            "UPDATE TG.dbo.PetrotalFielConfig SET ApiKeyCifrada = ?, ObligacionId = ?, Ambiente = ?, UpdatedAt = GETDATE()",
+            [$this->cifrar($apiKey), $obligacionId, $ambiente]
+        );
     }
 }

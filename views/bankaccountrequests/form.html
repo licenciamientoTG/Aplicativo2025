@@ -64,9 +64,15 @@
                 <select name="moneda" class="form-select" required>
                     {% for m in monedas %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
                 </select></div>
-            <div class="col-md-6 col-lg-3"><label>Cuenta / CLABE / tarjeta <span class="ba-req">*</span></label>
-                <input type="text" name="num_cuenta" maxlength="20" inputmode="numeric" pattern="\d{6,20}" placeholder="Solo números" class="form-control ba-cuenta" required>
-                <div id="ba_cuenta_info" class="ba-cuenta-info">Pegue o escriba la cuenta; se limpian espacios y guiones.</div></div>
+            <div class="col-md-6 col-lg-2"><label><span id="ba_lbl_cuenta">Cuenta</span> <span class="ba-req">*</span></label>
+                <input type="text" name="num_cuenta" maxlength="20" inputmode="numeric" placeholder="Solo números" class="form-control ba-cuenta" required>
+                <div id="ba_cuenta_info" class="ba-cuenta-info"></div></div>
+            <div class="col-md-6 col-lg-2" id="ba_grp_clabe"><label>CLABE <span class="ba-req">*</span></label>
+                <input type="text" name="clabe" maxlength="18" inputmode="numeric" placeholder="18 dígitos" class="form-control ba-cuenta" required>
+                <div id="ba_clabe_info" class="ba-cuenta-info"></div></div>
+            <div class="col-md-6 col-lg-2 d-none" id="ba_grp_routing"><label>Routing number <span class="ba-req">*</span></label>
+                <input type="text" name="routing_number" maxlength="9" inputmode="numeric" placeholder="9 dígitos" class="form-control ba-cuenta" required disabled>
+                <div id="ba_routing_info" class="ba-cuenta-info"></div></div>
             <div class="col-md-6 col-lg-2"><label>Proveedor <span class="ba-req">*</span></label>
                 <input type="text" name="proveedor" maxlength="200" class="form-control" required></div>
             <div class="col-md-6 col-lg-2"><label>Departamento <span class="ba-req">*</span></label>
@@ -74,6 +80,9 @@
                     <option value="">Seleccione...</option>
                     {% for d in departamentos %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
                 </select></div>
+            <div class="col-12"><label>Dirección completa</label>
+                <input type="text" name="direccion" maxlength="300" class="form-control" placeholder="Calle, número, colonia / ciudad, estado, C.P., país (opcional)"></div>
+            <div class="col-12"><div class="small text-muted"><i class="fas fa-exclamation-circle text-warning"></i> Si el banco no aparece en la lista, solicite que se agregue al catálogo de bancos antes de enviar la solicitud.</div></div>
             <div class="col-12"><div id="ba_aviso_dup" class="alert alert-warning py-2 px-3 mb-0 d-none"></div></div>
         </div>
     </div></div>

@@ -3,6 +3,10 @@ class PetrotalObligacionModel extends Model {
 
     const LITROS_POR_BARRIL = 158.987;
 
+    // Patrones del XSD de la CNE (XSD_Reporte_Estadistico_Comercializacion).
+    const PATRON_PERMISO_CLIENTE = '#^(CNE/)?(PL|H)/[0-9]{1,6}/(EXP|DIS|COM)/((ES|ESA|AE|OM)/)?(MM/)?[0-9]{4}$#';
+    const PATRON_PERMISO_PROVEEDOR = '#^(CNE/)?(H|PL)/[0-9]{4,6}/(DIS|COM)/(OM/)?[0-9]{4}$#';
+
     // Clasificación por descripción del concepto de factura, validada contra
     // los 4 acuses de agosto 2026: Petrotal usa "MAXIMA"/"T-SUPER PREMIUM" en
     // sus propias facturas de venta; Tesoro usa "UNBRANDED REGULAR/PREMIUM
@@ -13,7 +17,8 @@ class PetrotalObligacionModel extends Model {
         if (strpos($d, 'PREMIUM') !== false || strpos($d, 'SUPER') !== false) {
             return ['producto_id' => 7, 'subproducto_id' => 14, 'label' => 'Premium'];
         }
-        if (strpos($d, 'REGULAR') !== false || strpos($d, 'MAXIMA') !== false || strpos($d, 'MÁXIMA') !== false) {
+        // PEMEX MAGNA = gasolina Regular (87 octanos), p. ej. compras a MGC.
+        if (strpos($d, 'REGULAR') !== false || strpos($d, 'MAXIMA') !== false || strpos($d, 'MÁXIMA') !== false || strpos($d, 'MAGNA') !== false) {
             return ['producto_id' => 7, 'subproducto_id' => 13, 'label' => 'Regular'];
         }
         if (strpos($d, 'DIESEL') !== false || strpos($d, 'DIÉSEL') !== false || strpos($d, 'DIÉ') !== false) {
@@ -75,10 +80,12 @@ class PetrotalObligacionModel extends Model {
         $query = "
             SELECT fr.Id AS FacturaId, fr.Fecha, fr.Folio, fr.Total, fr.Destino,
                    fr.ReceptorRfc AS ContraparteRfc, fr.ReceptorNombre AS ContraparteNombre,
-                   c.Cantidad, c.Descripcion
+                   c.Cantidad, c.Descripcion, c.ValorUnitario, c.Importe, c.ImporteImpuesto
             FROM TG.dbo.FacturasRecibidas fr
             JOIN TG.dbo.FacturasRecibidasConceptos c ON c.FacturaId = fr.Id
             WHERE fr.EmisorRfc = ?
+              AND fr.TipoDeComprobante = 'I'
+              AND ISNULL(c.ClaveUnidad, 'LTR') = 'LTR'
               AND fr.Fecha BETWEEN ? AND ?
             ORDER BY fr.Fecha
         ";
@@ -95,10 +102,12 @@ class PetrotalObligacionModel extends Model {
         $query = "
             SELECT fr.Id AS FacturaId, fr.Fecha, fr.Folio, fr.Total,
                    fr.EmisorRfc AS ContraparteRfc, fr.EmisorNombre AS ContraparteNombre,
-                   c.Cantidad, c.Descripcion
+                   c.Cantidad, c.Descripcion, c.ValorUnitario, c.Importe, c.ImporteImpuesto
             FROM TG.dbo.FacturasRecibidas fr
             JOIN TG.dbo.FacturasRecibidasConceptos c ON c.FacturaId = fr.Id
             WHERE fr.ReceptorRfc = ?
+              AND fr.TipoDeComprobante = 'I'
+              AND ISNULL(c.ClaveUnidad, 'LTR') = 'LTR'
               AND fr.Fecha BETWEEN ? AND ?
             ORDER BY fr.Fecha
         ";
@@ -109,29 +118,85 @@ class PetrotalObligacionModel extends Model {
         ]) ?: [];
     }
 
+    // Solo se reportan comprobantes de Ingreso (I). Las notas de crédito (E)
+    // y los complementos de pago (P) no son operaciones de volumen: antes se
+    // mezclaban y los P generaban advertencias de "producto no clasificado".
+    // Se cuentan para avisarlo en la vista previa (informativo, no bloquea).
+    // OJO: TG no guarda el estatus de cancelación del CFDI, así que una
+    // factura cancelada en el SAT no se puede excluir desde aquí.
+    public function contar_omitidos(string $desde, string $hasta): array {
+        $rows = $this->sql->select("
+            SELECT TipoDeComprobante, COUNT(*) AS n
+            FROM TG.dbo.FacturasRecibidas
+            WHERE (EmisorRfc = ? OR ReceptorRfc = ?)
+              AND TipoDeComprobante <> 'I'
+              AND Fecha BETWEEN ? AND ?
+            GROUP BY TipoDeComprobante
+        ", [
+            PetrotalReconciliationModel::PETROTAL_RFC,
+            PetrotalReconciliationModel::PETROTAL_RFC,
+            $desde . ' 00:00:00',
+            $hasta . ' 23:59:59',
+        ]) ?: [];
+        $conteo = [];
+        foreach ($rows as $r) $conteo[$r['TipoDeComprobante']] = (int) $r['n'];
+
+        // Conceptos que no son litros (servicios, anticipos: ClaveUnidad ACT/E48…).
+        // Todo concepto de combustible de Petrotal viene en LTR (validado ene-2025 a la fecha).
+        $serv = $this->sql->select("
+            SELECT COUNT(*) AS n
+            FROM TG.dbo.FacturasRecibidas fr
+            JOIN TG.dbo.FacturasRecibidasConceptos c ON c.FacturaId = fr.Id
+            WHERE (fr.EmisorRfc = ? OR fr.ReceptorRfc = ?)
+              AND fr.TipoDeComprobante = 'I'
+              AND ISNULL(c.ClaveUnidad, 'LTR') <> 'LTR'
+              AND fr.Fecha BETWEEN ? AND ?
+        ", [
+            PetrotalReconciliationModel::PETROTAL_RFC,
+            PetrotalReconciliationModel::PETROTAL_RFC,
+            $desde . ' 00:00:00',
+            $hasta . ' 23:59:59',
+        ]);
+        if (!empty($serv[0]['n'])) $conteo['SERV'] = (int) $serv[0]['n'];
+        return $conteo;
+    }
+
     // Punto de entrada del modelo: arma el reporte completo del periodo,
     // clasificando producto y resolviendo contraparte fila por fila. No
     // excluye silenciosamente nada que no resuelva — todo lo problemático
     // queda en 'advertencias' para que el controlador decida qué mostrar.
-    public function construir_reporte(string $desde, string $hasta): array {
+    //
+    // $asignaciones: [FacturaId => NumeroPermisoCRE] elegido a mano por el
+    // usuario para clientes con varios permisos que no se pudieron
+    // desambiguar. Solo se acepta un permiso que esté entre los candidatos.
+    public function construir_reporte(string $desde, string $hasta, array $asignaciones = []): array {
         $ventas = [];
         $compras = [];
         $advertencias = [];
 
         $filasVenta = $this->obtener_facturas_venta($desde, $hasta);
         foreach ($filasVenta as $fila) {
-            $this->procesar_fila($fila, 'cliente', $ventas, $advertencias);
+            $this->procesar_fila($fila, 'cliente', $ventas, $advertencias, $asignaciones);
         }
 
         $filasCompra = $this->obtener_facturas_compra($desde, $hasta);
         foreach ($filasCompra as $fila) {
-            $this->procesar_fila($fila, 'proveedor', $compras, $advertencias);
+            $this->procesar_fila($fila, 'proveedor', $compras, $advertencias, $asignaciones);
+        }
+
+        $omitidos = $this->contar_omitidos($desde, $hasta);
+        $nombres = ['E' => 'nota(s) de crédito', 'P' => 'complemento(s) de pago', 'T' => 'comprobante(s) de traslado', 'SERV' => 'concepto(s) que no son litros (servicios/anticipos)'];
+        foreach ($omitidos as $tipo => $n) {
+            $advertencias[] = [
+                'tipo' => 'comprobantes_omitidos',
+                'mensaje' => "Se omitieron {$n} " . ($nombres[$tipo] ?? "comprobante(s) tipo {$tipo}") . " del periodo (solo se reportan conceptos de combustible en litros de facturas de ingreso).",
+            ];
         }
 
         return ['ventas' => $ventas, 'compras' => $compras, 'advertencias' => $advertencias];
     }
 
-    private function procesar_fila(array $fila, string $tipoContraparte, array &$destino, array &$advertencias): void {
+    private function procesar_fila(array $fila, string $tipoContraparte, array &$destino, array &$advertencias, array $asignaciones = []): void {
         $clasificacion = $this->clasificar_producto($fila['Descripcion']);
         if ($clasificacion === null) {
             $advertencias[] = [
@@ -157,12 +222,21 @@ class PetrotalObligacionModel extends Model {
                 return;
             }
             if ($resolucion['permiso_cre'] === null) {
+                // ¿El usuario ya eligió el permiso para esta factura?
+                $elegido = $asignaciones[$fila['FacturaId']] ?? null;
+                if ($elegido !== null && in_array($elegido, $resolucion['candidatos'], true)) {
+                    $resolucion['permiso_cre'] = $elegido;
+                }
+            }
+            if ($resolucion['permiso_cre'] === null) {
                 $advertencias[] = [
                     'tipo' => 'permiso_ambiguo',
+                    'factura_id' => $fila['FacturaId'],
                     'contraparte_rfc' => $rfc,
                     'contraparte_nombre' => $fila['ContraparteNombre'],
+                    'destino' => $fila['Destino'] ?? null,
                     'candidatos' => $resolucion['candidatos'],
-                    'mensaje' => "Cliente {$fila['ContraparteNombre']} ({$rfc}) tiene más de un permiso CRE, requiere selección manual.",
+                    'mensaje' => "Factura {$fila['Folio']}: {$fila['ContraparteNombre']} ({$rfc}) tiene más de un permiso CRE; elige cuál corresponde" . (!empty($fila['Destino']) ? " (destino: {$fila['Destino']})." : '.'),
                 ];
                 return;
             }
@@ -180,9 +254,44 @@ class PetrotalObligacionModel extends Model {
             }
         }
 
-        $volumenBbl = round(((float) $fila['Cantidad']) / self::LITROS_POR_BARRIL, 2);
-        $total = (float) $fila['Total'];
-        $precio = $volumenBbl > 0 ? round($total / $volumenBbl, 2) : 0.0;
+        // Formato del permiso según el XSD de la CNE (t_permisoCRECliente /
+        // t_permiso_COM). Un permiso mal formado haría rechazar todo el archivo.
+        $patron = $tipoContraparte === 'cliente' ? self::PATRON_PERMISO_CLIENTE : self::PATRON_PERMISO_PROVEEDOR;
+        $permisoCre = trim((string) $permisoCre);
+        $longitud = strlen($permisoCre);
+        if ($longitud < 14 || $longitud > 24 || !preg_match($patron, $permisoCre)) {
+            $advertencias[] = [
+                'tipo' => 'permiso_formato_invalido',
+                'factura_id' => $fila['FacturaId'],
+                'contraparte_rfc' => $rfc,
+                'contraparte_nombre' => $fila['ContraparteNombre'],
+                'mensaje' => "Factura {$fila['Folio']}: el permiso \"{$permisoCre}\" de {$fila['ContraparteNombre']} ({$rfc}) no cumple el formato que exige la CNE.",
+            ];
+            return;
+        }
+
+        // Volumen: litros del concepto convertidos a barriles.
+        $cantidad = (float) $fila['Cantidad'];
+        $volumenBbl = round($cantidad / self::LITROS_POR_BARRIL, 2);
+
+        // Precio por barril = (importe del concepto + su impuesto) / litros,
+        // convertido a barril. Validado contra el acuse de agosto 2026
+        // (ej. PL/2060: $3,301.47/bbl). NO se usa fr.Total: es de toda la
+        // factura (varios conceptos) y en estas facturas excluye el IVA.
+        $importe = $fila['Importe'] !== null ? (float) $fila['Importe'] : $cantidad * (float) ($fila['ValorUnitario'] ?? 0);
+        $impuesto = (float) ($fila['ImporteImpuesto'] ?? 0);
+        $precio = $cantidad > 0 ? round(($importe + $impuesto) / $cantidad * self::LITROS_POR_BARRIL, 2) : 0.0;
+
+        // Rangos del XSD: precio y volumen con mínimo 0.01 (t_precio máx.
+        // 99999.99). Si no cumplen, se excluye la línea y se advierte.
+        if ($volumenBbl < 0.01 || $precio < 0.01 || $precio > 99999.99) {
+            $advertencias[] = [
+                'tipo' => 'valor_fuera_de_rango',
+                'factura_id' => $fila['FacturaId'],
+                'mensaje' => "Factura {$fila['Folio']}: volumen ({$volumenBbl} bbl) o precio ({$precio} $/bbl) fuera del rango que acepta la CNE (mínimo 0.01, precio máximo 99999.99).",
+            ];
+            return;
+        }
 
         $destino[] = [
             'fecha' => substr($fila['Fecha'], 0, 10),
@@ -231,7 +340,7 @@ class PetrotalObligacionModel extends Model {
 
     public function buscar_envio_periodo(string $desde, string $hasta): ?array {
         $rows = $this->sql->select(
-            "SELECT * FROM TG.dbo.PetrotalReportesObligacion WHERE PeriodoDesde = ? AND PeriodoHasta = ?",
+            "SELECT TOP 1 * FROM TG.dbo.PetrotalReportesObligacion WHERE PeriodoDesde = ? AND PeriodoHasta = ? ORDER BY Id DESC",
             [$desde, $hasta]
         );
         return $rows[0] ?? null;

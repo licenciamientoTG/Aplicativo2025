@@ -31,6 +31,46 @@
       </form>
     </div>
   </div>
+
+  <div class="card mt-3">
+    <div class="card-body">
+      <h2 class="h5">ApiReportes (CNE)</h2>
+      {% if not apiDisponible %}
+      <div class="alert alert-warning">Falta ejecutar <code>docs/sql/2026-11-08_petrotal_apireportes.sql</code> en TG para habilitar esta sección.</div>
+      {% elseif not configActual %}
+      <div class="alert alert-secondary">Primero sube la FIEL arriba.</div>
+      {% else %}
+      {% if configActual.tiene_api_key %}
+      <div class="alert alert-info">
+        ApiKey configurada · ambiente <b>{{ configActual.ambiente|upper }}</b> · obligación <b>{{ configActual.obligacion_id }}</b>.
+        Los envíos usan ApiReportes. Al guardar de nuevo se reemplaza.
+      </div>
+      {% endif %}
+      <form action="{{ url('petrotal.guardar_api') }}" method="POST" autocomplete="off">
+        <div class="mb-3">
+          <label class="form-label">ApiKey (se tramita en la OPE)</label>
+          <input type="password" name="api_key" class="form-control" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-md-4">
+            <label class="form-label">Ambiente</label>
+            <select name="ambiente" class="form-select">
+              <option value="qa" {{ configActual.ambiente == 'qa' or not configActual.ambiente ? 'selected' : '' }}>QA (pruebas)</option>
+              <option value="pre" {{ configActual.ambiente == 'pre' ? 'selected' : '' }}>Pre-productivo</option>
+              <option value="prod" {{ configActual.ambiente == 'prod' ? 'selected' : '' }}>Productivo</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">ID de obligación</label>
+            <input type="number" min="1" name="obligacion_id" class="form-control" value="{{ configActual.obligacion_id }}" required>
+            <div class="form-text">De <code>GET /catalogos/obligaciones</code>. Confirmar con la CNE cuál aplica al reporte semanal.</div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Guardar ApiReportes</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
 </div>
 {% endblock %}
 
