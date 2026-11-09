@@ -26,6 +26,7 @@ Thumbs.db
 .env
 .env.local
 .env.example
+cron/terminal_incidents_solved_weekly_email.env
 _assets/classes/gemini_local_config.php
 
 # Log files
