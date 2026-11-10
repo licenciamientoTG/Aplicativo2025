@@ -35,7 +35,34 @@ class MojoTicketsModel extends Model{
 
     
 
-    function get_tickets($from, $until) : array|false{
+    /**
+     * Tickets filtrados por status (ids de mojo_ticket_status) y departamento solicitante.
+     * Un arreglo vacío = sin filtro en ese campo. El valor '' en $departments representa
+     * los tickets sin departamento (NULL o vacío).
+     */
+    function get_tickets(array $statuses = [], array $departments = []) : array|false{
+        $conditions = [];
+        $params = [];
+        $statuses = array_values(array_filter(array_map('intval', $statuses)));
+        if ($statuses) {
+            $conditions[] = 't1.status_id IN (' . implode(',', array_fill(0, count($statuses), '?')) . ')';
+            $params = array_merge($params, $statuses);
+        }
+        if ($departments) {
+            $departments = array_values(array_unique(array_map(fn($d) => trim((string)$d), $departments)));
+            $parts = [];
+            $named = array_values(array_filter($departments, fn($d) => $d !== ''));
+            if ($named) {
+                $parts[] = 'LTRIM(RTRIM(t1.requesting_department)) IN (' . implode(',', array_fill(0, count($named), '?')) . ')';
+                $params = array_merge($params, $named);
+            }
+            if (in_array('', $departments, true)) {
+                $parts[] = "ISNULL(LTRIM(RTRIM(t1.requesting_department)), '') = ''";
+            }
+            $conditions[] = '(' . implode(' OR ', $parts) . ')';
+        }
+        $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
+
         $query = "SELECT
                         t1.*,
                         t2.name AS company,
@@ -60,11 +87,34 @@ class MojoTicketsModel extends Model{
                         LEFT JOIN [TG].[dbo].[mojo_ticket_queue] t7 ON t1.ticket_queue_id = t7.id_mojo
                         LEFT JOIN [TG].[dbo].[mojo_ticket_types] t8 ON t1.ticket_type_id = t8.id_mojo
                         LEFT JOIN [TG].[dbo].[mojo_ticket_forms] t9 ON t1.ticket_form_id = t9.id_mojo
-                    WHERE
-                        t1.created_on BETWEEN CONVERT(datetime, '{$from}', 102) AND CONVERT(datetime, '{$until}', 102)
+                    {$where}
                     ORDER BY
                         t1.created_on DESC
                 ;";
+        return $this->sql->select($query, $params);
+    }
+
+    /**
+     * Catálogo de status de Mojo con su número de tickets.
+     */
+    function get_ticket_statuses() : array|false {
+        $query = "SELECT s.id_mojo, s.name, COUNT(t.id_mojo) AS total
+                    FROM [TG].[dbo].[mojo_ticket_status] s
+                    LEFT JOIN [TG].[dbo].[mojo_tickets] t ON t.status_id = s.id_mojo
+                    GROUP BY s.id_mojo, s.name
+                    ORDER BY s.id_mojo;";
+        return $this->sql->select($query);
+    }
+
+    /**
+     * Valores distintos de requesting_department (texto libre) con su número de tickets.
+     * Los NULL/vacíos se agrupan como ''.
+     */
+    function get_requesting_departments() : array|false {
+        $query = "SELECT ISNULL(LTRIM(RTRIM(requesting_department)), '') AS department, COUNT(*) AS total
+                    FROM [TG].[dbo].[mojo_tickets]
+                    GROUP BY ISNULL(LTRIM(RTRIM(requesting_department)), '')
+                    ORDER BY department;";
         return $this->sql->select($query);
     }
 

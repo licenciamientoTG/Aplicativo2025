@@ -729,9 +729,9 @@ let datatables_tickets = $('#datatables_tickets').DataTable({
     ajax: {
         url: routeUrl('administration.datatables_tickets'),
         type: 'POST',
-        data: {
-            'from': $('input#from').val(),
-            'until': $('input#until').val(),
+        data: function (d) {
+            d.status = $('select#status').val() || [];
+            d.departamento = $('select#departamento').val() || [];
         },
         error: function() {
             $('#datatables_tickets').waitMe('hide');
