@@ -8506,6 +8506,13 @@ public function stamped_invoices_detail(): void
                     'normalized' => $normalizarNombre($est['Nombre']),
                 ];
             }
+            $catalogoPorId = [];
+            foreach ($catalogoPorNombre as $estacionCatalogo) {
+                $catalogoPorId[(int)$estacionCatalogo['station_id']] = [
+                    'station_id' => (int)$estacionCatalogo['station_id'],
+                    'station' => $estacionCatalogo['station'],
+                ];
+            }
             $hermanosRows = [];
             foreach ($catalogoPorNombre as $estacionCatalogo) {
                 $nombreSinPrefijo = preg_replace('/^\d+\s+/', '', trim($estacionCatalogo['normalized']));
@@ -8530,9 +8537,15 @@ public function stamped_invoices_detail(): void
             $suffixes = EfcConciliacionModel::allAccountSuffixes();
             $accountWhere = implode(' OR ', array_fill(0, count($suffixes), "RIGHT(UPPER(REPLACE(REPLACE(ISNULL(M.cuenta,''), '-', ''), ' ', '')), LEN(?)) = ?"));
             $stmt = $conn->prepare(
-                "SELECT M.id, M.secuencia, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, ISNULL(OG.capturado, 0) AS one_goal, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled, CG_MATCH.controlgas_matches
+                "SELECT M.id, M.secuencia, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, ISNULL(OG.capturado, 0) AS one_goal, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled, ACTIVE_GROUP.station_id AS active_station_id, ACTIVE_GROUP.station_count AS active_station_count, CG_MATCH.controlgas_matches
                  FROM [TG].[dbo].[movimientos_bancarios] M
                  LEFT JOIN [TG].[dbo].[efc_conc_one_goal_movimientos] OG ON OG.movimiento_bancario_id=M.id
+                 OUTER APPLY (
+                     SELECT MIN(G.estacion_id) AS station_id, COUNT(DISTINCT G.estacion_id) AS station_count
+                     FROM [TG].[dbo].[efc_conc_partidas] B
+                     JOIN [TG].[dbo].[efc_conc_grupos] G ON G.id=B.grupo_id AND G.estado='ACTIVA'
+                     WHERE B.movimiento_bancario_id=M.id AND B.origen='BANCO' AND B.activo=1
+                 ) ACTIVE_GROUP
                  OUTER APPLY (
                      SELECT STRING_AGG(CONVERT(VARCHAR(10), X.fecha_operacion, 23) + '|' + COALESCE(X.turno, ''), ';') AS controlgas_matches
                      FROM (
@@ -8640,7 +8653,12 @@ public function stamped_invoices_detail(): void
                         }
                     }
                 }
-                $estacionOriginal = $conflictoAliasHermanos ? null : ($estacionPraxedis ?? $estacionPorReferencia ?? $estacionPorTexto ?? $estacionPorCuenta);
+                // Una asociación bancaria activa con una única estación ya fue validada en conciliación;
+                // prevalece sobre tokens ambiguos del texto bancario (como el alias legado 1000).
+                $estacionGrupoActiva = (int)($mov['active_station_count'] ?? 0) === 1
+                    ? ($catalogoPorId[(int)$mov['active_station_id']] ?? null)
+                    : null;
+                $estacionOriginal = $estacionGrupoActiva ?? ($conflictoAliasHermanos ? null : ($estacionPraxedis ?? $estacionPorReferencia ?? $estacionPorTexto ?? $estacionPorCuenta));
                 $estatus = $estacionOriginal ? 'IDENTIFICADA'
                     : (count($codigos) > 1 || count($candidatasTexto) > 1 || count($candidatasCuenta) > 1 || $alias1000Conflictivo || $conflictoAliasHermanos ? 'ESTACION_AMBIGUA' : 'ESTACION_NO_IDENTIFICADA');
                 $corregida = isset($correcciones[(int)$mov['id']]);
