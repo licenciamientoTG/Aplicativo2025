@@ -8056,6 +8056,32 @@ public function stamped_invoices_detail(): void
     public function efc_conc_resumen_detalle(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryDetail((int)($_GET['estacion_id']??0),isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_resumen_agrupado(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryGrouped(isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,isset($_GET['estacion_id'])?(int)$_GET['estacion_id']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
 
+    /** GET /income/efc_conc_resumen_papeletas_usd?year=YYYY&month=MM&empresa=...&estacion_id=... */
+    public function efc_conc_resumen_papeletas_usd(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $companyValue = $_GET['empresa'] ?? null;
+            if (!is_string($companyValue) || trim($companyValue) === '') throw new RuntimeException('Empresa requerida.');
+            $companyValue = strtoupper(trim($companyValue));
+            if ($companyValue !== 'DIAZ GAS' && !$this->currentUserIsSuperAdmin()) throw new RuntimeException('No tienes permiso para consultar esta empresa.');
+            $yearValue = $_GET['year'] ?? null; $monthValue = $_GET['month'] ?? null;
+            if (!(is_string($yearValue) || is_int($yearValue)) || !preg_match('/^[0-9]{4}$/', (string)$yearValue)) throw new RuntimeException('Año inválido.');
+            if (!(is_string($monthValue) || is_int($monthValue)) || !preg_match('/^(0?[1-9]|1[0-2])$/', (string)$monthValue)) throw new RuntimeException('Mes inválido.');
+            $stationId = null;
+            if (isset($_GET['estacion_id'])) {
+                $stationValue = $_GET['estacion_id'];
+                if (!(is_string($stationValue) || is_int($stationValue)) || !preg_match('/^[1-9][0-9]*$/', (string)$stationValue)) throw new RuntimeException('Estación inválida.');
+                $stationId = (int)$stationValue;
+            }
+            $data = $this->efcConciliacion->monthlyPaperUsdByStation((int)$yearValue, (int)$monthValue, $companyValue, $stationId);
+            echo json_encode(['status'=>'success','data'=>$data], JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch (Throwable $e) {
+            http_response_code(422);
+            echo json_encode(['status'=>'error','message'=>$e->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
     /** GET /income/efc_conc_usd_globales?year=YYYY&month=MM */
     public function efc_conc_usd_globales(): void { ob_clean(); header('Content-Type: application/json; charset=utf-8'); try { $companyValue=$_GET['empresa']??'DIAZ GAS'; if(!is_scalar($companyValue)||strtoupper(trim((string)$companyValue))!=='DIAZ GAS') throw new RuntimeException('Esta conciliación global sólo está habilitada para Díaz Gas.'); echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->globalUsdDaily((int)($_GET['year']??0),(int)($_GET['month']??0))],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);} exit; }
     /** POST /income/efc_conc_usd_globales_asociar {fechas_operativas[],movimiento_id,empresa?} */
