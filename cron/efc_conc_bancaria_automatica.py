@@ -12,6 +12,8 @@ sin hacer trabajo si otra instancia está activa.
 En las ejecuciones completas también concilia automáticamente los depósitos
 USD globales de Díaz Gas de la cuenta Banorte 0601500741 cuando existe una
 única combinación de días REGIO que coincide dentro de la tolerancia.
+Después crea tránsitos USD para turnos de Díaz Gas cuando todas sus papeletas
+están asignadas a depósitos cuya fecha bancaria cae en el mes siguiente.
 """
 from __future__ import annotations
 
@@ -418,6 +420,103 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
       SELECT @asignacion_id=id FROM @nueva;
       INSERT dbo.efc_conc_usd_globales_dias(asignacion_id,fecha_operativa)
         SELECT @asignacion_id,fecha FROM @fechas;
+      COMMIT;
+    END""")
+    cursor.execute("""CREATE OR ALTER PROCEDURE dbo.usp_efc_conc_usd_crear_transitos_globales
+      @desde DATE,@hasta DATE,@estacion_id INT=NULL,@ejecucion_id BIGINT=NULL,@vista_previa BIT=0
+    AS BEGIN
+      SET NOCOUNT ON; SET XACT_ABORT ON; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+      IF @desde IS NULL OR @hasta IS NULL OR @desde>@hasta THROW 50120,'Rango de fechas invalido para transitos USD.',1;
+      IF @estacion_id IS NOT NULL AND @estacion_id NOT IN (2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33)
+        THROW 50121,'La estacion no pertenece a Diaz Gas para transitos USD.',1;
+      IF @vista_previa=0 AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_ejecuciones_automaticas WHERE id=@ejecucion_id AND estado='EJECUTANDO')
+        THROW 50122,'La ejecucion automatica no esta activa.',1;
+      IF @vista_previa=0 BEGIN TRANSACTION;
+      DECLARE @candidatos TABLE(estacion_id INT,fecha DATE,turno VARCHAR(20),importe DECIMAL(18,2),mes_destino CHAR(7),clave VARCHAR(180),PRIMARY KEY(estacion_id,fecha,turno));
+      ;WITH Vinculos AS (
+        SELECT V.id,V.estacion_id,V.fecha_cg,V.turno,V.importe_cg,V.papeleta_id
+        FROM dbo.efc_conc_analiticos_vinculos V WITH(UPDLOCK,HOLDLOCK)
+        WHERE V.activo=1 AND V.concepto='USD' AND V.fecha_cg BETWEEN @desde AND @hasta
+          AND V.estacion_id IN (2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33)
+          AND (@estacion_id IS NULL OR V.estacion_id=@estacion_id)
+        UNION ALL
+        SELECT V.id,V.estacion_id,V.fecha_cg,V.turno,V.importe_cg,V.papeleta_secundaria_id
+        FROM dbo.efc_conc_analiticos_vinculos V WITH(UPDLOCK,HOLDLOCK)
+        WHERE V.activo=1 AND V.concepto='USD' AND V.papeleta_secundaria_id IS NOT NULL
+          AND V.fecha_cg BETWEEN @desde AND @hasta
+          AND V.estacion_id IN (2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33)
+          AND (@estacion_id IS NULL OR V.estacion_id=@estacion_id)
+      ), Asignaciones AS (
+        SELECT V.id AS vinculo_id,V.estacion_id,V.fecha_cg,V.turno,V.importe_cg,
+          C.papeleta_id,P.effective_date,M.fecha AS fecha_deposito,
+          CONVERT(CHAR(7),M.fecha,23) AS mes_deposito
+        FROM Vinculos V
+        JOIN dbo.efc_conc_analiticos_papeletas PAP WITH(UPDLOCK,HOLDLOCK) ON PAP.id=V.papeleta_id
+        JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=PAP.importacion_id AND I.estado='IMPORTADA'
+        JOIN dbo.v_efc_conc_analiticos_papeletas_efectivas P ON P.id=PAP.id AND P.effective_real_usd>0
+        CROSS APPLY (SELECT V.papeleta_id) C(papeleta_id)
+        JOIN dbo.efc_conc_usd_globales_dias D WITH(UPDLOCK,HOLDLOCK) ON D.fecha_operativa=P.effective_date
+        JOIN dbo.efc_conc_usd_globales A WITH(UPDLOCK,HOLDLOCK) ON A.id=D.asignacion_id AND A.estado='ACTIVA'
+        JOIN TG.dbo.movimientos_bancarios M WITH(UPDLOCK,HOLDLOCK) ON M.id=A.movimiento_bancario_id
+          AND M.banco='BANORTE' AND M.abono>0
+          AND RIGHT(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(M.cuenta)),' ',''),'-',''),'.',''),10)='0601500741'
+        UNION ALL
+        SELECT V.id,V.estacion_id,V.fecha_cg,V.turno,V.importe_cg,C.papeleta_id,P.effective_date,M.fecha,
+          CONVERT(CHAR(7),M.fecha,23)
+        FROM Vinculos V
+        JOIN dbo.efc_conc_analiticos_papeletas PAP WITH(UPDLOCK,HOLDLOCK) ON PAP.id=V.papeleta_id
+        JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=PAP.importacion_id AND I.estado='IMPORTADA'
+        JOIN dbo.v_efc_conc_analiticos_papeletas_efectivas P ON P.id=PAP.id AND P.effective_real_usd>0
+        CROSS APPLY (SELECT V.papeleta_id) C(papeleta_id)
+        JOIN dbo.efc_conc_usd_globales A WITH(UPDLOCK,HOLDLOCK) ON A.fecha_operativa=P.effective_date AND A.estado='ACTIVA'
+          AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_usd_globales_dias DX WHERE DX.asignacion_id=A.id)
+        JOIN TG.dbo.movimientos_bancarios M WITH(UPDLOCK,HOLDLOCK) ON M.id=A.movimiento_bancario_id
+          AND M.banco='BANORTE' AND M.abono>0
+          AND RIGHT(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(M.cuenta)),' ',''),'-',''),'.',''),10)='0601500741'
+      ), Resumen AS (
+        SELECT V.id,V.estacion_id,V.fecha_cg,V.turno,V.importe_cg,
+          COUNT(DISTINCT P.papeleta_id) AS papeletas,
+          COUNT(DISTINCT CASE WHEN A.papeleta_id IS NOT NULL THEN A.papeleta_id END) AS papeletas_asignadas,
+          COUNT(DISTINCT A.mes_deposito) AS meses_deposito,MIN(A.mes_deposito) AS mes_deposito
+        FROM dbo.efc_conc_analiticos_vinculos V
+        CROSS APPLY (SELECT V.papeleta_id UNION SELECT V.papeleta_secundaria_id WHERE V.papeleta_secundaria_id IS NOT NULL) P(papeleta_id)
+        LEFT JOIN Asignaciones A ON A.vinculo_id=V.id AND A.papeleta_id=P.papeleta_id
+        WHERE V.activo=1 AND V.concepto='USD' AND V.fecha_cg BETWEEN @desde AND @hasta
+          AND V.estacion_id IN (2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33)
+          AND (@estacion_id IS NULL OR V.estacion_id=@estacion_id)
+        GROUP BY V.id,V.estacion_id,V.fecha_cg,V.turno,V.importe_cg
+      )
+      INSERT @candidatos(estacion_id,fecha,turno,importe,mes_destino,clave)
+      SELECT R.estacion_id,R.fecha_cg,R.turno,R.importe_cg,R.mes_deposito,
+        CONCAT('cg-',R.estacion_id,'-',CONVERT(CHAR(10),R.fecha_cg,23),'-',R.turno,'-USD')
+      FROM Resumen R
+      WHERE R.importe_cg>0 AND R.papeletas=R.papeletas_asignadas AND R.meses_deposito=1
+        AND R.mes_deposito=CONVERT(CHAR(7),DATEADD(MONTH,1,R.fecha_cg),23)
+        AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK)
+          WHERE T.estacion_id=R.estacion_id AND T.fecha_origen=R.fecha_cg AND T.turno=R.turno AND T.concepto='USD')
+        AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_grupos G WITH(UPDLOCK,HOLDLOCK)
+          JOIN dbo.efc_conc_partidas CP WITH(UPDLOCK,HOLDLOCK) ON CP.grupo_id=G.id AND CP.origen='CG' AND CP.activo=1
+          WHERE G.estado='ACTIVA' AND CP.estacion_id=R.estacion_id AND CP.concepto='USD'
+            AND CP.fecha_operacion=R.fecha_cg AND CP.turno=R.turno)
+        AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_cierres C WITH(UPDLOCK,HOLDLOCK)
+          WHERE C.estacion_id=R.estacion_id AND C.mes=CONVERT(CHAR(7),R.fecha_cg,23) AND C.concepto='USD' AND C.estado='CERRADO')
+        AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_cierres_etapas CE WITH(UPDLOCK,HOLDLOCK)
+          WHERE CE.estacion_id=R.estacion_id AND CE.mes=CONVERT(CHAR(7),R.fecha_cg,23) AND CE.concepto='USD' AND CE.etapa='BANCO' AND CE.estado='CERRADO')
+        AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_cierres C WITH(UPDLOCK,HOLDLOCK)
+          WHERE C.estacion_id=R.estacion_id AND C.mes=R.mes_deposito AND C.concepto='USD' AND C.estado='CERRADO')
+        AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_cierres_etapas CE WITH(UPDLOCK,HOLDLOCK)
+          WHERE CE.estacion_id=R.estacion_id AND CE.mes=R.mes_deposito AND CE.concepto='USD' AND CE.etapa='BANCO' AND CE.estado='CERRADO');
+      IF @vista_previa=1 BEGIN
+        SELECT estacion_id,fecha,turno,importe,mes_destino FROM @candidatos ORDER BY fecha,estacion_id,turno;
+        RETURN;
+      END;
+      INSERT dbo.efc_conc_transitos(estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion,creado_por)
+        OUTPUT inserted.id,inserted.estacion_id,inserted.fecha_origen,inserted.turno,inserted.importe,inserted.mes_destino
+        SELECT C.estacion_id,C.clave,C.fecha,CONVERT(CHAR(7),C.fecha,23),C.mes_destino,C.turno,'USD',C.importe,'PENDIENTE',
+          'Transito USD creado automaticamente desde asignacion global de papeletas',NULL
+        FROM @candidatos C
+        WHERE NOT EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK)
+          WHERE T.estacion_id=C.estacion_id AND T.clave_externa=C.clave);
       COMMIT;
     END""")
 
@@ -1178,10 +1277,16 @@ def run(
                 "dbo.efc_conc_correcciones_banco",
                 "dbo.efc_conc_usd_globales",
                 "dbo.efc_conc_usd_globales_dias",
+                "dbo.efc_conc_cierres",
+                "dbo.efc_conc_cierres_etapas",
             )
             missing = [name for name in required_tables if not cursor.execute("SELECT OBJECT_ID(?, 'U')", name).fetchone()[0]]
             if missing:
                 raise RuntimeError("Vista previa requiere el esquema bancario ya instalado; faltan: " + ", ".join(missing))
+            if not cursor.execute("SELECT OBJECT_ID('dbo.v_efc_conc_analiticos_papeletas_efectivas', 'V')").fetchone()[0]:
+                raise RuntimeError("Vista previa requiere dbo.v_efc_conc_analiticos_papeletas_efectivas.")
+            if not cursor.execute("SELECT OBJECT_ID('dbo.usp_efc_conc_usd_crear_transitos_globales', 'P')").fetchone()[0]:
+                raise RuntimeError("Vista previa de tránsitos USD requiere una ejecución normal previa para instalar el procedimiento automático.")
         else:
             ensure_schema(cursor); conn.commit()
         log("Esquema listo.")
@@ -1235,6 +1340,30 @@ def run(
             matched += global_matched; skipped += global_skipped; errors += global_errors
         else:
             log("USD global omitido: la ejecución está limitada a una estación específica.")
+        diaz_transit_stations = set(DIAZ_GAS_STATIONS) - {40}
+        if station_filter is None or station_filter in diaz_transit_stations:
+            if dry_run:
+                preview = cursor.execute(
+                    "EXEC dbo.usp_efc_conc_usd_crear_transitos_globales ?,?,?,?,?",
+                    first, last, station_filter, None, 1,
+                ).fetchall()
+                for row in preview:
+                    log(f"Vista previa tránsito USD Díaz Gas: estación={row[0]}, turno={as_date(row[1]).isoformat()} {row[2]}, importe={amount(row[3]):.2f}, depósito en mes={row[4]}.")
+                    details.append(f"TRANSITO_USD_PREVIEW/{row[0]}/{row[1]}/{row[2]}/{amount(row[3]):.2f}/{row[4]}")
+                log(f"Tránsitos USD Díaz Gas elegibles para crear: {len(preview)}.")
+            else:
+                created = cursor.execute(
+                    "EXEC dbo.usp_efc_conc_usd_crear_transitos_globales ?,?,?,?,?",
+                    first, last, station_filter, run_id, 0,
+                ).fetchall()
+                conn.commit()
+                for row in created:
+                    log(f"Tránsito USD Díaz Gas creado: estación={row[1]}, turno={as_date(row[2]).isoformat()} {row[3]}, importe={amount(row[4]):.2f}, depósito en mes={row[5]}.")
+                    details.append(f"TRANSITO_USD/{row[0]}/{row[1]}/{row[2]}/{row[3]}/{amount(row[4]):.2f}/{row[5]}")
+                matched += len(created)
+                log(f"Tránsitos USD Díaz Gas creados: {len(created)}.")
+        else:
+            log(f"Tránsito automático USD omitido para estación {station_filter}: solo aplica a estaciones Díaz Gas.")
         for station_number, (station_id, name, code) in enumerate(stations, 1):
             log(f"Estación {station_number}/{len(stations)} inicia: {station_id} {name}.")
             try:

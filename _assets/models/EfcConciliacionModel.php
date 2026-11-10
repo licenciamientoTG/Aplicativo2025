@@ -416,6 +416,15 @@ class EfcConciliacionModel {
             JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id
             WHERE I.estado='IMPORTADA' AND P.effective_station_id IN ($stationMarks)
               AND P.effective_date>=? AND P.effective_date<?
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM dbo.efc_conc_analiticos_vinculos V
+                  JOIN dbo.efc_conc_transitos T ON T.estacion_id=V.estacion_id
+                      AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto
+                      AND T.estado IN ('PENDIENTE','CONCILIADO')
+                  WHERE V.estacion_id=P.effective_station_id AND V.activo=1 AND V.concepto='USD'
+                    AND (V.papeleta_id=P.id OR V.papeleta_secundaria_id=P.id)
+              )
             GROUP BY P.effective_station_id ORDER BY P.effective_station_id";
         $q = $this->db->prepare($sql);
         $q->execute(array_merge($stations, [$start, $end]));
