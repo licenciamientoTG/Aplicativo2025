@@ -28,12 +28,29 @@
     <div class="card">
         <div class="card-body">
             <form action="#" method="get">
+                <input type="hidden" name="filtrar" value="1">
                 <div class="row">
-                    <div class="col">
-                        <input type="date" class="form-control" name="from" id="from" value="{{ from }}">
+                    <div class="col-md-4">
+                        <select class="selectpicker form-control border" multiple data-live-search="true" data-actions-box="true"
+                                data-selected-text-format="count > 2" data-width="100%" title="Todos los departamentos"
+                                data-select-all-text="Todos" data-deselect-all-text="Ninguno"
+                                name="departamento[]" id="departamento">
+                            {% for d in departments %}
+                                <option value="{{ d.department }}" data-subtext="{{ d.total }}"
+                                        {{ d.department in selected_departments ? 'selected' }}>{{ d.department ?: '(Sin departamento)' }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
-                    <div class="col">
-                        <input type="date" class="form-control" name="until" id="until" value="{{ until }}">
+                    <div class="col-md-4">
+                        <select class="selectpicker form-control border" multiple data-actions-box="true"
+                                data-selected-text-format="count > 3" data-width="100%" title="Todos los status"
+                                data-select-all-text="Todos" data-deselect-all-text="Ninguno"
+                                name="status[]" id="status">
+                            {% for s in statuses %}
+                                <option value="{{ s.id_mojo }}" data-subtext="{{ s.total }}"
+                                        {{ (s.id_mojo + 0) in selected_statuses ? 'selected' }}>{{ s.name }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="col">
                         <button type="input" class="btn btn-primary btn-block w-100">Buscar</button>
