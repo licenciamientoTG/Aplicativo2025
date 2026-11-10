@@ -1185,9 +1185,15 @@ class EfcConciliacionModel {
                 $at=$this->reportTurnStart(new DateTimeImmutable($date),$number);$rate=null;
                 foreach($rates as $candidate){if($candidate['at']<=$at)$rate=$candidate['rate'];else break;}
                 if($rate===null) continue;
-                $mxn=(float)($cut['MN']??$cut['mn']??0); if($mxn<=0) continue;
+                // La conciliación global USD debe usar sólo la venta USD de ControlGas:
+                // Dolares ya viene valuado en MXN y Dolares2 representa efectivo USD.
+                $usdMxn=(float)($cut['Dolares']??$cut['dolares']??0);
+                $usdCash=(float)($cut['Dolares2']??$cut['dolares2']??0);
+                if($usdMxn<=0&&$usdCash<=0) continue;
                 $daily[$date]??=['turnos'=>0,'mxn'=>0.0,'real_usd'=>0.0];
-                $daily[$date]['turnos']++;$daily[$date]['mxn']+=$mxn;$daily[$date]['real_usd']+=round($mxn/$rate,2);
+                $daily[$date]['turnos']++;
+                $daily[$date]['mxn']+=$usdMxn+($usdCash*$rate);
+                $daily[$date]['real_usd']+=round(($usdMxn/$rate)+$usdCash,2);
             }
         }
         foreach($daily as &$row) {$row['mxn']=round($row['mxn'],2);$row['real_usd']=round($row['real_usd'],2);} unset($row);
