@@ -397,7 +397,7 @@ class EfcConciliacionModel {
 
     public function summaryGrouped(?int $year=null, ?int $month=null, ?int $stationId=null, ?string $concept=null): array { $where=[];$params=[];if($year){$where[]='C.mes LIKE ?';$params[]=sprintf('%04d-%02d',$year,$month?:1).'%';}if($month&&$year){$where=['C.mes=?'];$params=[sprintf('%04d-%02d',$year,$month)];}if($stationId){$where[]='C.estacion_id=?';$params[]=$stationId;}if($concept&&in_array($concept,['MN','MORRALLA','USD'],true)){$where[]='C.concepto=?';$params[]=$concept;} $sql="SELECT C.estacion_id,C.mes,C.concepto,C.total_controlgas,C.total_banco,C.total_regio_declarado,C.total_regio_real,C.total_diferencia,C.total_transito,C.operaciones,C.pendientes,C.estado,C.cerrado_en FROM dbo.efc_conc_cierres C".($where?' WHERE '.implode(' AND ',$where):'')." ORDER BY C.mes DESC,C.estacion_id,C.concepto";$q=$this->db->prepare($sql);$q->execute($params);$rows=$q->fetchAll(PDO::FETCH_ASSOC);foreach($rows as &$r){foreach(['estacion_id','operaciones','pendientes'] as $k)$r[$k]=(int)$r[$k];foreach(['total_controlgas','total_banco','total_regio_declarado','total_regio_real','total_diferencia','total_transito'] as $k)$r[$k]=(float)$r[$k];}return $rows; }
 
-    /** Effective REGIO USD papeletas aggregated by operational station for a month. */
+    /** Effective REGIO USD papeletas grouped by their linked ControlGas turn month. */
     public function monthlyPaperUsdByStation(int $year, int $month, string $company, ?int $stationId = null): array {
         if ($year < 2020 || $year > 9998 || $month < 1 || $month > 12) throw new RuntimeException('Periodo inválido.');
         $company = strtoupper(trim($company));
@@ -411,21 +411,23 @@ class EfcConciliacionModel {
         $start = sprintf('%04d-%02d-01', $year, $month);
         $end = (new DateTimeImmutable($start))->modify('+1 month')->format('Y-m-d');
         $stationMarks = implode(',', array_fill(0, count($stations), '?'));
-        $sql = "SELECT P.effective_station_id AS station_id, CAST(SUM(P.effective_real_usd) AS DECIMAL(18,2)) AS real_usd
-            FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P
-            JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id
-            WHERE I.estado='IMPORTADA' AND P.effective_station_id IN ($stationMarks)
-              AND P.effective_date>=? AND P.effective_date<?
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM dbo.efc_conc_analiticos_vinculos V
-                  JOIN dbo.efc_conc_transitos T ON T.estacion_id=V.estacion_id
-                      AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto
-                      AND T.estado IN ('PENDIENTE','CONCILIADO')
-                  WHERE V.estacion_id=P.effective_station_id AND V.activo=1 AND V.concepto='USD'
-                    AND (V.papeleta_id=P.id OR V.papeleta_secundaria_id=P.id)
-              )
-            GROUP BY P.effective_station_id ORDER BY P.effective_station_id";
+        $sql = "WITH PaperTurns AS (
+                SELECT DISTINCT V.estacion_id AS station_id,P.id,P.effective_real_usd
+                FROM dbo.efc_conc_analiticos_vinculos V
+                CROSS APPLY (VALUES(V.papeleta_id),(V.papeleta_secundaria_id)) L(papeleta_id)
+                JOIN dbo.v_efc_conc_analiticos_papeletas_efectivas P ON P.id=L.papeleta_id
+                JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id AND I.estado='IMPORTADA'
+                WHERE V.estacion_id IN ($stationMarks) AND V.activo=1 AND V.concepto='USD'
+                  AND V.fecha_cg>=? AND V.fecha_cg<?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM dbo.efc_conc_transitos T
+                      WHERE T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg
+                        AND T.turno=V.turno AND T.concepto=V.concepto
+                        AND T.estado IN ('PENDIENTE','CONCILIADO')
+                  )
+            )
+            SELECT station_id,CAST(SUM(effective_real_usd) AS DECIMAL(18,2)) AS real_usd
+            FROM PaperTurns GROUP BY station_id ORDER BY station_id";
         $q = $this->db->prepare($sql);
         $q->execute(array_merge($stations, [$start, $end]));
         $rows = $q->fetchAll(PDO::FETCH_ASSOC);
