@@ -460,7 +460,7 @@ class EfcConciliacionModel {
         $selectorQ->execute([$selectorStart,$selectorEnd]); $selectDays=[]; $assignedDateGroups=[];
         foreach($groupIndex as $id=>$group) foreach($group['fechas'] as $date) $assignedDateGroups[$date]=$id;
         while($r=$selectorQ->fetch(PDO::FETCH_ASSOC)) { $date=$this->dateValue($r['fecha_operativa']); $selectDays[$date]=['fecha_operativa'=>$date,'papeletas'=>(int)$r['papeletas'],'real_usd'=>(float)$r['real_usd'],'disponibles'=>[],'grupo_id'=>$assignedDateGroups[$date]??null]; }
-        foreach($selectDays as $date=>&$day) { $latest=(new DateTimeImmutable($date))->modify('+7 days')->format('Y-m-d'); $day['disponibles']=isset($usedDates[$date])?[]:array_values(array_filter($available,fn($m)=>$m['fecha'] >= $date && $m['fecha'] <= $latest)); }
+        foreach($selectDays as $date=>&$day) { $latest=(new DateTimeImmutable($date))->modify('+7 days')->format('Y-m-d'); $day['disponibles']=isset($usedDates[$date])?[]:array_values(array_filter($available,fn($m)=>$m['fecha'] >= $date && $m['fecha'] <= $latest)); $groupId=$day['grupo_id']; $day['movimientos']=$groupId!==null&&isset($groupIndex[$groupId])?[$groupIndex[$groupId]['movement']]:[]; }
         unset($day);
         $groups=[];
         $groupDates=array_values(array_unique(array_merge(...array_map(fn($group)=>$group['fechas'],$groupIndex?:[['fechas'=>[]]])))); $groupReal=[];
