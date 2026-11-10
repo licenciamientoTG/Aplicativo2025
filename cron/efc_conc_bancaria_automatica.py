@@ -354,7 +354,7 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
       COMMIT;
     END""")
     cursor.execute("""CREATE OR ALTER PROCEDURE dbo.usp_efc_conc_usd_global_asociar_automatica
-      @movimiento_id INT,@fechas_xml XML,@ejecucion_id BIGINT
+      @movimiento_id INT,@fechas_xml XML,@totales_xml XML,@ejecucion_id BIGINT
     AS BEGIN
       SET NOCOUNT ON; SET XACT_ABORT ON; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
       BEGIN TRANSACTION;
@@ -381,16 +381,14 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
       IF EXISTS(SELECT 1 FROM @fechas WHERE @fecha_banco<fecha OR @fecha_banco>DATEADD(day,7,fecha))
         THROW 50103,'El deposito debe recibirse dentro de los siete dias posteriores a cada fecha operativa.',1;
       INSERT @papeles(fecha,real_usd)
-        SELECT P.effective_date,CAST(SUM(P.effective_real_usd) AS DECIMAL(18,2))
-        FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P
-        JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id AND I.estado='IMPORTADA'
-        JOIN @fechas D ON D.fecha=P.effective_date
-        WHERE P.effective_station_id IN (2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33,40) AND P.effective_real_usd>0
-        GROUP BY P.effective_date;
+        SELECT X.N.value('(fecha/text())[1]','DATE'),X.N.value('(usd/text())[1]','DECIMAL(18,2)')
+        FROM @totales_xml.nodes('/totals/item') AS X(N);
       IF (SELECT COUNT(*) FROM @papeles)<>(SELECT COUNT(*) FROM @fechas)
-        THROW 50104,'Uno o mas dias ya no tienen papeletas REGIO USD reales.',1;
+        THROW 50104,'Faltan totales ControlGas USD para uno o mas dias.',1;
+      IF EXISTS(SELECT 1 FROM @fechas F LEFT JOIN @papeles P ON P.fecha=F.fecha WHERE P.fecha IS NULL OR P.real_usd<=0)
+        THROW 50104,'Uno o mas dias ya no tienen efectivo ControlGas con tipo de cambio.',1;
       SELECT @real_usd=ROUND(SUM(real_usd),2) FROM @papeles;
-      IF ABS(@importe_banco-@real_usd)>1.00 THROW 50105,'El deposito no coincide con el total REGIO USD de los dias seleccionados.',1;
+      IF ABS(@importe_banco-@real_usd)>1.00 THROW 50105,'El deposito no coincide con el total ControlGas USD de los dias seleccionados.',1;
       IF EXISTS(SELECT 1 FROM dbo.efc_conc_usd_globales_dias D WITH(UPDLOCK,HOLDLOCK)
         JOIN dbo.efc_conc_usd_globales A WITH(UPDLOCK,HOLDLOCK) ON A.id=D.asignacion_id
         JOIN @fechas X ON X.fecha=D.fecha_operativa WHERE A.estado='ACTIVA')
@@ -476,6 +474,49 @@ def as_date(value: object) -> date:
 
 def amount(value: object) -> float:
     return round(float(str(value or 0).replace(",", "").replace("$", "")), 2)
+
+
+def controlgas_usd_daily(cursor: pyodbc.Cursor, first: date, last: date) -> dict[date, float]:
+    """Convert ControlGas MN cuts to USD using the historic rate at turn start."""
+    stations = tuple(DIAZ_GAS_STATIONS)
+    placeholders = ",".join("?" for _ in stations)
+    rate_rows = cursor.execute(
+        f"SELECT codgas,fch,hra,ctz FROM SG12.dbo.Cotizaciones WHERE codgas IN ({placeholders}) AND codmda=2 ORDER BY codgas,fch,hra,logfch",
+        *stations,
+    ).fetchall()
+    base = date(1900, 1, 1)
+    rates: dict[int, list[tuple[datetime, float]]] = {}
+    for station, fch, hra, ctz in rate_rows:
+        hour = int(hra or 0); hh, mm = divmod(hour, 100)
+        if hh > 23 or mm > 59 or float(ctz or 0) <= 0:
+            continue
+        effective = datetime.combine(base + timedelta(days=int(fch) - 1), datetime.min.time()).replace(hour=hh, minute=mm)
+        rates.setdefault(int(station), []).append((effective, float(ctz)))
+    daily: dict[date, float] = {}
+    turn_hours = {1: 0, 2: 6, 3: 14, 4: 22}
+    for station in stations:
+        for cut in fetch_station_turns(cursor, station, first, last):
+            try:
+                day = as_date(cut.get("Fecha"))
+                turn_text = turn_key(cut.get("Turno"))
+                turn = int(turn_text[0]) if turn_text in {"11", "21", "31", "41"} else int(turn_text)
+                if turn not in turn_hours:
+                    continue
+                mxn = amount(cut.get("MN", cut.get("mn", 0)))
+            except (TypeError, ValueError):
+                continue
+            if day < first or day > last or mxn <= 0:
+                continue
+            at = datetime.combine(day, datetime.min.time()).replace(hour=turn_hours[turn])
+            rate = None
+            for effective, value in rates.get(station, []):
+                if effective <= at:
+                    rate = value
+                else:
+                    break
+            if rate:
+                daily[day] = round(daily.get(day, 0.0) + round(mxn / rate, 2), 2)
+    return daily
 
 
 def turn_key(value: object) -> str:
@@ -636,7 +677,7 @@ def reconcile_global_diaz_usd(
     dry_run: bool,
     details: list[str],
 ) -> tuple[int, int, int]:
-    """Reconcile Díaz Gas global USD deposits against daily REGIO totals."""
+    """Reconcile Díaz Gas global USD deposits against daily ControlGas totals."""
     station_list = ",".join(str(station) for station in DIAZ_GAS_STATIONS)
     assigned = cursor.execute(
         """SELECT A.movimiento_bancario_id,COALESCE(D.fecha_operativa,A.fecha_operativa)
@@ -661,19 +702,9 @@ def reconcile_global_diaz_usd(
     ).fetchall()
     reserved_dates.update(as_date(row[0]) for row in linked_turn_days)
 
-    paper_rows = cursor.execute(
-        f"""SELECT P.effective_date,CAST(SUM(P.effective_real_usd) AS DECIMAL(18,2))
-            FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P
-            JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id AND I.estado='IMPORTADA'
-            WHERE P.effective_station_id IN ({station_list}) AND P.effective_real_usd>0
-              AND P.effective_date>=? AND P.effective_date<=?
-            GROUP BY P.effective_date ORDER BY P.effective_date""",
-        first,
-        last,
-    ).fetchall()
-    daily_real = {as_date(row[0]): amount(row[1]) for row in paper_rows}
+    daily_real = controlgas_usd_daily(cursor, first, last)
     if not daily_real:
-        log("USD global: no hay días con papeletas REGIO reales dentro del rango.")
+        log("USD global: no hay días ControlGas con efectivo y tipo de cambio histórico dentro del rango.")
         return 0, 0, 0
 
     cash_filter = """(UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO EN EFECTIVO%'
@@ -703,18 +734,19 @@ def reconcile_global_diaz_usd(
         return 0, skipped, 0
 
     matched = errors = 0
-    log(f"USD global: días REGIO={len(daily_real)}, depósitos elegibles={len(banks)}, grupos automáticos únicos={len(candidates)}.")
+    log(f"USD global: días ControlGas={len(daily_real)}, depósitos elegibles={len(banks)}, grupos automáticos únicos={len(candidates)}.")
     for bank, dates in candidates:
         movement_id = int(bank[0])
         expected = round(sum(daily_real[day] for day in dates), 2)
         date_xml = "<dates>" + "".join(f"<date>{day.isoformat()}</date>" for day in dates) + "</dates>"
+        totals_xml = "<totals>" + "".join(f"<item><fecha>{day.isoformat()}</fecha><usd>{daily_real[day]:.2f}</usd></item>" for day in dates) + "</totals>"
         try:
             if dry_run:
-                log(f"Vista previa USD global: depósito={movement_id}, fecha_banco={bank[1]}, importe={amount(bank[2]):.2f}, real_REGIO={expected:.2f}, días={','.join(day.isoformat() for day in dates)}.")
+                log(f"Vista previa USD global: depósito={movement_id}, fecha_banco={bank[1]}, importe={amount(bank[2]):.2f}, real_ControlGas={expected:.2f}, días={','.join(day.isoformat() for day in dates)}.")
             else:
-                cursor.execute("EXEC dbo.usp_efc_conc_usd_global_asociar_automatica ?,?,?", movement_id, date_xml, run_id)
+                cursor.execute("EXEC dbo.usp_efc_conc_usd_global_asociar_automatica ?,?,?,?", movement_id, date_xml, totals_xml, run_id)
                 conn.commit()
-                log(f"Conciliado USD global: depósito={movement_id}, real_REGIO={expected:.2f}, días={','.join(day.isoformat() for day in dates)}.")
+                log(f"Conciliado USD global: depósito={movement_id}, real_ControlGas={expected:.2f}, días={','.join(day.isoformat() for day in dates)}.")
             used.add(movement_id)
             reserved_dates.update(dates)
             matched += 1
