@@ -54,10 +54,9 @@ class Administration{
         $departments = $this->mojoTicketsModel->get_requesting_departments() ?: [];
 
         // Por defecto: todos los status excepto Cerrado (60). Cargar los cerrados sin filtro trae ~86k filas.
-        $selected_statuses = isset($_GET['filtrar'])
-            ? array_map('intval', (array)($_GET['status'] ?? []))
-            : array_values(array_filter(array_map('intval', array_column($statuses, 'id_mojo')), fn($id) => $id !== 60));
-        $selected_departments = isset($_GET['departamento']) ? array_map('strval', (array)$_GET['departamento']) : [];
+        // Los filtros se aplican por AJAX (datatables_tickets), no por GET.
+        $selected_statuses = array_values(array_filter(array_map('intval', array_column($statuses, 'id_mojo')), fn($id) => $id !== 60));
+        $selected_departments = [];
 
         echo $this->twig->render($this->route . 'list_tickets.html', compact('statuses', 'departments', 'selected_statuses', 'selected_departments'));
     }

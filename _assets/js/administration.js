@@ -807,6 +807,16 @@ $('#filtro-datatables_tickets input').on('keyup  change clear', function () {
         .draw();
 });
 
+// Buscar: recarga la tabla por AJAX (POST). No se envía por GET porque con muchos
+// departamentos el query string rebasa el límite de IIS (2048 caracteres).
+$('#form_filtros_tickets').on('submit', function (e) {
+    e.preventDefault();
+    $('.table-responsive').addClass('loading');
+    datatables_tickets.ajax.reload(function () {
+        $('.table-responsive').removeClass('loading');
+    });
+});
+
 // Agregar un evento clic de refresh
 $('.refresh_datatables_tickets').on('click', function () {
     datatables_tickets.clear().draw();
