@@ -161,6 +161,11 @@ class ConciliacionDebito
         }
         $out = [];
         foreach ($por as $c) {
+            // Cliente sin nada (despachos, litros, monto, cortes, facturas y canceladas en cero): no se lista.
+            if ((int)$c['despachos'] === 0 && !array_filter([$c['litros'], $c['monto'], $c['cortes'], $c['facturado_mes'],
+                $c['facturado_mes_anterior'], $c['facturado_siguiente'], $c['cancelada']], static fn($v) => abs($v) >= 0.005)) {
+                continue;
+            }
             foreach (['litros', 'monto', 'cortes', 'facturado_mes', 'facturado_mes_anterior', 'facturado_siguiente', 'cancelada'] as $k) {
                 $c[$k] = round($c[$k], $k === 'litros' ? 3 : 2);
             }
@@ -289,7 +294,7 @@ class ConciliacionDebito
 
     /**
      * Partidas del card B (cobros prepago vs anticipos facturados):
-     *   diferencia = cobros − anticipos = otro_mes + sin_factura + anticipos_sin_cobro + sin_explicar.
+     *   diferencia = cobros − anticipos = otro_mes + sin_factura + anticipos_sin_cobro + anticipos_cobrados_otro_mes + sin_explicar.
      * $anticipos: filas de ConciliacionDebitoModel::anticipos (Factura, Total, cobro_aplicado, estatus).
      * $cobrosFactura: salida de cobrosPorFactura. $canceladas: número de anticipos cancelados del mes (solo se cuentan:
      * no conservan importe). $cobros: total de los cobros prepago. Importes con el signo con que explican la diferencia.
@@ -298,14 +303,19 @@ class ConciliacionDebito
     {
         $totalAnticipos = 0.0;
         $sinCobro = ['n' => 0, 'importe' => 0.0, 'filas' => []];
+        $cobradoOtroMes = ['n' => 0, 'importe' => 0.0, 'filas' => []];   // facturados en el mes, cobrados fuera del mes
         foreach ($anticipos as $a) {
             $total = (float)$a['Total'];
             $totalAnticipos += $total;
-            if (($a['estatus'] ?? '') === 'Sin cobro') {
+            $est = $a['estatus'] ?? '';
+            if ($est === 'Sin cobro' || $est === 'Cobro en otro mes') {
                 $resta = round($total - (float)($a['cobro_aplicado'] ?? 0), 2);
-                $sinCobro['n']++;
-                $sinCobro['importe'] -= $resta;
-                $sinCobro['filas'][] = ['nro' => (int)$a['Factura'], 'importe' => -$resta];
+                $fila = ['nro' => (int)$a['Factura'], 'importe' => -$resta];
+                if ($est === 'Sin cobro') {
+                    $sinCobro['n']++; $sinCobro['importe'] -= $resta; $sinCobro['filas'][] = $fila;
+                } else {
+                    $cobradoOtroMes['n']++; $cobradoOtroMes['importe'] -= $resta; $cobradoOtroMes['filas'][] = $fila;
+                }
             }
         }
         $otroMes = ['n' => 0, 'importe' => 0.0, 'filas' => []];
@@ -324,6 +334,7 @@ class ConciliacionDebito
         $otroMes['importe'] = round($otroMes['importe'], 2);
         $sinFactura['importe'] = round($sinFactura['importe'], 2);
         $sinCobro['importe'] = round($sinCobro['importe'], 2);
+        $cobradoOtroMes['importe'] = round($cobradoOtroMes['importe'], 2);
         return [
             'cobros' => round($cobros, 2),
             'anticipos' => $totalAnticipos,
@@ -331,8 +342,9 @@ class ConciliacionDebito
             'otro_mes' => $otroMes,
             'sin_factura' => $sinFactura,
             'anticipos_sin_cobro' => $sinCobro,
+            'anticipos_cobrados_otro_mes' => $cobradoOtroMes,
             'canceladas' => $canceladas,
-            'sin_explicar' => round($diferencia - $otroMes['importe'] - $sinFactura['importe'] - $sinCobro['importe'], 2),
+            'sin_explicar' => round($diferencia - $otroMes['importe'] - $sinFactura['importe'] - $sinCobro['importe'] - $cobradoOtroMes['importe'], 2),
         ];
     }
 }

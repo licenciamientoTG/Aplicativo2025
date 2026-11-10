@@ -95,13 +95,16 @@ function validar_anticipos(): void {
     comparar('Cobros − anticipos', $p['diferencia'], 14368.00);
     comparar('Cobros aplicados a anticipos de otro mes', $p['otro_mes']['importe'], 17868.00);
     comparar('Cobros sin factura en referencia', $p['sin_factura']['importe'], 10000.00);
-    comparar('Anticipos sin cobro aplicado', $p['anticipos_sin_cobro']['importe'], -13500.00);
+    // 1200244867 (emitido 30/09, $3,500) lo cubre el cobro 255636 del 01/10 → 'Cobro en otro mes'; 1200244401 no tiene cobro alguno.
+    comparar('Anticipos cobrados en otro mes', $p['anticipos_cobrados_otro_mes']['importe'], -3500.00);
+    comparar('Anticipos sin cobro aplicado', $p['anticipos_sin_cobro']['importe'], -10000.00);
     comparar('Sin explicar', $p['sin_explicar'], 0.00);
 
     $nros = fn(array $filas) => array_map(fn($f) => (int)$f['nro'], $filas);
     $esperado = fn(array $filas, array $esp) => count(array_diff($nros($filas), $esp)) + count(array_diff($esp, $nros($filas))) === 0;
     comparar('Otro mes = 1200242940, 1200242934, 1200089958', (float)$esperado($p['otro_mes']['filas'], [1200242940, 1200242934, 1200089958]), 1, 0);
-    comparar('Sin cobro = 1200244867, 1200244401', (float)$esperado($p['anticipos_sin_cobro']['filas'], [1200244867, 1200244401]), 1, 0);
+    comparar('Cobro en otro mes = 1200244867', (float)$esperado($p['anticipos_cobrados_otro_mes']['filas'], [1200244867]), 1, 0);
+    comparar('Sin cobro = 1200244401', (float)$esperado($p['anticipos_sin_cobro']['filas'], [1200244401]), 1, 0);
 
     // Las canceladas conservan número pero no importe. La BD marca 60 como canceladas en septiembre (empresa 1): son
     // cancelaciones re-emitidas dentro del mes (flgcon 141/5/7/13); el Excel solo mostraba las 2 sin cobro,

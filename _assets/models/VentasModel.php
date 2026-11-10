@@ -1007,9 +1007,9 @@ class VentasModel extends Model
         $company_string = ((int)$company > 0) ? "AND emp.cod = " . (int)$company : '';
         $cp = self::CONSUMO_PROPIO_CODVAL;
         $cpc = self::CONSUMO_PROPIO_CODVAL_CREDITO;
-        $tarjeta_credito = "' SMARTBT - American Express',' Tarjetas American Express','HTI - Tarjeta American Express','INTERL - Tarjeta American Express','INTERL - Tarjeta de Crédito','HTI - Tarjeta de Crédito'";
-        $tarjeta_debito = "'INTERL - Tarjeta de Débito','HTI - Tarjeta de Débito'";
-        $tarjeta_manual = "' SMARTBT - MANUAL Bancarias','SMARTBT - MANUAL Bancarias',' Tarjetas Bancomer',' Tarjetas Santander',' Tarjetas Banorte',' Tarjetas Afirme','INTERLOGIC Manual',' Tarjetas Scotiabank',' Banca MiFel',' Tarjeta Inbursa',' BANKAOOL (Propinas)'";
+        $tarjeta_credito = $this->conceptosTarjetaCredito();
+        $tarjeta_debito = $this->conceptosTarjetaDebito();
+        $tarjeta_manual = $this->conceptosTarjetaManual();
         $valeras = "' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro',' Tarjeta Inburgas',' Tarjeta TicketCar',' Tarjeta TicketCar +',' Vale Efectivale',' SMARTBT - EFECTIVALE','Ultra Gas','Tarjetas Sodexo (Pluxee)',' Tarjeta EfectiCard +',' GASnGO MEXICO'";
 
         $query = "
@@ -1017,27 +1017,7 @@ class VentasModel extends Model
                 DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '$untilstring') + 1;
 
                 WITH ratio AS (
-                    -- % crédito (tiptrn 51) por estación, mes y terminal (@B: de datref), sin clientes crédito/débito
-                    SELECT x.codgas, x.mes, x.bval,
-                           SUM(CASE WHEN x.tiptrn = 51 THEN x.mto ELSE 0 END) / NULLIF(SUM(x.mto), 0) AS pc
-                    FROM (
-                        SELECT d.codgas, d.tiptrn, d.mto,
-                               DATEFROMPARTS(YEAR(CAST(CAST(d.fchcor AS DATETIME) - 1 AS DATE)), MONTH(CAST(CAST(d.fchcor AS DATETIME) - 1 AS DATE)), 1) AS mes,
-                               TRY_CONVERT(INT, CASE WHEN CHARINDEX('@B:', d.datref) > 0
-                                   THEN SUBSTRING(d.datref, CHARINDEX('@B:', d.datref) + 3,
-                                        CASE WHEN CHARINDEX('@', d.datref, CHARINDEX('@B:', d.datref) + 3) > 0
-                                             THEN CHARINDEX('@', d.datref, CHARINDEX('@B:', d.datref) + 3) - CHARINDEX('@B:', d.datref) - 3
-                                             ELSE 20 END) END) AS bval
-                        FROM SG12.dbo.Despachos d
-                        LEFT JOIN SG12.dbo.Clientes c ON c.cod = d.codcli
-                        -- fchtrn (con 1 día de margen) permite usar IX_DespachosFch en vez de recorrer toda la tabla por fchcor
-                        WHERE d.fchtrn BETWEEN @fecha_inicial_int - 1 AND @fecha_fin_int + 1
-                          AND d.fchcor BETWEEN @fecha_inicial_int AND @fecha_fin_int
-                          AND d.tiptrn IN (51, 52)
-                          AND ISNULL(c.tipval, 0) NOT IN (3, 4)
-                    ) x
-                    WHERE x.bval IN (-3001, -3090)
-                    GROUP BY x.codgas, x.mes, x.bval
+                    {$this->ratioTarjetaCreditoSql()}
                 ), base AS (
                     SELECT emp.den AS Empresa, i.codgas,
                            DATEFROMPARTS(YEAR(f.Fecha), MONTH(f.Fecha), 1) AS mes,
@@ -1095,6 +1075,56 @@ class VentasModel extends Model
     public function conceptosValeras() : string
     {
         return "' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro',' Tarjeta Inburgas',' Tarjeta TicketCar',' Tarjeta TicketCar +',' Vale Efectivale',' SMARTBT - EFECTIVALE','Ultra Gas','Tarjetas Sodexo (Pluxee)',' Tarjeta EfectiCard +',' GASnGO MEXICO'";
+    }
+
+    /**
+     * Desglose de conceptosTarjetas() en crédito / débito / terminal manual. Los que faltan aquí son
+     * ' SMARTBT - Bancarias' (-3001) y ' BANKAOOL' (-3090): un solo concepto para ambos tipos de tarjeta,
+     * se reparten con ratioTarjetaCreditoSql(). American Express siempre es crédito.
+     */
+    private function conceptosTarjetaCredito() : string
+    {
+        return "' SMARTBT - American Express',' Tarjetas American Express','HTI - Tarjeta American Express','INTERL - Tarjeta American Express','INTERL - Tarjeta de Crédito','HTI - Tarjeta de Crédito'";
+    }
+    private function conceptosTarjetaDebito() : string
+    {
+        return "'INTERL - Tarjeta de Débito','HTI - Tarjeta de Débito'";
+    }
+    /** Terminales manuales: ni el corte ni el voucher dicen si la tarjeta fue de crédito o de débito. */
+    private function conceptosTarjetaManual() : string
+    {
+        return "' SMARTBT - MANUAL Bancarias','SMARTBT - MANUAL Bancarias',' Tarjetas Bancomer',' Tarjetas Santander',' Tarjetas Banorte',' Tarjetas Afirme','INTERLOGIC Manual',' Tarjetas Scotiabank',' Banca MiFel',' Tarjeta Inbursa',' BANKAOOL (Propinas)'";
+    }
+
+    /**
+     * % crédito (tiptrn 51 contra 51+52) de los despachos pagados en SMARTBT-Bancarias (-3001) y BANKAOOL (-3090),
+     * por estación, mes y terminal (@B: de datref), sin clientes crédito/débito. Columnas: codgas, mes, bval, pc.
+     * Sirve para repartir en crédito/débito el monto del corte de esos dos conceptos.
+     * Requiere @fecha_inicial_int / @fecha_fin_int. $filtro: condición extra sobre Despachos d (p. ej. "AND d.codgas = 5").
+     */
+    private function ratioTarjetaCreditoSql(string $filtro = '') : string
+    {
+        return "SELECT x.codgas, x.mes, x.bval,
+                           SUM(CASE WHEN x.tiptrn = 51 THEN x.mto ELSE 0 END) / NULLIF(SUM(x.mto), 0) AS pc
+                    FROM (
+                        SELECT d.codgas, d.tiptrn, d.mto,
+                               DATEFROMPARTS(YEAR(CAST(CAST(d.fchcor AS DATETIME) - 1 AS DATE)), MONTH(CAST(CAST(d.fchcor AS DATETIME) - 1 AS DATE)), 1) AS mes,
+                               TRY_CONVERT(INT, CASE WHEN CHARINDEX('@B:', d.datref) > 0
+                                   THEN SUBSTRING(d.datref, CHARINDEX('@B:', d.datref) + 3,
+                                        CASE WHEN CHARINDEX('@', d.datref, CHARINDEX('@B:', d.datref) + 3) > 0
+                                             THEN CHARINDEX('@', d.datref, CHARINDEX('@B:', d.datref) + 3) - CHARINDEX('@B:', d.datref) - 3
+                                             ELSE 20 END) END) AS bval
+                        FROM SG12.dbo.Despachos d
+                        LEFT JOIN SG12.dbo.Clientes c ON c.cod = d.codcli
+                        -- fchtrn (con 1 día de margen) permite usar IX_DespachosFch en vez de recorrer toda la tabla por fchcor
+                        WHERE d.fchtrn BETWEEN @fecha_inicial_int - 1 AND @fecha_fin_int + 1
+                          AND d.fchcor BETWEEN @fecha_inicial_int AND @fecha_fin_int
+                          AND d.tiptrn IN (51, 52)
+                          AND ISNULL(c.tipval, 0) NOT IN (3, 4)
+                          {$filtro}
+                    ) x
+                    WHERE x.bval IN (-3001, -3090)
+                    GROUP BY x.codgas, x.mes, x.bval";
     }
 
     /**

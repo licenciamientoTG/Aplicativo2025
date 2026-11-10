@@ -7,7 +7,7 @@ $(function () {
     'Facturado con base en cortes': 'cv-info', 'Consumo sin corte': 'cv-bad', 'Consumo sin factura': 'cv-bad',
     'Facturado de menos': 'cv-warn', 'Facturado de más': 'cv-warn',
     'Mes anterior': 'cv-info', 'Mes siguiente': 'cv-info', 'Sin periodo': 'cv-muted',
-    'Con cobro': 'cv-ok', 'Sin cobro': 'cv-bad',
+    'Con cobro': 'cv-ok', 'Cobro en otro mes': 'cv-info', 'Sin cobro': 'cv-bad',
     'Sí': 'cv-ok', 'No': 'cv-warn', 'Sin factura en referencia': 'cv-bad',
     // Conciliación cobros (tab 10) y clasificación de los movimientos bancarios (tabs 11-12)
     'Efectivo': 'cv-info', 'Depositado en mes anterior': 'cv-info', 'Consumo propio': 'cv-muted', 'No localizado': 'cv-bad',
@@ -50,9 +50,10 @@ $(function () {
     anticipos: ['Anticipos', '<p>Facturas de anticipo (serie D, "Facturación Débito Tarjetas") de clientes de débito emitidas en el mes: el mismo reporte de Clientes &gt; Anticipos débito. Es la hoja <b>Anticipos</b> del Excel.</p>' +
       '<b>De dónde viene cada dato</b><ul>' +
       '<li><b>Subtotal, IVA y Total:</b> las líneas de la factura en ControlGas.</li>' +
-      '<li><b>Cobro aplicado:</b> lo que los cobros prepago <b>del mismo mes</b> aplicaron a esta factura. Un cobro de otro mes no cuenta aquí.</li></ul>' +
+      '<li><b>Cobro aplicado:</b> lo que los cobros prepago <b>del mismo mes</b> aplicaron a esta factura. Un cobro de otro mes no cuenta aquí.</li>' +
+      '<li><b>Cobro posterior:</b> el último cobro prepago aplicado a esta factura <b>fuera del mes</b> (fecha, folio de cobro e importe).</li></ul>' +
       '<b>Cómo interpretarlo</b><ul>' +
-      '<li><b>Con cobro:</b> el cobro aplicado cubre el total de la factura. <b>Sin cobro:</b> falta cobro aplicado en el mes (cobro de otro mes o factura sin cobrar).</li>' +
+      '<li><b>Con cobro:</b> el cobro aplicado cubre el total de la factura. <b>Cobro en otro mes:</b> el cobro del mes no alcanza, pero hay cobros fuera del mes (p. ej. emitida el 30/09 y cobrada el 01/10) que sí la cubren; el cliente sí pagó. <b>Sin cobro:</b> ningún cobro la cubre, ni dentro ni fuera del mes.</li>' +
       '<li><b>Cancelada:</b> la factura se canceló en ControlGas y ya no conserva importe, por eso se muestra vacío; solo se cuentan.</li>' +
       '<li><b>Pie de la tabla:</b> suma las filas que ves (respeta el filtro y los chips).</li></ul>'],
     anticipos_cli: ['Anticipos por cliente', '<p>Monto anticipado en el mes por cliente de débito (suma de sus facturas de anticipo vigentes). Es la hoja <b>anticipos x cliente</b> del Excel.</p>' +
@@ -104,7 +105,8 @@ $(function () {
       '<b>Partidas de la diferencia (cobros − anticipos)</b><ul>' +
       '<li><b>Cobros aplicados a anticipos de otro mes:</b> el cobro paga una factura de anticipo que no es de este mes (Cobros por factura, "¿Existe en Anticipos?" = No).</li>' +
       '<li><b>Cobros sin factura en la referencia:</b> el cobro no indica factura de anticipo (Cobros por factura, "Sin factura en referencia").</li>' +
-      '<li><b>Anticipos sin cobro aplicado:</b> anticipos facturados cuyo cobro no cubre el total (Anticipos, estatus Sin cobro); restan de la diferencia.</li></ul>' +
+      '<li><b>Anticipos cobrados en otro mes:</b> anticipos facturados en el mes cuyo cobro cayó fuera del mes (Anticipos, estatus Cobro en otro mes); restan de la diferencia.</li>' +
+      '<li><b>Anticipos sin cobro aplicado:</b> anticipos facturados que ningún cobro cubre (Anticipos, estatus Sin cobro); restan de la diferencia.</li></ul>' +
       '<ul><li><b>Sin explicar</b> = diferencia − partidas; Conciliado cuando es $0.00.</li>' +
       '<li><b>Anticipos cancelados del mes:</b> solo se cuentan; una factura cancelada ya no conserva importe, por eso no suma. El sistema los muestra como estatus Cancelada y el Excel aún los traía con monto.</li></ul>'],
     res_cobros: ['Cobranza vs banco', '<p>Los cobros prepago del mes agrupados por el estatus del cruce con el banco (como en Conciliación crédito) y la integración de los depósitos de BANORTE 2791.</p>' +
@@ -296,6 +298,7 @@ $(function () {
     { data: 'total', className: 'cv-monto', render: monto },
     { data: 'cobro_aplicado', className: 'cv-monto', render: monto },
     { data: 'estatus', render: badge },
+    { data: 'cobro_posterior', className: 'cv-wrap', render: texto },
   ], 'Anticipos debito', {
     fija: true,
     paging: false,
@@ -776,7 +779,7 @@ $(function () {
     p = p || {};
     return {
       cobros: Number(p.cobros) || 0, anticipos: Number(p.anticipos) || 0, diferencia: Number(p.diferencia) || 0,
-      otroMes: p.otro_mes || vacio, sinFactura: p.sin_factura || vacio, sinCobro: p.anticipos_sin_cobro || vacio,
+      otroMes: p.otro_mes || vacio, sinFactura: p.sin_factura || vacio, sinCobro: p.anticipos_sin_cobro || vacio, cobradoOtroMes: p.anticipos_cobrados_otro_mes || vacio,
       sinExplicar: Number(p.sin_explicar) || 0,
       canceladas: anticipos.filter(function (a) { return a.estatus === 'Cancelada'; }).length,
     };
@@ -854,6 +857,8 @@ $(function () {
         'cv-sub cv-link', ' data-ir="antNo"') +
       fila('Cobros sin factura en la referencia (' + Number(b.sinFactura.n).toLocaleString('en-US') + ')<span class="cv-nota">Ver Cobros por factura</span>', Number(b.sinFactura.importe) || 0,
         'cv-sub cv-link', ' data-ir="antSinFactura"') +
+      fila('Anticipos cobrados en otro mes (' + Number(b.cobradoOtroMes.n).toLocaleString('en-US') + ')<span class="cv-nota">Ver Anticipos</span>', Number(b.cobradoOtroMes.importe) || 0,
+        'cv-sub cv-link', ' data-ir="antOtroMesCobro"') +
       fila('Anticipos sin cobro aplicado (' + Number(b.sinCobro.n).toLocaleString('en-US') + ')<span class="cv-nota">Ver Anticipos</span>', Number(b.sinCobro.importe) || 0,
         'cv-sub cv-link', ' data-ir="antSinCobro"') +
       fila('Sin explicar', b.sinExplicar, 'cv-total') +
@@ -889,6 +894,7 @@ $(function () {
     else if (ir === 'cobro') irA('#tabCruce', tablaCruce, COL_ESTATUS_CRUCE, est, '#chipsCruce');
     else if (ir === 'antNo') irA('#tabCobrosFactura', tablaCobrosFactura, COL_EXISTE_COBROS_FACTURA, 'No', '#chipsCobrosFactura');
     else if (ir === 'antSinFactura') irA('#tabCobrosFactura', tablaCobrosFactura, COL_EXISTE_COBROS_FACTURA, 'Sin factura en referencia', '#chipsCobrosFactura');
+    else if (ir === 'antOtroMesCobro') irA('#tabAnticipos', tablaAnticipos, COL_ESTATUS_ANTICIPOS, 'Cobro en otro mes', '#chipsAnticipos');
     else if (ir === 'antSinCobro') irA('#tabAnticipos', tablaAnticipos, COL_ESTATUS_ANTICIPOS, 'Sin cobro', '#chipsAnticipos');
     else if (ir === 'deposito') irA('#tabBanco2791', tablaBanco2791, COL_CLASIF_BANCO, $(this).data('clasif'), '#chipsBanco2791');
   });

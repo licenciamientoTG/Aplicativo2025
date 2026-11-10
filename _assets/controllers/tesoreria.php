@@ -1448,6 +1448,7 @@ class Tesoreria
 
         $data = [
             'CuentaLocal'   => $cuenta_local,
+            'Clave'         => trim($_POST['Clave'] ?? ''),
             'Descripcion'   => trim($_POST['Descripcion'] ?? ''),
             'Banco'         => trim($_POST['Banco'] ?? ''),
             'TitularCuenta' => trim($_POST['TitularCuenta'] ?? ''),
@@ -1500,6 +1501,7 @@ class Tesoreria
 
         $data = [
             'CuentaLocal'   => $cuenta_local,
+            'Clave'         => trim($_POST['Clave'] ?? ''),
             'Descripcion'   => trim($_POST['Descripcion'] ?? ''),
             'Banco'         => trim($_POST['Banco'] ?? ''),
             'TitularCuenta' => trim($_POST['TitularCuenta'] ?? ''),

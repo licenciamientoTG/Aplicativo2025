@@ -7769,3 +7769,283 @@ function escapeHtmlCorreoPago(str) {
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
 }
+
+
+/* ==========================================================================
+ * Layout desde texto (tab Facturas Autorizadas)
+ * Tesorería pega la lista de pagos que le pasan por WhatsApp; el servidor la
+ * interpreta (layout_texto_preview) y arma el archivo del banco con lo que sí
+ * se pudo resolver (layout_texto_generate). No registra pagos.
+ * ========================================================================== */
+
+// Texto exacto que produjo el resumen en pantalla: es el que se manda al
+// descargar, para que el archivo coincida con lo que el usuario revisó.
+let layoutTextoLeido = null;
+
+function ltEsc(v) {
+  return escapeHtmlCorreoPago(v == null ? "" : v);
+}
+
+function ltFmt(v) {
+  return "$" + (parseFloat(v) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+const LT_BANCOS = {
+  Santander: { color: "#EC1C24", icono: "landmark" },
+  Banorte: { color: "#C9302C", icono: "university" },
+};
+
+/** Panel derecho cuando todavía no hay nada leído (o hay un mensaje que dar). */
+function ltEstadoVacio(icono, titulo, detalle) {
+  $("#layoutTextoResultado").html(`
+    <div class="lt-vacio">
+      <i class="fas fa-${icono}"></i>
+      <div class="fw-semibold" style="color:#64748b;">${titulo}</div>
+      <div style="max-width:340px;">${detalle}</div>
+    </div>`);
+}
+
+function ltEstadoInicial() {
+  ltEstadoVacio(
+    "file-invoice-dollar",
+    "Aquí verás lo que se leyó",
+    "Pega el texto a la izquierda y da clic en <strong>Leer texto</strong>. Antes de descargar podrás revisar cada pago y qué quedó fuera.",
+  );
+}
+
+function limpiarLayoutTexto() {
+  layoutTextoLeido = null;
+  $("#layoutTextoInput").val("").focus();
+  ltEstadoInicial();
+}
+
+$(function () {
+  if (document.getElementById("layoutTextoResultado")) ltEstadoInicial();
+});
+
+// Si cambian el texto después de leerlo, el resumen ya no corresponde.
+$(document).on("input", "#layoutTextoInput", function () {
+  if (layoutTextoLeido !== null && this.value !== layoutTextoLeido) {
+    layoutTextoLeido = null;
+    ltEstadoVacio("sync-alt", "El texto cambió", "Da clic en <strong>Leer texto</strong> para actualizar el resumen.");
+  }
+});
+
+function leerLayoutTexto() {
+  const texto = $("#layoutTextoInput").val();
+  if (!texto.trim()) {
+    alertify.warning("Pega el texto con los pagos");
+    $("#layoutTextoInput").focus();
+    return;
+  }
+
+  const $btn = $("#btnLayoutTextoLeer");
+  const original = $btn.html();
+  $btn.prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Leyendo...');
+
+  $.ajax({
+    url: "/payment/layout_texto_preview",
+    type: "POST",
+    dataType: "json",
+    data: { texto: texto },
+  })
+    .done(function (res) {
+      if (!res.success) {
+        layoutTextoLeido = null;
+        ltEstadoVacio("exclamation-circle", "No se pudo leer el texto", ltEsc(res.message || ""));
+        return;
+      }
+      layoutTextoLeido = texto;
+      renderLayoutTexto(res);
+    })
+    .fail(function () {
+      layoutTextoLeido = null;
+      ltEstadoVacio("exclamation-circle", "Error de comunicación", "No se pudo contactar al servidor. Intenta de nuevo.");
+    })
+    .always(function () {
+      $btn.prop("disabled", false).html(original);
+    });
+}
+
+function renderLayoutTexto(res) {
+  const lineas = res.lineas || [];
+  const noLeidas = res.no_leidas || [];
+  const advertencias = res.advertencias || [];
+  const incluidas = lineas.filter((l) => l.ok);
+  const excluidas = lineas.filter((l) => !l.ok);
+  const fuera = excluidas.length + noLeidas.length;
+
+  if (!lineas.length && !noLeidas.length) {
+    ltEstadoVacio("search", "No se encontró ningún pago", "Revisa que cada línea tenga número, proveedor, monto y empresa.");
+    return;
+  }
+
+  let html = "";
+
+  // ── 2. Resumen en tres cifras ──
+  html += `
+    <div class="lt-paso"><span class="lt-paso-num">2</span> Revisa lo que se leyó</div>
+    <div class="lt-kpis">
+      <div class="lt-kpi">
+        <div class="lt-kpi-label">Leído</div>
+        <div class="lt-kpi-monto">${ltFmt(res.total_leido)}</div>
+        <div class="lt-kpi-sub">${lineas.length} pago(s) en el texto</div>
+      </div>
+      <div class="lt-kpi ok">
+        <div class="lt-kpi-label"><i class="fas fa-check-circle"></i> Entra al layout</div>
+        <div class="lt-kpi-monto">${ltFmt(res.total_incluido)}</div>
+        <div class="lt-kpi-sub">${incluidas.length} pago(s)</div>
+      </div>
+      <div class="lt-kpi ${fuera ? "mal" : ""}">
+        <div class="lt-kpi-label">${fuera ? '<i class="fas fa-times-circle"></i> ' : ""}Queda fuera</div>
+        <div class="lt-kpi-monto">${ltFmt(res.total_excluido)}</div>
+        <div class="lt-kpi-sub">${fuera ? fuera + " línea(s), detalle abajo" : "Nada quedó fuera"}</div>
+      </div>
+    </div>`;
+
+  // ── Advertencias (no bloquean) ──
+  if (advertencias.length) {
+    html += `
+      <div class="lt-aviso amarillo">
+        <strong><i class="fas fa-exclamation-triangle"></i> Revisa antes de subir al banco</strong>
+        <ul>${advertencias.map((a) => "<li>" + ltEsc(a) + "</li>").join("")}</ul>
+      </div>`;
+  }
+
+  // ── 3. Descarga por banco ──
+  html += '<div class="lt-paso"><span class="lt-paso-num">3</span> Descarga el archivo de cada banco</div>';
+  let tarjetas = "";
+  Object.keys(LT_BANCOS).forEach(function (banco) {
+    const b = (res.bancos || {})[banco] || { pagos: 0, total: 0 };
+    if (!b.pagos) return;
+    tarjetas += `
+      <div class="lt-banco" style="--lt-color:${LT_BANCOS[banco].color};">
+        <div>
+          <div class="lt-banco-nombre"><i class="fas fa-${LT_BANCOS[banco].icono}"></i> ${banco}</div>
+          <div class="lt-banco-monto">${ltFmt(b.total)}</div>
+          <div class="lt-banco-sub">${b.pagos} pago(s)</div>
+        </div>
+        <button type="button" class="btn btn-sm fw-medium" onclick="descargarLayoutTexto('${banco}', this)">
+          <i class="fas fa-download"></i> Descargar
+        </button>
+      </div>`;
+  });
+  html += tarjetas
+    ? `<div class="lt-bancos">${tarjetas}</div>`
+    : '<div class="lt-aviso" style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;"><strong>Ningún pago se pudo incluir en un layout.</strong> Revisa los motivos abajo.</div>';
+
+  // ── Pagos que entran, agrupados por banco ──
+  if (incluidas.length) {
+    let cuerpo = "";
+    Object.keys(LT_BANCOS).forEach(function (banco) {
+      const delBanco = incluidas.filter((l) => l.banco === banco);
+      if (!delBanco.length) return;
+      const subtotal = delBanco.reduce((s, l) => s + (parseFloat(l.monto) || 0), 0);
+      cuerpo += `
+        <tr class="lt-grupo" style="--lt-color:${LT_BANCOS[banco].color};">
+          <td colspan="4"><i class="fas fa-${LT_BANCOS[banco].icono}" style="color:${LT_BANCOS[banco].color};"></i> ${banco} · ${delBanco.length} pago(s)</td>
+          <td class="lt-monto">${ltFmt(subtotal)}</td>
+        </tr>`;
+      delBanco.forEach(function (l) {
+        const porNombre = l.cuenta_por_nombre
+          ? ' <span class="badge bg-warning text-dark" title="La cuenta no está ligada al proveedor en el catálogo; se tomó por coincidencia de nombre. Verifícala.">por nombre</span>'
+          : "";
+        cuerpo += `
+          <tr>
+            <td class="lt-num">${ltEsc(l.numero)}</td>
+            <td>${ltEsc(l.proveedor_nombre)}
+                <small>Abono: <span class="lt-mono">${ltEsc(l.cuenta_abono)}</span> · ${ltEsc(l.banco_abono)}${porNombre}</small></td>
+            <td>${ltEsc(l.empresa_nombre)}
+                <small>Cargo: <span class="lt-mono">${ltEsc(l.cuenta_cargo)}</span></small></td>
+            <td class="lt-mono">${l.referencia ? ltEsc(l.referencia) : '<span class="text-muted">—</span>'}</td>
+            <td class="lt-monto">${ltFmt(l.monto)}</td>
+          </tr>`;
+      });
+    });
+    html += `
+      <div class="lt-seccion"><i class="fas fa-check-circle" style="color:#16a34a;"></i> Pagos que entran al layout</div>
+      <table class="lt-tabla">
+        <thead><tr><th>Número</th><th>Proveedor</th><th>Empresa que paga</th><th>Referencia</th><th style="text-align:right;">Monto</th></tr></thead>
+        <tbody>${cuerpo}</tbody>
+      </table>`;
+  }
+
+  // ── Lo que quedó fuera ──
+  if (fuera) {
+    let cuerpo = excluidas
+      .map((l) => `
+        <tr>
+          <td class="lt-num">${ltEsc(l.numero)}</td>
+          <td>${ltEsc(l.proveedor)}<small>${ltEsc(l.empresa)}</small></td>
+          <td class="lt-motivo">${ltEsc(l.motivo)}</td>
+          <td class="lt-monto">${ltFmt(l.monto)}</td>
+        </tr>`)
+      .join("");
+    cuerpo += noLeidas
+      .map((n) => `
+        <tr>
+          <td class="lt-num">Renglón ${ltEsc(n.renglon)}</td>
+          <td class="lt-mono">${ltEsc(n.texto)}</td>
+          <td class="lt-motivo">${ltEsc(n.motivo)}</td>
+          <td class="lt-monto text-muted">—</td>
+        </tr>`)
+      .join("");
+    html += `
+      <div class="lt-seccion"><i class="fas fa-times-circle" style="color:#dc2626;"></i> No entran al layout</div>
+      <table class="lt-tabla fuera">
+        <thead><tr><th>Número</th><th>Proveedor / Empresa</th><th>Motivo</th><th style="text-align:right;">Monto</th></tr></thead>
+        <tbody>${cuerpo}</tbody>
+      </table>`;
+  }
+
+  $("#layoutTextoResultado").html(html);
+}
+
+function descargarLayoutTexto(banco, btn) {
+  if (layoutTextoLeido === null) {
+    alertify.warning("Vuelve a leer el texto antes de descargar");
+    return;
+  }
+  const $btn = $(btn);
+  const original = $btn.html();
+  $btn.prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Generando...');
+
+  fetch("/payment/layout_texto_generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ texto: layoutTextoLeido, banco: banco }),
+  })
+    .then(function (response) {
+      const tipo = response.headers.get("content-type") || "";
+      if (tipo.includes("application/json")) {
+        return response.json().then(function (data) {
+          throw new Error(data.message || "Error al generar layout");
+        });
+      }
+      if (!response.ok) {
+        throw new Error("Error en la respuesta del servidor");
+      }
+      const disp = response.headers.get("Content-Disposition") || "";
+      const m = disp.match(/filename="?([^";]+)"?/);
+      const filename = m ? m[1] : "LAYOUT_" + banco.toUpperCase() + "_TEXTO_" + Date.now() + ".txt";
+      return response.blob().then((blob) => ({ blob, filename }));
+    })
+    .then(function ({ blob, filename }) {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      alertify.success("Layout de " + banco + " descargado: " + filename);
+    })
+    .catch(function (error) {
+      alertify.error(error.message || "Error al generar el layout");
+    })
+    .finally(function () {
+      $btn.prop("disabled", false).html(original);
+    });
+}
