@@ -730,6 +730,7 @@ let datatables_tickets = $('#datatables_tickets').DataTable({
         url: routeUrl('administration.datatables_tickets'),
         type: 'POST',
         data: function (d) {
+            d.formulario = $('select#formulario').val() || [];
             d.status = $('select#status').val() || [];
             d.departamento = $('select#departamento').val() || [];
         },

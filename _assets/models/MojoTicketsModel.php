@@ -36,13 +36,19 @@ class MojoTicketsModel extends Model{
     
 
     /**
-     * Tickets filtrados por status (ids de mojo_ticket_status) y departamento solicitante.
+     * Tickets filtrados por formulario (ids de mojo_ticket_forms), status (ids de mojo_ticket_status)
+     * y departamento solicitante.
      * Un arreglo vacío = sin filtro en ese campo. El valor '' en $departments representa
      * los tickets sin departamento (NULL o vacío).
      */
-    function get_tickets(array $statuses = [], array $departments = []) : array|false{
+    function get_tickets(array $statuses = [], array $departments = [], array $forms = []) : array|false{
         $conditions = [];
         $params = [];
+        $forms = array_values(array_filter(array_map('intval', $forms)));
+        if ($forms) {
+            $conditions[] = 't1.ticket_form_id IN (' . implode(',', array_fill(0, count($forms), '?')) . ')';
+            $params = array_merge($params, $forms);
+        }
         $statuses = array_values(array_filter(array_map('intval', $statuses)));
         if ($statuses) {
             $conditions[] = 't1.status_id IN (' . implode(',', array_fill(0, count($statuses), '?')) . ')';
@@ -92,6 +98,18 @@ class MojoTicketsModel extends Model{
                         t1.created_on DESC
                 ;";
         return $this->sql->select($query, $params);
+    }
+
+    /**
+     * Catálogo de formularios de Mojo con su número de tickets.
+     */
+    function get_ticket_forms_totals() : array|false {
+        $query = "SELECT f.id_mojo, f.name, COUNT(t.id_mojo) AS total
+                    FROM [TG].[dbo].[mojo_ticket_forms] f
+                    LEFT JOIN [TG].[dbo].[mojo_tickets] t ON t.ticket_form_id = f.id_mojo
+                    GROUP BY f.id_mojo, f.name
+                    ORDER BY f.name;";
+        return $this->sql->select($query);
     }
 
     /**

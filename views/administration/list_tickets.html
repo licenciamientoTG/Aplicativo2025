@@ -29,7 +29,17 @@
         <div class="card-body">
             <form action="#" method="get" id="form_filtros_tickets">
                 <div class="row">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
+                        <select class="selectpicker form-control border" multiple data-live-search="true" data-actions-box="true"
+                                data-selected-text-format="count > 2" data-width="100%" title="Todos los formularios"
+                                data-select-all-text="Todos" data-deselect-all-text="Ninguno"
+                                name="formulario[]" id="formulario">
+                            {% for f in forms %}
+                                <option value="{{ f.id_mojo }}" data-subtext="{{ f.total }}">{{ f.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
                         <select class="selectpicker form-control border" multiple data-live-search="true" data-actions-box="true"
                                 data-selected-text-format="count > 2" data-width="100%" title="Todos los departamentos"
                                 data-select-all-text="Todos" data-deselect-all-text="Ninguno"
@@ -40,7 +50,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <select class="selectpicker form-control border" multiple data-actions-box="true"
                                 data-selected-text-format="count > 3" data-width="100%" title="Todos los status"
                                 data-select-all-text="Todos" data-deselect-all-text="Ninguno"
