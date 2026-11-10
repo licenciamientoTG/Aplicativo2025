@@ -321,9 +321,9 @@ class EfcConciliacionModel {
     }
 
     private function assertPairedBanksComplete(int $station,int $year,int $month,string $concept): void {
-        $q=$this->db->prepare("SELECT TOP 1 V.id FROM dbo.efc_conc_analiticos_vinculos V OUTER APPLY(SELECT TOP 1 T.id,T.clave_externa,T.mes_origen,T.mes_destino FROM dbo.efc_conc_transitos T WHERE T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto AND T.estado IN ('PENDIENTE','CONCILIADO') ORDER BY T.id DESC) T WHERE V.estacion_id=? AND V.concepto=? AND V.activo=1 AND V.papeleta_secundaria_id IS NOT NULL AND ((YEAR(V.fecha_cg)=? AND MONTH(V.fecha_cg)=? AND T.id IS NULL) OR T.mes_destino=?) AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_grupos G JOIN dbo.efc_conc_partidas C ON C.grupo_id=G.id AND C.origen='CG' AND C.activo=1 WHERE G.estacion_id=V.estacion_id AND G.estado='ACTIVA' AND C.concepto=V.concepto AND ((C.fecha_operacion=V.fecha_cg AND C.turno=V.turno) OR C.clave_externa=T.clave_externa OR C.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id)) AND (SELECT COUNT(*) FROM dbo.efc_conc_partidas CC WHERE CC.grupo_id=G.id AND CC.origen='CG' AND CC.activo=1)=1 AND (SELECT COUNT(DISTINCT B.movimiento_bancario_id) FROM dbo.efc_conc_partidas B WHERE B.grupo_id=G.id AND B.origen='BANCO' AND B.activo=1)=2)");
+        $q=$this->db->prepare("SELECT TOP 1 V.id FROM dbo.efc_conc_analiticos_vinculos V OUTER APPLY(SELECT TOP 1 T.id,T.clave_externa,T.mes_origen,T.mes_destino FROM dbo.efc_conc_transitos T WHERE T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto AND T.estado IN ('PENDIENTE','CONCILIADO') ORDER BY T.id DESC) T WHERE V.estacion_id=? AND V.concepto=? AND V.activo=1 AND V.papeleta_secundaria_id IS NOT NULL AND ((YEAR(V.fecha_cg)=? AND MONTH(V.fecha_cg)=? AND T.id IS NULL) OR T.mes_destino=?) AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_grupos G JOIN dbo.efc_conc_partidas C ON C.grupo_id=G.id AND C.origen='CG' AND C.activo=1 WHERE G.estacion_id=V.estacion_id AND G.estado='ACTIVA' AND C.concepto=V.concepto AND ((C.fecha_operacion=V.fecha_cg AND C.turno=V.turno) OR C.clave_externa=T.clave_externa OR C.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id)) AND (SELECT COUNT(*) FROM dbo.efc_conc_partidas CC WHERE CC.grupo_id=G.id AND CC.origen='CG' AND CC.activo=1)=1 AND (SELECT COUNT(DISTINCT B.movimiento_bancario_id) FROM dbo.efc_conc_partidas B WHERE B.grupo_id=G.id AND B.origen='BANCO' AND B.activo=1)>=1)");
         $q->execute([$station,$concept,$year,$month,sprintf('%04d-%02d',$year,$month)]);
-        if($q->fetchColumn()) throw new RuntimeException('Un turno con dos papeletas requiere conciliar sus dos depósitos antes de cerrar.');
+        if($q->fetchColumn()) throw new RuntimeException('Un turno con dos papeletas requiere conciliar al menos un depósito antes de cerrar.');
     }
 
     private function usdRegioClosureTotals(int $stationId, int $year, int $month): array {
@@ -589,7 +589,7 @@ class EfcConciliacionModel {
                     'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>$regio===null?null:round($regio,2), 'comparacion_regio_disponible'=>$comparisonAvailable, 'tipo_cambio_historico'=>$link['tipo_cambio_historico']??null,
                     'total_banorte'=>round($bank,2), 'referencia'=>implode(', ', array_values(array_unique($references))),
                     'faltante'=>$regio===null?null:round($amount-$regio,2), 'diferencia_controlgas_regio'=>$regio===null?null:round($regio-$amount,2), 'diferencia_regio_banco'=>$regio===null?null:round($bank-$regio,2),
-                    'papeleta_id'=>$hasPaper?(int)$link['papeleta_id']:null, 'papeleta_secundaria_id'=>$link['papeleta_secundaria_id']??null, 'paired'=>!empty($link['papeleta_secundaria_id']), 'bank_count'=>count($group['bank']??[]), 'bank_complete'=>empty($link['papeleta_secundaria_id'])?count($group['bank']??[])>0:count($group['bank']??[])===2, 'remesa'=>$hasPaper?$this->normaliseRemittance($link['remesa_numero'] ?? ''):'', 'cuenta_regio'=>(string)($link['cuenta_mn_original'] ?? ''), 'sin_papeleta'=>!$hasPaper, 'transito'=>$transit!==null,
+                    'papeleta_id'=>$hasPaper?(int)$link['papeleta_id']:null, 'papeleta_secundaria_id'=>$link['papeleta_secundaria_id']??null, 'paired'=>!empty($link['papeleta_secundaria_id']), 'bank_count'=>count($group['bank']??[]), 'bank_complete'=>count($group['bank']??[])>0, 'remesa'=>$hasPaper?$this->normaliseRemittance($link['remesa_numero'] ?? ''):'', 'cuenta_regio'=>(string)($link['cuenta_mn_original'] ?? ''), 'sin_papeleta'=>!$hasPaper, 'transito'=>$transit!==null,
                     'grupo_id'=>$group['id'] ?? null,
                 ];
             }
@@ -790,7 +790,7 @@ class EfcConciliacionModel {
         $this->db->beginTransaction();
         try {
         $pairedLinks=[]; foreach($cg as $item) { $link=$this->pairedLinkForSource((int)$group['station_id'],$item); if($link) $pairedLinks[]=$link; }
-        if($pairedLinks && (count($cg)!==1 || count($bank)!==2)) throw new RuntimeException('Un turno con dos papeletas requiere exactamente dos depósitos y un solo turno.');
+        if($pairedLinks && (count($cg)!==1 || !in_array(count($bank),[1,2],true))) throw new RuntimeException('Un turno con dos papeletas requiere uno o dos depósitos y un solo turno.');
         if ($company==='GASOMEX' && !$pairedLinks) {
             $currencies=array_values(array_unique(array_map(static fn(array $item): string => strtoupper(trim((string)($item['currency']??''))),$cg)));
             if (array_diff($currencies,['MN','MORRALLA','USD'])) throw new RuntimeException('El lote contiene un concepto GASOMEX inválido.');
@@ -848,7 +848,7 @@ class EfcConciliacionModel {
 
     private function validatePairedGroup(array &$group,array &$cg,array &$bank): void {
         $station=(int)$group['station_id']; $link=$this->pairedLinkForSource($station,$cg[0]);
-        if(!$link || count($cg)!==1 || count($bank)!==2) throw new RuntimeException('El turno cambió; actualice la bandeja.');
+        if(!$link || count($cg)!==1 || !in_array(count($bank),[1,2],true)) throw new RuntimeException('El turno cambió; actualice la bandeja.');
         $date=(string)$link['operation_date']; $concept=(string)$link['concepto'];
         $this->assertOpen($station,$date,$concept);
         foreach(['REGIO','BANCO'] as $stage) if(($this->stageClosure($station,(int)substr($date,0,4),(int)substr($date,5,2),$concept,$stage)['estado']??'')==='CERRADO') throw new RuntimeException('Reabra las etapas cerradas antes de conciliar.');
@@ -856,7 +856,7 @@ class EfcConciliacionModel {
         $busy->execute([$station,$cg[0]['id'],$link['source_key'],$this->dateValue($link['fecha_cg']),$link['turno'],$concept]); if($busy->fetchColumn()) throw new RuntimeException('El turno ya tiene conciliación bancaria.');
         $ids=[]; $loaded=[];
         foreach($bank as $deposit) {
-            if(!preg_match('/^mb_(\d+)$/',(string)($deposit['id']??''),$m) || isset($ids[(int)$m[1]])) throw new RuntimeException('Seleccione dos depósitos distintos.');
+            if(!preg_match('/^mb_(\d+)$/',(string)($deposit['id']??''),$m) || isset($ids[(int)$m[1]])) throw new RuntimeException('Seleccione depósitos distintos.');
             $id=(int)$m[1]; $ids[$id]=true;
             $q=$this->db->prepare("SELECT abono FROM TG.dbo.movimientos_bancarios WITH (UPDLOCK,HOLDLOCK) WHERE id=?"); $q->execute([$id]); $amount=$q->fetchColumn();
             if($amount===false) throw new RuntimeException('Depósito inexistente.');
@@ -866,7 +866,7 @@ class EfcConciliacionModel {
         $rate=(float)($link['tipo_cambio_usd']??0); $target=0.0;
         foreach([['real_mn','real_usd'],['second_real_mn','second_real_usd']] as [$mn,$usd]) $target+=($concept==='USD' && (float)$link[$usd]>0 && $rate>0) ? (float)$link[$usd]*$rate : (float)$link[$mn];
         $total=round(array_sum(array_column($loaded,'amount')),2); $target=round($target,2);
-        if(abs($total-$target)>self::TOLERANCE) throw new RuntimeException('La suma de los dos depósitos supera la tolerancia de $20 contra REGIO.');
+        if(abs($total-$target)>self::TOLERANCE) throw new RuntimeException('La suma del depósito supera la tolerancia de $20 contra REGIO.');
         $cg[0]['amount']=(float)$link['importe_cg']; $bank=$loaded;
         $group['cg_total']=(float)$link['importe_cg']; $group['bank_total']=$total; $group['difference']=round($total-$target,2); $group['concept']=$concept; $group['type']='MANUAL';
     }
@@ -985,7 +985,7 @@ class EfcConciliacionModel {
             if (!$stationCheck->fetchColumn()) throw new RuntimeException('Estacion Diaz Gas invalida.');
             $paired=$this->db->prepare("SELECT TOP 1 id FROM dbo.efc_conc_analiticos_vinculos WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND fecha_cg=? AND turno=? AND concepto IN ('MN','MORRALLA') AND activo=1 AND papeleta_secundaria_id IS NOT NULL");
             $paired->execute([$station,$date,$turn]);
-            if($paired->fetchColumn()) throw new RuntimeException('Un turno con dos papeletas debe conservarse completo y conciliarse con dos depósitos; quite la segunda papeleta antes de reclasificar.');
+            if($paired->fetchColumn()) throw new RuntimeException('Un turno con dos papeletas debe conservarse completo; quite la segunda papeleta antes de reclasificar.');
             $exists=$this->db->prepare("SELECT 1 FROM dbo.efc_conc_reclasificaciones_cg WITH (UPDLOCK,HOLDLOCK) WHERE clave_original=? AND estado='ACTIVA'"); $exists->execute([$sourceKey]);
             if ($exists->fetchColumn()) throw new RuntimeException('El corte ya tiene una reclasificacion activa.');
             $mnDeposit=$this->validateDeposit($mnBank,$station,$date,$mn); $morrallaDeposit=$this->validateDeposit($morrallaBank,$station,$date,$morralla);
