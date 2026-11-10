@@ -14,6 +14,10 @@ return [
         route('efc_conc_analiticos_editar', [Income::class, 'efc_conc_analiticos_editar'], name: 'income.efc_conc_analiticos_editar', methods: ['POST'], permission: 14),
         route('efc_conc_analiticos_corregir_fecha', [Income::class, 'efc_conc_analiticos_corregir_fecha'], name: 'income.efc_conc_analiticos_corregir_fecha', methods: ['POST'], permission: 14),
         route('efc_conc_analiticos_corregir_estacion', [Income::class, 'efc_conc_analiticos_corregir_estacion'], name: 'income.efc_conc_analiticos_corregir_estacion', methods: ['POST'], permission: 14),
+        route('efc_conc_usd_globales', [Income::class, 'efc_conc_usd_globales'], name: 'income.efc_conc_usd_globales', methods: ['GET'], permission: 14),
+        route('efc_conc_resumen_papeletas_usd', [Income::class, 'efc_conc_resumen_papeletas_usd'], name: 'income.efc_conc_resumen_papeletas_usd', methods: ['GET'], permission: 14),
+        route('efc_conc_usd_globales_asociar', [Income::class, 'efc_conc_usd_globales_asociar'], name: 'income.efc_conc_usd_globales_asociar', methods: ['POST'], permission: 14),
+        route('efc_conc_usd_globales_desasociar', [Income::class, 'efc_conc_usd_globales_desasociar'], name: 'income.efc_conc_usd_globales_desasociar', methods: ['POST'], permission: 14),
 
         // Llamadas de views/income/conciliation.html
         route('conciliation/sales/', [Income::class, 'conciliation_sales'], name: 'income.conciliation_sales', methods: ['POST'], permission: 14),
@@ -40,6 +44,7 @@ return [
         route('conciliation-debit/payments-invoices/', [Income::class, 'conciliation_debit_payment_invoices'], name: 'income.conciliation_debit_payment_invoices', methods: ['POST'], permission: 14),
 
         route('efc_conc_diferencia_captura', [Income::class, 'efc_conc_diferencia_captura'], name: 'income.efc_conc_diferencia_captura', methods: ['POST'], permission: 14),
+        route('efc_conc_diferencia_neteo', [Income::class, 'efc_conc_diferencia_neteo'], name: 'income.efc_conc_diferencia_neteo', methods: ['POST'], permission: 14),
         route('efc_conc_cambios_historial', [Income::class, 'efc_conc_cambios_historial'], name: 'income.efc_conc_cambios_historial', methods: ['GET'], permission: 14),
         route('efc_conc_cambios_previsualizar', [Income::class, 'efc_conc_cambios_previsualizar'], name: 'income.efc_conc_cambios_previsualizar', methods: ['GET'], permission: 14),
         route('efc_conc_cortes_aceptados', [Income::class, 'efc_conc_cortes_aceptados'], name: 'income.efc_conc_cortes_aceptados', methods: ['GET'], permission: 14),

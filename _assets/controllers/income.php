@@ -8066,6 +8066,39 @@ public function stamped_invoices_detail(): void
     public function efc_conc_resumen_detalle(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryDetail((int)($_GET['estacion_id']??0),isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
     public function efc_conc_resumen_agrupado(): void { ob_clean(); header('Content-Type: application/json'); try { echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->summaryGrouped(isset($_GET['year'])?(int)$_GET['year']:null,isset($_GET['month'])?(int)$_GET['month']:null,isset($_GET['estacion_id'])?(int)$_GET['estacion_id']:null,$_GET['concepto']??null)]); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit; }
 
+    /** GET /income/efc_conc_resumen_papeletas_usd?year=YYYY&month=MM&empresa=...&estacion_id=... */
+    public function efc_conc_resumen_papeletas_usd(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $companyValue = $_GET['empresa'] ?? null;
+            if (!is_string($companyValue) || trim($companyValue) === '') throw new RuntimeException('Empresa requerida.');
+            $companyValue = strtoupper(trim($companyValue));
+            if ($companyValue !== 'DIAZ GAS' && !$this->currentUserIsSuperAdmin()) throw new RuntimeException('No tienes permiso para consultar esta empresa.');
+            $yearValue = $_GET['year'] ?? null; $monthValue = $_GET['month'] ?? null;
+            if (!(is_string($yearValue) || is_int($yearValue)) || !preg_match('/^[0-9]{4}$/', (string)$yearValue)) throw new RuntimeException('Año inválido.');
+            if (!(is_string($monthValue) || is_int($monthValue)) || !preg_match('/^(0?[1-9]|1[0-2])$/', (string)$monthValue)) throw new RuntimeException('Mes inválido.');
+            $stationId = null;
+            if (isset($_GET['estacion_id'])) {
+                $stationValue = $_GET['estacion_id'];
+                if (!(is_string($stationValue) || is_int($stationValue)) || !preg_match('/^[1-9][0-9]*$/', (string)$stationValue)) throw new RuntimeException('Estación inválida.');
+                $stationId = (int)$stationValue;
+            }
+            $data = $this->efcConciliacion->monthlyPaperUsdByStation((int)$yearValue, (int)$monthValue, $companyValue, $stationId);
+            echo json_encode(['status'=>'success','data'=>$data], JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch (Throwable $e) {
+            http_response_code(422);
+            echo json_encode(['status'=>'error','message'=>$e->getMessage()], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    /** GET /income/efc_conc_usd_globales?year=YYYY&month=MM */
+    public function efc_conc_usd_globales(): void { ob_clean(); header('Content-Type: application/json; charset=utf-8'); try { $companyValue=$_GET['empresa']??'DIAZ GAS'; if(!is_scalar($companyValue)||strtoupper(trim((string)$companyValue))!=='DIAZ GAS') throw new RuntimeException('Esta conciliación global sólo está habilitada para Díaz Gas.'); echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->globalUsdDaily((int)($_GET['year']??0),(int)($_GET['month']??0))],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);} exit; }
+    /** POST /income/efc_conc_usd_globales_asociar {fechas_operativas[],movimiento_id,empresa?} */
+    public function efc_conc_usd_globales_asociar(): void { ob_clean(); header('Content-Type: application/json; charset=utf-8'); try { $d=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR); $companyValue=$d['empresa']??'DIAZ GAS'; $movementValue=$d['movimiento_id']??null; $dates=$d['fechas_operativas']??null; if(!is_scalar($companyValue)||strtoupper(trim((string)$companyValue))!=='DIAZ GAS') throw new RuntimeException('Esta conciliación global sólo está habilitada para Díaz Gas.'); if(!(is_int($movementValue)||(is_string($movementValue)&&preg_match('/^[1-9][0-9]*$/',$movementValue)))) throw new RuntimeException('Movimiento inválido.'); if(!is_array($dates)||!$dates||count($dates)>8) throw new RuntimeException('Seleccione hasta 8 días operativos dentro del rango del depósito.'); foreach($dates as $date) if(!is_string($date)) throw new RuntimeException('Lista de días inválida.'); $dates=array_values(array_unique($dates)); sort($dates); $id=$this->efcConciliacion->associateGlobalUsdMovement($dates[0],(int)$movementValue,$dates,(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','asignacion_id'=>$id],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);} exit; }
+    /** POST /income/efc_conc_usd_globales_desasociar {asignacion_id,empresa?} */
+    public function efc_conc_usd_globales_desasociar(): void { ob_clean(); header('Content-Type: application/json; charset=utf-8'); try { $d=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR); $companyValue=$d['empresa']??'DIAZ GAS'; $assignmentValue=$d['asignacion_id']??null; if(!is_scalar($companyValue)||strtoupper(trim((string)$companyValue))!=='DIAZ GAS') throw new RuntimeException('Esta conciliación global sólo está habilitada para Díaz Gas.'); if(!(is_int($assignmentValue)||(is_string($assignmentValue)&&preg_match('/^[1-9][0-9]*$/',$assignmentValue)))) throw new RuntimeException('Asignación inválida.'); $this->efcConciliacion->releaseGlobalUsdMovement((int)$assignmentValue,(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success'],JSON_UNESCAPED_UNICODE); } catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);} exit; }
+
     /** GET /income/efc_conc_praxedis_turnos?year=YYYY&month=MM&estacion_id=40 */
     public function efc_conc_praxedis_turnos(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
@@ -8113,11 +8146,11 @@ public function stamped_invoices_detail(): void
             $concept=strtoupper(trim((string)($_GET['concepto'] ?? ''))); $concept=$concept === '' ? null : $concept;
             $captura=strtoupper(trim((string)($_GET['captura'] ?? 'TODOS')));
             if (!in_array($report, ['faltantes','diferencias'], true)) throw new RuntimeException('Tipo de reporte inválido.');
-            if (!in_array($captura, ['TODOS','CAPTURADOS','NO_CAPTURADOS'], true)) throw new RuntimeException('Filtro de captura inválido.');
+            if (!in_array($captura, ['TODOS','CAPTURADOS','NO_CAPTURADOS','NO_APLICA'], true)) throw new RuntimeException('Filtro de captura inválido.');
             if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) throw new RuntimeException('Empresa inválida.');
             $companyStations=EfcConciliacionModel::stationIds($company);
             if ($year < 2020 || $month < 1 || $month > 12 || ($station && !in_array($station, $companyStations, true))) throw new RuntimeException('Periodo o estación fuera del alcance de la empresa.');
-            if ($concept !== null && !in_array($concept, ['MN','MORRALLA','USD'], true)) throw new RuntimeException('Concepto inválido.');
+            if ($concept !== null && !in_array($concept, ['MN','MORRALLA','USD','MN_MORRALLA'], true)) throw new RuntimeException('Concepto inválido.');
             // estacion_id=0 significa todas las estaciones de la empresa.
             $reportStations=$station ? [$station] : $companyStations;
             $rows=[];
@@ -8135,7 +8168,11 @@ public function stamped_invoices_detail(): void
             } else {
                 $rows=array_values(array_filter($rows, static fn(array $row): bool => empty($row['sin_papeleta']) && $row['grupo_id'] !== null && (float)$row['total_banorte'] > 0 && abs((float)$row['diferencia_regio_banco']) > 0.004));
             }
-            if($captura!=='TODOS') $rows=array_values(array_filter($rows,static fn(array $row): bool => $captura==='CAPTURADOS' ? !empty($row['capturado']) : empty($row['capturado'])));
+            if($captura!=='TODOS') {
+                $captureStates=['CAPTURADOS'=>'CAPTURADO','NO_CAPTURADOS'=>'NO_CAPTURADO','NO_APLICA'=>'NO_APLICA'];
+                $targetCaptureState=$captureStates[$captura];
+                $rows=array_values(array_filter($rows,static fn(array $row): bool => $row['estado_captura']===$targetCaptureState));
+            }
             echo json_encode(['status'=>'success','data'=>$rows]);
         } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
         exit;
@@ -8148,8 +8185,14 @@ public function stamped_invoices_detail(): void
             $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);
             if(!is_array($data)) throw new RuntimeException('Solicitud inválida.');
             $station=(int)($data['estacion_id']??0); $date=(string)($data['fecha']??''); $turn=trim((string)($data['turno']??'')); $concept=strtoupper(trim((string)($data['concepto']??'')));
-            if(!array_key_exists('capturado',$data) || !in_array($data['capturado'],[true,false,0,1,'0','1'],true)) throw new RuntimeException('El estado de captura debe ser booleano.');
-            $captured=filter_var($data['capturado'],FILTER_VALIDATE_BOOLEAN); $company=EfcConciliacionModel::stationCompany($station);
+            if(array_key_exists('estado',$data)) {
+                $state=strtoupper(trim((string)$data['estado']));
+                if(!in_array($state,['CAPTURADO','NO_CAPTURADO','NO_APLICA'],true)) throw new RuntimeException('Estado de captura inválido.');
+            } else {
+                if(!array_key_exists('capturado',$data) || !in_array($data['capturado'],[true,false,0,1,'0','1'],true)) throw new RuntimeException('El estado de captura debe ser booleano.');
+                $state=filter_var($data['capturado'],FILTER_VALIDATE_BOOLEAN)?'CAPTURADO':'NO_CAPTURADO';
+            }
+            $company=EfcConciliacionModel::stationCompany($station);
             if($company===null || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !in_array($concept,['MN','MORRALLA','USD'],true) || $turn==='') throw new RuntimeException('Clave de diferencia inválida.');
             $parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
             if(!$parsed || $parsed->format('Y-m-d')!==$date) throw new RuntimeException('Fecha operativa inválida.');
@@ -8160,8 +8203,35 @@ public function stamped_invoices_detail(): void
             $rows=$this->efcConciliacion->reportRows($station,$year,$month,$concept,$source);
             $exists=false; foreach($rows as $row) if($row['fecha']===$date && $row['turno']===$turn && $row['concepto']===$concept) {$exists=true;break;}
             if(!$exists) throw new RuntimeException('La diferencia no existe en el reporte operativo.');
-            $this->efcConciliacion->setDifferenceCaptured($station,$date,$turn,$concept,$captured,(int)($_SESSION['tg_user']['Id']??0));
-            echo json_encode(['status'=>'success','capturado'=>$captured?1:0]);
+            $this->efcConciliacion->setDifferenceCaptured($station,$date,$turn,$concept,$state,(int)($_SESSION['tg_user']['Id']??0));
+            echo json_encode(['status'=>'success','estado_captura'=>$state,'capturado'=>$state==='CAPTURADO'?1:0,'no_aplica'=>$state==='NO_APLICA'?1:0]);
+        } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
+        exit;
+    }
+
+    /** POST /income/efc_conc_diferencia_neteo */
+    public function efc_conc_diferencia_neteo(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);
+            if(!is_array($data)) throw new RuntimeException('Solicitud inválida.');
+            $station=(int)($data['estacion_id']??0); $date=(string)($data['fecha']??''); $turn=trim((string)($data['turno']??'')); $concept=strtoupper(trim((string)($data['concepto']??'')));
+            $excludedValue=$data['excluido_neteo']??null;
+            if(!in_array($excludedValue,[true,false,0,1,'0','1'],true)) throw new RuntimeException('La exclusión del neteo debe ser booleana.');
+            $excluded=filter_var($excludedValue,FILTER_VALIDATE_BOOLEAN);
+            $company=EfcConciliacionModel::stationCompany($station);
+            if($company===null || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !in_array($concept,['MN','MORRALLA','USD'],true) || $turn==='' || strlen($turn)>20) throw new RuntimeException('Clave de diferencia inválida.');
+            $parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
+            if(!$parsed || $parsed->format('Y-m-d')!==$date) throw new RuntimeException('Fecha operativa inválida.');
+            $year=(int)$parsed->format('Y'); $month=(int)$parsed->format('m');
+            if($year<2020) throw new RuntimeException('Fecha operativa fuera de rango.');
+            $source=$this->efcConcReportControlGas($station,$year,$month);
+            $source=$this->efcConciliacion->applyAcceptedCutAmounts($station,$source);
+            $rows=$this->efcConciliacion->reportRows($station,$year,$month,$concept,$source);
+            $exists=false; foreach($rows as $row) if($row['fecha']===$date && $row['turno']===$turn && $row['concepto']===$concept) {$exists=true;break;}
+            if(!$exists) throw new RuntimeException('La diferencia no existe en el reporte operativo.');
+            $this->efcConciliacion->setDifferenceNeteoExcluded($station,$date,$turn,$concept,$excluded);
+            echo json_encode(['status'=>'success','excluido_neteo'=>$excluded]);
         } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>$e->getMessage()]); }
         exit;
     }
@@ -8472,6 +8542,13 @@ public function stamped_invoices_detail(): void
                     'normalized' => $normalizarNombre($est['Nombre']),
                 ];
             }
+            $catalogoPorId = [];
+            foreach ($catalogoPorNombre as $estacionCatalogo) {
+                $catalogoPorId[(int)$estacionCatalogo['station_id']] = [
+                    'station_id' => (int)$estacionCatalogo['station_id'],
+                    'station' => $estacionCatalogo['station'],
+                ];
+            }
             $hermanosRows = [];
             foreach ($catalogoPorNombre as $estacionCatalogo) {
                 $nombreSinPrefijo = preg_replace('/^\d+\s+/', '', trim($estacionCatalogo['normalized']));
@@ -8496,9 +8573,15 @@ public function stamped_invoices_detail(): void
             $suffixes = EfcConciliacionModel::allAccountSuffixes();
             $accountWhere = implode(' OR ', array_fill(0, count($suffixes), "RIGHT(UPPER(REPLACE(REPLACE(ISNULL(M.cuenta,''), '-', ''), ' ', '')), LEN(?)) = ?"));
             $stmt = $conn->prepare(
-                "SELECT M.id, M.secuencia, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, ISNULL(OG.capturado, 0) AS one_goal, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled, CG_MATCH.controlgas_matches
+                "SELECT M.id, M.secuencia, M.fecha, M.banco, M.cuenta, M.referencia, M.sucursal, M.descripcion, M.concepto, M.descripcion_larga, M.abono, ISNULL(OG.capturado, 0) AS one_goal, CASE WHEN EXISTS (SELECT 1 FROM [TG].[dbo].[efc_conc_partidas] CP JOIN [TG].[dbo].[efc_conc_grupos] CG ON CG.id=CP.grupo_id WHERE CP.movimiento_bancario_id=M.id AND CP.origen='BANCO' AND CP.activo=1 AND CG.estado='ACTIVA') THEN 1 ELSE 0 END AS reconciled, ACTIVE_GROUP.station_id AS active_station_id, ACTIVE_GROUP.station_count AS active_station_count, CG_MATCH.controlgas_matches
                  FROM [TG].[dbo].[movimientos_bancarios] M
                  LEFT JOIN [TG].[dbo].[efc_conc_one_goal_movimientos] OG ON OG.movimiento_bancario_id=M.id
+                 OUTER APPLY (
+                     SELECT MIN(G.estacion_id) AS station_id, COUNT(DISTINCT G.estacion_id) AS station_count
+                     FROM [TG].[dbo].[efc_conc_partidas] B
+                     JOIN [TG].[dbo].[efc_conc_grupos] G ON G.id=B.grupo_id AND G.estado='ACTIVA'
+                     WHERE B.movimiento_bancario_id=M.id AND B.origen='BANCO' AND B.activo=1
+                 ) ACTIVE_GROUP
                  OUTER APPLY (
                      SELECT STRING_AGG(CONVERT(VARCHAR(10), X.fecha_operacion, 23) + '|' + COALESCE(X.turno, ''), ';') AS controlgas_matches
                      FROM (
@@ -8606,7 +8689,12 @@ public function stamped_invoices_detail(): void
                         }
                     }
                 }
-                $estacionOriginal = $conflictoAliasHermanos ? null : ($estacionPraxedis ?? $estacionPorReferencia ?? $estacionPorTexto ?? $estacionPorCuenta);
+                // Una asociación bancaria activa con una única estación ya fue validada en conciliación;
+                // prevalece sobre tokens ambiguos del texto bancario (como el alias legado 1000).
+                $estacionGrupoActiva = (int)($mov['active_station_count'] ?? 0) === 1
+                    ? ($catalogoPorId[(int)$mov['active_station_id']] ?? null)
+                    : null;
+                $estacionOriginal = $estacionGrupoActiva ?? ($conflictoAliasHermanos ? null : ($estacionPraxedis ?? $estacionPorReferencia ?? $estacionPorTexto ?? $estacionPorCuenta));
                 $estatus = $estacionOriginal ? 'IDENTIFICADA'
                     : (count($codigos) > 1 || count($candidatasTexto) > 1 || count($candidatasCuenta) > 1 || $alias1000Conflictivo || $conflictoAliasHermanos ? 'ESTACION_AMBIGUA' : 'ESTACION_NO_IDENTIFICADA');
                 $corregida = isset($correcciones[(int)$mov['id']]);

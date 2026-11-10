@@ -8,6 +8,12 @@ dos ejecuciones (ni por una asociación manual concurrente).
 Instalación: python cron/efc_conc_bancaria_automatica.py
 Programar cada diez minutos; la ejecución adquiere un applock SQL y termina
 sin hacer trabajo si otra instancia está activa.
+
+En las ejecuciones completas también concilia automáticamente los depósitos
+USD globales de Díaz Gas de la cuenta Banorte 0601500741 cuando existe una
+única combinación de días REGIO que coincide dentro de la tolerancia.
+Después crea tránsitos USD para turnos de Díaz Gas cuando todas sus papeletas
+están asignadas a depósitos cuya fecha bancaria cae en el mes siguiente.
 """
 from __future__ import annotations
 
@@ -16,6 +22,7 @@ import json
 import os
 import re
 from datetime import date, datetime, timedelta
+from itertools import combinations
 from pathlib import Path
 from urllib.request import Request, urlopen
 from xml.sax.saxutils import escape
@@ -32,6 +39,8 @@ COMPANY_STATIONS = {
     40,
 }
 GASOMEX_STATIONS = {23, 24, 25, 26, 27, 28, 29}
+DIAZ_GAS_STATIONS = (2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 22, 30, 33, 40)
+GLOBAL_USD_ACCOUNT = "0601500741"
 GASOMEX_ACCOUNT_STATIONS = {
     "8504": {29}, "4547": {23}, "8214": {23, 25}, "8492": {25, 26},
     "4412": {26}, "4777": {27}, "4669": {28}, "3678": {28}, "4638": {24},
@@ -346,6 +355,170 @@ def ensure_schema(cursor: pyodbc.Cursor) -> None:
       INSERT dbo.efc_conc_bitacora(grupo_id,movimiento_bancario_id,accion,detalle) VALUES(@id,@movimiento_bancario_id,'CONCILIACION_AUTOMATICA',CONCAT('ejecucion=',@ejecucion_id,CASE WHEN @cruza_mes=1 THEN '; transito(s) asociado(s) y conciliado(s)' ELSE '' END));
       COMMIT;
     END""")
+    cursor.execute("""CREATE OR ALTER PROCEDURE dbo.usp_efc_conc_usd_global_asociar_automatica
+      @movimiento_id INT,@fechas_xml XML,@totales_xml XML,@ejecucion_id BIGINT
+    AS BEGIN
+      SET NOCOUNT ON; SET XACT_ABORT ON; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+      BEGIN TRANSACTION;
+      IF NOT EXISTS(SELECT 1 FROM dbo.efc_conc_ejecuciones_automaticas WITH(UPDLOCK,HOLDLOCK)
+        WHERE id=@ejecucion_id AND estado='EJECUTANDO')
+        THROW 50100,'La ejecucion automatica no esta activa.',1;
+      DECLARE @fechas TABLE(fecha DATE PRIMARY KEY);
+      DECLARE @papeles TABLE(fecha DATE PRIMARY KEY,real_usd DECIMAL(18,2));
+      DECLARE @nueva TABLE(id INT);
+      DECLARE @fecha_banco DATE,@importe_banco DECIMAL(18,2),@real_usd DECIMAL(18,2),@asignacion_id INT;
+      INSERT @fechas(fecha) SELECT DISTINCT item.value('.', 'DATE') FROM @fechas_xml.nodes('/dates/date') AS x(item);
+      IF (SELECT COUNT(*) FROM @fechas) NOT BETWEEN 1 AND 8
+        THROW 50101,'La conciliacion global USD requiere entre uno y ocho dias.',1;
+      SELECT @fecha_banco=M.fecha,@importe_banco=M.abono
+        FROM TG.dbo.movimientos_bancarios M WITH(UPDLOCK,HOLDLOCK)
+        WHERE M.id=@movimiento_id AND M.banco='BANORTE' AND M.abono>0
+          AND RIGHT(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(M.cuenta)),' ',''),'-',''),'.',''),10)='0601500741'
+          AND (UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO EN EFECTIVO%'
+            OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EFECTIVO%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO EFECTIVO%'
+            OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEP EN EFECTIV%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEP EN EFECTIV%'
+            OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO VTAS%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO VTAS%'
+            OR UPPER(ISNULL(M.descripcion,'')) LIKE '%FC EFECTIVO%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%FC EFECTIVO%');
+      IF @fecha_banco IS NULL THROW 50102,'El movimiento ya no es un deposito Banorte USD elegible.',1;
+      IF EXISTS(SELECT 1 FROM @fechas WHERE @fecha_banco<fecha OR @fecha_banco>DATEADD(day,7,fecha))
+        THROW 50103,'El deposito debe recibirse dentro de los siete dias posteriores a cada fecha operativa.',1;
+      INSERT @papeles(fecha,real_usd)
+        SELECT X.N.value('(fecha/text())[1]','DATE'),X.N.value('(usd/text())[1]','DECIMAL(18,2)')
+        FROM @totales_xml.nodes('/totals/item') AS X(N);
+      IF (SELECT COUNT(*) FROM @papeles)<>(SELECT COUNT(*) FROM @fechas)
+        THROW 50104,'Faltan totales ControlGas USD para uno o mas dias.',1;
+      IF EXISTS(SELECT 1 FROM @fechas F LEFT JOIN @papeles P ON P.fecha=F.fecha WHERE P.fecha IS NULL OR P.real_usd<=0)
+        THROW 50104,'Uno o mas dias ya no tienen efectivo ControlGas con tipo de cambio.',1;
+      SELECT @real_usd=ROUND(SUM(real_usd),2) FROM @papeles;
+      IF ABS(@importe_banco-@real_usd)>1.00 THROW 50105,'El deposito no coincide con el total ControlGas USD de los dias seleccionados.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_usd_globales_dias D WITH(UPDLOCK,HOLDLOCK)
+        JOIN dbo.efc_conc_usd_globales A WITH(UPDLOCK,HOLDLOCK) ON A.id=D.asignacion_id
+        JOIN @fechas X ON X.fecha=D.fecha_operativa WHERE A.estado='ACTIVA')
+        THROW 50106,'Uno o mas dias ya pertenecen a otro deposito global USD.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_usd_globales A WITH(UPDLOCK,HOLDLOCK)
+        JOIN @fechas X ON X.fecha=A.fecha_operativa
+        WHERE A.estado='ACTIVA' AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_usd_globales_dias D WHERE D.asignacion_id=A.id))
+        THROW 50106,'Uno o mas dias ya pertenecen a otro deposito global USD.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_usd_globales A WITH(UPDLOCK,HOLDLOCK)
+        WHERE A.movimiento_bancario_id=@movimiento_id AND A.estado='ACTIVA')
+        THROW 50107,'El deposito ya pertenece a una conciliacion global USD.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P WITH(UPDLOCK,HOLDLOCK)
+        JOIN dbo.efc_conc_grupos G WITH(UPDLOCK,HOLDLOCK) ON G.id=P.grupo_id AND G.estado='ACTIVA'
+        WHERE P.movimiento_bancario_id=@movimiento_id AND P.origen='BANCO' AND P.activo=1)
+        THROW 50108,'El deposito ya esta usado en otra conciliacion bancaria.',1;
+      IF EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P WITH(UPDLOCK,HOLDLOCK)
+        JOIN dbo.efc_conc_grupos G WITH(UPDLOCK,HOLDLOCK) ON G.id=P.grupo_id AND G.estado='ACTIVA'
+        LEFT JOIN dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK)
+          ON P.clave_externa LIKE 'TR:%' AND TRY_CONVERT(INT,SUBSTRING(P.clave_externa,4,20))=T.id
+        JOIN @fechas D ON D.fecha=COALESCE(T.fecha_origen,P.fecha_operacion)
+        WHERE P.estacion_id IN (2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33,40)
+          AND P.origen='CG' AND P.concepto='USD' AND P.activo=1)
+        THROW 50109,'Uno o mas dias ya tienen una conciliacion USD por turno.',1;
+      INSERT dbo.efc_conc_usd_globales(fecha_operativa,movimiento_bancario_id,creado_por)
+        OUTPUT inserted.id INTO @nueva(id)
+        SELECT MIN(fecha),@movimiento_id,NULL FROM @fechas;
+      SELECT @asignacion_id=id FROM @nueva;
+      INSERT dbo.efc_conc_usd_globales_dias(asignacion_id,fecha_operativa)
+        SELECT @asignacion_id,fecha FROM @fechas;
+      COMMIT;
+    END""")
+    cursor.execute("""CREATE OR ALTER PROCEDURE dbo.usp_efc_conc_usd_crear_transitos_globales
+      @desde DATE,@hasta DATE,@estacion_id INT=NULL,@ejecucion_id BIGINT=NULL,@vista_previa BIT=0
+    AS BEGIN
+      SET NOCOUNT ON; SET XACT_ABORT ON; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+      IF @desde IS NULL OR @hasta IS NULL OR @desde>@hasta THROW 50120,'Rango de fechas invalido para transitos USD.',1;
+      IF @estacion_id IS NOT NULL AND @estacion_id NOT IN (2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33)
+        THROW 50121,'La estacion no pertenece a Diaz Gas para transitos USD.',1;
+      IF @vista_previa=0 AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_ejecuciones_automaticas WHERE id=@ejecucion_id AND estado='EJECUTANDO')
+        THROW 50122,'La ejecucion automatica no esta activa.',1;
+      IF @vista_previa=0 BEGIN TRANSACTION;
+      DECLARE @candidatos TABLE(estacion_id INT,fecha DATE,turno VARCHAR(20),importe DECIMAL(18,2),mes_destino CHAR(7),clave VARCHAR(180),PRIMARY KEY(estacion_id,fecha,turno));
+      ;WITH Vinculos AS (
+        SELECT V.id,V.estacion_id,V.fecha_cg,V.turno,V.importe_cg,V.papeleta_id
+        FROM dbo.efc_conc_analiticos_vinculos V WITH(UPDLOCK,HOLDLOCK)
+        WHERE V.activo=1 AND V.concepto='USD' AND V.fecha_cg BETWEEN @desde AND @hasta
+          AND V.estacion_id IN (2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33)
+          AND (@estacion_id IS NULL OR V.estacion_id=@estacion_id)
+        UNION ALL
+        SELECT V.id,V.estacion_id,V.fecha_cg,V.turno,V.importe_cg,V.papeleta_secundaria_id
+        FROM dbo.efc_conc_analiticos_vinculos V WITH(UPDLOCK,HOLDLOCK)
+        WHERE V.activo=1 AND V.concepto='USD' AND V.papeleta_secundaria_id IS NOT NULL
+          AND V.fecha_cg BETWEEN @desde AND @hasta
+          AND V.estacion_id IN (2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33)
+          AND (@estacion_id IS NULL OR V.estacion_id=@estacion_id)
+      ), Asignaciones AS (
+        SELECT V.id AS vinculo_id,V.estacion_id,V.fecha_cg,V.turno,V.importe_cg,
+          C.papeleta_id,P.effective_date,M.fecha AS fecha_deposito,
+          CONVERT(CHAR(7),M.fecha,23) AS mes_deposito
+        FROM Vinculos V
+        JOIN dbo.efc_conc_analiticos_papeletas PAP WITH(UPDLOCK,HOLDLOCK) ON PAP.id=V.papeleta_id
+        JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=PAP.importacion_id AND I.estado='IMPORTADA'
+        JOIN dbo.v_efc_conc_analiticos_papeletas_efectivas P ON P.id=PAP.id AND P.effective_real_usd>0
+        CROSS APPLY (SELECT V.papeleta_id) C(papeleta_id)
+        JOIN dbo.efc_conc_usd_globales_dias D WITH(UPDLOCK,HOLDLOCK) ON D.fecha_operativa=P.effective_date
+        JOIN dbo.efc_conc_usd_globales A WITH(UPDLOCK,HOLDLOCK) ON A.id=D.asignacion_id AND A.estado='ACTIVA'
+        JOIN TG.dbo.movimientos_bancarios M WITH(UPDLOCK,HOLDLOCK) ON M.id=A.movimiento_bancario_id
+          AND M.banco='BANORTE' AND M.abono>0
+          AND RIGHT(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(M.cuenta)),' ',''),'-',''),'.',''),10)='0601500741'
+        UNION ALL
+        SELECT V.id,V.estacion_id,V.fecha_cg,V.turno,V.importe_cg,C.papeleta_id,P.effective_date,M.fecha,
+          CONVERT(CHAR(7),M.fecha,23)
+        FROM Vinculos V
+        JOIN dbo.efc_conc_analiticos_papeletas PAP WITH(UPDLOCK,HOLDLOCK) ON PAP.id=V.papeleta_id
+        JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=PAP.importacion_id AND I.estado='IMPORTADA'
+        JOIN dbo.v_efc_conc_analiticos_papeletas_efectivas P ON P.id=PAP.id AND P.effective_real_usd>0
+        CROSS APPLY (SELECT V.papeleta_id) C(papeleta_id)
+        JOIN dbo.efc_conc_usd_globales A WITH(UPDLOCK,HOLDLOCK) ON A.fecha_operativa=P.effective_date AND A.estado='ACTIVA'
+          AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_usd_globales_dias DX WHERE DX.asignacion_id=A.id)
+        JOIN TG.dbo.movimientos_bancarios M WITH(UPDLOCK,HOLDLOCK) ON M.id=A.movimiento_bancario_id
+          AND M.banco='BANORTE' AND M.abono>0
+          AND RIGHT(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(M.cuenta)),' ',''),'-',''),'.',''),10)='0601500741'
+      ), Resumen AS (
+        SELECT V.id,V.estacion_id,V.fecha_cg,V.turno,V.importe_cg,
+          COUNT(DISTINCT P.papeleta_id) AS papeletas,
+          COUNT(DISTINCT CASE WHEN A.papeleta_id IS NOT NULL THEN A.papeleta_id END) AS papeletas_asignadas,
+          COUNT(DISTINCT A.mes_deposito) AS meses_deposito,MIN(A.mes_deposito) AS mes_deposito
+        FROM dbo.efc_conc_analiticos_vinculos V
+        CROSS APPLY (SELECT V.papeleta_id UNION SELECT V.papeleta_secundaria_id WHERE V.papeleta_secundaria_id IS NOT NULL) P(papeleta_id)
+        LEFT JOIN Asignaciones A ON A.vinculo_id=V.id AND A.papeleta_id=P.papeleta_id
+        WHERE V.activo=1 AND V.concepto='USD' AND V.fecha_cg BETWEEN @desde AND @hasta
+          AND V.estacion_id IN (2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33)
+          AND (@estacion_id IS NULL OR V.estacion_id=@estacion_id)
+        GROUP BY V.id,V.estacion_id,V.fecha_cg,V.turno,V.importe_cg
+      )
+      INSERT @candidatos(estacion_id,fecha,turno,importe,mes_destino,clave)
+      SELECT R.estacion_id,R.fecha_cg,R.turno,R.importe_cg,R.mes_deposito,
+        CONCAT('cg-',R.estacion_id,'-',CONVERT(CHAR(10),R.fecha_cg,23),'-',R.turno,'-USD')
+      FROM Resumen R
+      WHERE R.importe_cg>0 AND R.papeletas=R.papeletas_asignadas AND R.meses_deposito=1
+        AND R.mes_deposito=CONVERT(CHAR(7),DATEADD(MONTH,1,R.fecha_cg),23)
+        AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK)
+          WHERE T.estacion_id=R.estacion_id AND T.fecha_origen=R.fecha_cg AND T.turno=R.turno AND T.concepto='USD')
+        AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_grupos G WITH(UPDLOCK,HOLDLOCK)
+          JOIN dbo.efc_conc_partidas CP WITH(UPDLOCK,HOLDLOCK) ON CP.grupo_id=G.id AND CP.origen='CG' AND CP.activo=1
+          WHERE G.estado='ACTIVA' AND CP.estacion_id=R.estacion_id AND CP.concepto='USD'
+            AND CP.fecha_operacion=R.fecha_cg AND CP.turno=R.turno)
+        AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_cierres C WITH(UPDLOCK,HOLDLOCK)
+          WHERE C.estacion_id=R.estacion_id AND C.mes=CONVERT(CHAR(7),R.fecha_cg,23) AND C.concepto='USD' AND C.estado='CERRADO')
+        AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_cierres_etapas CE WITH(UPDLOCK,HOLDLOCK)
+          WHERE CE.estacion_id=R.estacion_id AND CE.mes=CONVERT(CHAR(7),R.fecha_cg,23) AND CE.concepto='USD' AND CE.etapa='BANCO' AND CE.estado='CERRADO')
+        AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_cierres C WITH(UPDLOCK,HOLDLOCK)
+          WHERE C.estacion_id=R.estacion_id AND C.mes=R.mes_deposito AND C.concepto='USD' AND C.estado='CERRADO')
+        AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_cierres_etapas CE WITH(UPDLOCK,HOLDLOCK)
+          WHERE CE.estacion_id=R.estacion_id AND CE.mes=R.mes_deposito AND CE.concepto='USD' AND CE.etapa='BANCO' AND CE.estado='CERRADO');
+      IF @vista_previa=1 BEGIN
+        SELECT estacion_id,fecha,turno,importe,mes_destino FROM @candidatos ORDER BY fecha,estacion_id,turno;
+        RETURN;
+      END;
+      INSERT dbo.efc_conc_transitos(estacion_id,clave_externa,fecha_origen,mes_origen,mes_destino,turno,concepto,importe,estado,descripcion,creado_por)
+        OUTPUT inserted.id,inserted.estacion_id,inserted.fecha_origen,inserted.turno,inserted.importe,inserted.mes_destino
+        SELECT C.estacion_id,C.clave,C.fecha,CONVERT(CHAR(7),C.fecha,23),C.mes_destino,C.turno,'USD',C.importe,'PENDIENTE',
+          'Transito USD creado automaticamente desde asignacion global de papeletas',NULL
+        FROM @candidatos C
+        WHERE NOT EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WITH(UPDLOCK,HOLDLOCK)
+          WHERE T.estacion_id=C.estacion_id AND T.clave_externa=C.clave);
+      COMMIT;
+    END""")
 
 
 def acquire_lock(cursor: pyodbc.Cursor) -> bool:
@@ -400,6 +573,49 @@ def as_date(value: object) -> date:
 
 def amount(value: object) -> float:
     return round(float(str(value or 0).replace(",", "").replace("$", "")), 2)
+
+
+def controlgas_usd_daily(cursor: pyodbc.Cursor, first: date, last: date) -> dict[date, float]:
+    """Convert ControlGas MN cuts to USD using the historic rate at turn start."""
+    stations = tuple(DIAZ_GAS_STATIONS)
+    placeholders = ",".join("?" for _ in stations)
+    rate_rows = cursor.execute(
+        f"SELECT codgas,fch,hra,ctz FROM SG12.dbo.Cotizaciones WHERE codgas IN ({placeholders}) AND codmda=2 ORDER BY codgas,fch,hra,logfch",
+        *stations,
+    ).fetchall()
+    base = date(1900, 1, 1)
+    rates: dict[int, list[tuple[datetime, float]]] = {}
+    for station, fch, hra, ctz in rate_rows:
+        hour = int(hra or 0); hh, mm = divmod(hour, 100)
+        if hh > 23 or mm > 59 or float(ctz or 0) <= 0:
+            continue
+        effective = datetime.combine(base + timedelta(days=int(fch) - 1), datetime.min.time()).replace(hour=hh, minute=mm)
+        rates.setdefault(int(station), []).append((effective, float(ctz)))
+    daily: dict[date, float] = {}
+    turn_hours = {1: 0, 2: 6, 3: 14, 4: 22}
+    for station in stations:
+        for cut in fetch_station_turns(cursor, station, first, last):
+            try:
+                day = as_date(cut.get("Fecha"))
+                turn_text = turn_key(cut.get("Turno"))
+                turn = int(turn_text[0]) if turn_text in {"11", "21", "31", "41"} else int(turn_text)
+                if turn not in turn_hours:
+                    continue
+                mxn = amount(cut.get("MN", cut.get("mn", 0)))
+            except (TypeError, ValueError):
+                continue
+            if day < first or day > last or mxn <= 0:
+                continue
+            at = datetime.combine(day, datetime.min.time()).replace(hour=turn_hours[turn])
+            rate = None
+            for effective, value in rates.get(station, []):
+                if effective <= at:
+                    rate = value
+                else:
+                    break
+            if rate:
+                daily[day] = round(daily.get(day, 0.0) + round(mxn / rate, 2), 2)
+    return daily
 
 
 def turn_key(value: object) -> str:
@@ -505,6 +721,141 @@ def matching_bank_rows(cursor: pyodbc.Cursor, first: date, last: date | None = N
             AND (UPPER(ISNULL(M.descripcion,'')) LIKE '%DEP EN EFECTIV%'
               OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEP EN EFECTIV%')))
         AND (C.estacion_id IS NOT NULL OR (""" + account_where + "))", *params).fetchall()
+
+
+def global_usd_candidates(days: dict[date, float], banks: list[tuple], used_ids: set[int], used_dates: set[date]) -> tuple[list[tuple[tuple, tuple[date, ...]]], int]:
+    """Match one USD deposit to one unique set of one-to-eight REGIO days."""
+    eligible_days = {day: value for day, value in days.items() if day not in used_dates and value > 0}
+    possibilities: list[tuple[tuple, set[tuple[date, ...]]]] = []
+    ambiguous = 0
+    for bank in banks:
+        movement_id = int(bank[0])
+        if movement_id in used_ids:
+            continue
+        bank_date = as_date(bank[1])
+        window = [
+            (day, value) for day, value in eligible_days.items()
+            if bank_date - timedelta(days=7) <= day <= bank_date
+        ]
+        target = amount(bank[2])
+        combinations_found: set[tuple[date, ...]] = set()
+        for size in range(1, min(8, len(window)) + 1):
+            for subset in combinations(window, size):
+                dates = tuple(sorted(item[0] for item in subset))
+                if abs(round(sum(item[1] for item in subset), 2) - target) <= TOLERANCE:
+                    combinations_found.add(dates)
+        if combinations_found:
+            possibilities.append((bank, combinations_found))
+        if len(combinations_found) > 1:
+            ambiguous += 1
+            log(f"USD global ambiguo: depósito={movement_id}, combinaciones_días={len(combinations_found)}; requiere revisión manual.")
+
+    # If two deposits can claim any same day, leave both for manual review.
+    owners: dict[date, set[int]] = {}
+    for bank, options in possibilities:
+        for dates in options:
+            for day in dates:
+                owners.setdefault(day, set()).add(int(bank[0]))
+    safe = [
+        (bank, next(iter(options))) for bank, options in possibilities
+        if len(options) == 1 and all(len(owners[day]) == 1 for day in next(iter(options)))
+    ]
+    conflicted = sum(1 for _bank, options in possibilities if len(options) == 1 and any(len(owners[day]) > 1 for day in next(iter(options))))
+    if conflicted:
+        log(f"USD global: {conflicted} depósito(s) con días en conflicto se dejan para revisión manual.")
+    return safe, ambiguous + conflicted
+
+
+def reconcile_global_diaz_usd(
+    cursor: pyodbc.Cursor,
+    conn: pyodbc.Connection,
+    first: date,
+    last: date,
+    used: set[int],
+    run_id: int | None,
+    dry_run: bool,
+    details: list[str],
+) -> tuple[int, int, int]:
+    """Reconcile Díaz Gas global USD deposits against daily ControlGas totals."""
+    station_list = ",".join(str(station) for station in DIAZ_GAS_STATIONS)
+    assigned = cursor.execute(
+        """SELECT A.movimiento_bancario_id,COALESCE(D.fecha_operativa,A.fecha_operativa)
+           FROM dbo.efc_conc_usd_globales A
+           LEFT JOIN dbo.efc_conc_usd_globales_dias D ON D.asignacion_id=A.id
+           WHERE A.estado='ACTIVA' AND COALESCE(D.fecha_operativa,A.fecha_operativa)>=? AND COALESCE(D.fecha_operativa,A.fecha_operativa)<=?""",
+        first,
+        last,
+    ).fetchall()
+    reserved_dates = {as_date(row[1]) for row in assigned}
+    used.update(int(row[0]) for row in assigned)
+    linked_turn_days = cursor.execute(
+        f"""SELECT DISTINCT COALESCE(T.fecha_origen,P.fecha_operacion)
+            FROM dbo.efc_conc_partidas P
+            JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id AND G.estado='ACTIVA'
+            LEFT JOIN dbo.efc_conc_transitos T ON P.clave_externa LIKE 'TR:%'
+              AND TRY_CONVERT(INT,SUBSTRING(P.clave_externa,4,20))=T.id
+            WHERE P.estacion_id IN ({station_list}) AND P.origen='CG' AND P.concepto='USD' AND P.activo=1
+              AND COALESCE(T.fecha_origen,P.fecha_operacion)>=? AND COALESCE(T.fecha_origen,P.fecha_operacion)<=?""",
+        first,
+        last,
+    ).fetchall()
+    reserved_dates.update(as_date(row[0]) for row in linked_turn_days)
+
+    daily_real = controlgas_usd_daily(cursor, first, last)
+    if not daily_real:
+        log("USD global: no hay días ControlGas con efectivo y tipo de cambio histórico dentro del rango.")
+        return 0, 0, 0
+
+    cash_filter = """(UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO EN EFECTIVO%'
+        OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO EFECTIVO%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO EFECTIVO%'
+        OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEP EN EFECTIV%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEP EN EFECTIV%'
+        OR UPPER(ISNULL(M.descripcion,'')) LIKE '%DEPOSITO VTAS%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%DEPOSITO VTAS%'
+        OR UPPER(ISNULL(M.descripcion,'')) LIKE '%FC EFECTIVO%' OR UPPER(ISNULL(M.descripcion_larga,'')) LIKE '%FC EFECTIVO%')"""
+    banks = cursor.execute(
+        f"""SELECT M.id,CONVERT(CHAR(10),M.fecha,23),M.abono,COALESCE(M.referencia,''),
+              CONCAT(ISNULL(M.descripcion_larga,''),' ',ISNULL(M.descripcion,'')),NULL,M.cuenta,
+              COALESCE(M.concepto,''),COALESCE(M.descripcion,'')
+            FROM TG.dbo.movimientos_bancarios M
+            WHERE M.banco='BANORTE' AND M.abono>0 AND M.fecha>=? AND M.fecha<DATEADD(day,8,?)
+              AND RIGHT(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(M.cuenta)),' ',''),'-',''),'.',''),10)=?
+              AND {cash_filter}
+              AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_usd_globales A WHERE A.movimiento_bancario_id=M.id AND A.estado='ACTIVA')
+              AND NOT EXISTS(SELECT 1 FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_grupos G ON G.id=P.grupo_id
+                WHERE P.movimiento_bancario_id=M.id AND P.origen='BANCO' AND P.activo=1 AND G.estado='ACTIVA')
+            ORDER BY M.fecha,M.id""",
+        first,
+        last,
+        GLOBAL_USD_ACCOUNT,
+    ).fetchall()
+    candidates, skipped = global_usd_candidates(daily_real, banks, used, reserved_dates)
+    if not candidates:
+        log(f"USD global: depósitos elegibles={len(banks)}, candidatos únicos=0.")
+        return 0, skipped, 0
+
+    matched = errors = 0
+    log(f"USD global: días ControlGas={len(daily_real)}, depósitos elegibles={len(banks)}, grupos automáticos únicos={len(candidates)}.")
+    for bank, dates in candidates:
+        movement_id = int(bank[0])
+        expected = round(sum(daily_real[day] for day in dates), 2)
+        date_xml = "<dates>" + "".join(f"<date>{day.isoformat()}</date>" for day in dates) + "</dates>"
+        totals_xml = "<totals>" + "".join(f"<item><fecha>{day.isoformat()}</fecha><usd>{daily_real[day]:.2f}</usd></item>" for day in dates) + "</totals>"
+        try:
+            if dry_run:
+                log(f"Vista previa USD global: depósito={movement_id}, fecha_banco={bank[1]}, importe={amount(bank[2]):.2f}, real_ControlGas={expected:.2f}, días={','.join(day.isoformat() for day in dates)}.")
+            else:
+                cursor.execute("EXEC dbo.usp_efc_conc_usd_global_asociar_automatica ?,?,?,?", movement_id, date_xml, totals_xml, run_id)
+                conn.commit()
+                log(f"Conciliado USD global: depósito={movement_id}, real_ControlGas={expected:.2f}, días={','.join(day.isoformat() for day in dates)}.")
+            used.add(movement_id)
+            reserved_dates.update(dates)
+            matched += 1
+            details.append(f"USD_GLOBAL/{movement_id}/{','.join(day.isoformat() for day in dates)}/deposito={amount(bank[2]):.2f}/real={expected:.2f}")
+        except pyodbc.Error as exc:
+            conn.rollback()
+            errors += 1
+            log(f"Error DB conciliando USD global, depósito={movement_id}: {error_text(exc)}")
+            details.append(f"USD_GLOBAL/{movement_id}: {error_text(exc)}")
+    return matched, skipped, errors
 
 
 def gasomex_account_matches(bank: tuple, station_id: int) -> bool:
@@ -899,8 +1250,8 @@ def run(
         raise RuntimeError("La fecha inicial no puede ser posterior a la final.")
     if station_filter is not None and station_filter not in COMPANY_STATIONS:
         raise RuntimeError(f"La estación {station_filter} no está habilitada para conciliación automática.")
-    if dry_run and (start_date is None or station_filter is None):
-        raise RuntimeError("--dry-run requiere --from, --to y --station-id para limitar la vista previa.")
+    if dry_run and start_date is None:
+        raise RuntimeError("--dry-run requiere --from y --to para limitar la vista previa.")
     load_env_file()
     log(
         "Configuración lista: "
@@ -924,10 +1275,18 @@ def run(
                 "dbo.efc_conc_grupos",
                 "dbo.efc_conc_transitos",
                 "dbo.efc_conc_correcciones_banco",
+                "dbo.efc_conc_usd_globales",
+                "dbo.efc_conc_usd_globales_dias",
+                "dbo.efc_conc_cierres",
+                "dbo.efc_conc_cierres_etapas",
             )
             missing = [name for name in required_tables if not cursor.execute("SELECT OBJECT_ID(?, 'U')", name).fetchone()[0]]
             if missing:
                 raise RuntimeError("Vista previa requiere el esquema bancario ya instalado; faltan: " + ", ".join(missing))
+            if not cursor.execute("SELECT OBJECT_ID('dbo.v_efc_conc_analiticos_papeletas_efectivas', 'V')").fetchone()[0]:
+                raise RuntimeError("Vista previa requiere dbo.v_efc_conc_analiticos_papeletas_efectivas.")
+            if not cursor.execute("SELECT OBJECT_ID('dbo.usp_efc_conc_usd_crear_transitos_globales', 'P')").fetchone()[0]:
+                raise RuntimeError("Vista previa de tránsitos USD requiere una ejecución normal previa para instalar el procedimiento automático.")
         else:
             ensure_schema(cursor); conn.commit()
         log("Esquema listo.")
@@ -974,6 +1333,37 @@ def run(
         indexed_count = sum(len(rows) for by_date in bank_index.values() for rows in by_date.values())
         log(f"Movimientos bancarios elegibles: {len(bank_rows)}; clasificados: {indexed_count}; usados: {len(used)}.")
         matched = skipped = errors = 0; details: list[str] = []
+        if station_filter is None:
+            global_matched, global_skipped, global_errors = reconcile_global_diaz_usd(
+                cursor, conn, first, last, used, run_id, dry_run, details
+            )
+            matched += global_matched; skipped += global_skipped; errors += global_errors
+        else:
+            log("USD global omitido: la ejecución está limitada a una estación específica.")
+        diaz_transit_stations = set(DIAZ_GAS_STATIONS) - {40}
+        if station_filter is None or station_filter in diaz_transit_stations:
+            if dry_run:
+                preview = cursor.execute(
+                    "EXEC dbo.usp_efc_conc_usd_crear_transitos_globales ?,?,?,?,?",
+                    first, last, station_filter, None, 1,
+                ).fetchall()
+                for row in preview:
+                    log(f"Vista previa tránsito USD Díaz Gas: estación={row[0]}, turno={as_date(row[1]).isoformat()} {row[2]}, importe={amount(row[3]):.2f}, depósito en mes={row[4]}.")
+                    details.append(f"TRANSITO_USD_PREVIEW/{row[0]}/{row[1]}/{row[2]}/{amount(row[3]):.2f}/{row[4]}")
+                log(f"Tránsitos USD Díaz Gas elegibles para crear: {len(preview)}.")
+            else:
+                created = cursor.execute(
+                    "EXEC dbo.usp_efc_conc_usd_crear_transitos_globales ?,?,?,?,?",
+                    first, last, station_filter, run_id, 0,
+                ).fetchall()
+                conn.commit()
+                for row in created:
+                    log(f"Tránsito USD Díaz Gas creado: estación={row[1]}, turno={as_date(row[2]).isoformat()} {row[3]}, importe={amount(row[4]):.2f}, depósito en mes={row[5]}.")
+                    details.append(f"TRANSITO_USD/{row[0]}/{row[1]}/{row[2]}/{row[3]}/{amount(row[4]):.2f}/{row[5]}")
+                matched += len(created)
+                log(f"Tránsitos USD Díaz Gas creados: {len(created)}.")
+        else:
+            log(f"Tránsito automático USD omitido para estación {station_filter}: solo aplica a estaciones Díaz Gas.")
         for station_number, (station_id, name, code) in enumerate(stations, 1):
             log(f"Estación {station_number}/{len(stations)} inicia: {station_id} {name}.")
             try:
@@ -1241,7 +1631,7 @@ if __name__ == "__main__":
     parser.add_argument("--from", dest="start_date", help="Fecha inicial de turnos (AAAA-MM-DD).")
     parser.add_argument("--to", dest="end_date", help="Fecha final de turnos (AAAA-MM-DD).")
     parser.add_argument("--station-id", type=int, help="Limita a una estación del catálogo automático.")
-    parser.add_argument("--dry-run", action="store_true", help="Calcula y muestra candidatos sin escribir cambios; requiere rango y estación.")
+    parser.add_argument("--dry-run", action="store_true", help="Calcula y muestra candidatos sin escribir cambios; requiere rango de fechas.")
     args = parser.parse_args()
     try:
         parsed_start = date.fromisoformat(args.start_date) if args.start_date else None
@@ -1254,6 +1644,6 @@ if __name__ == "__main__":
         parser.error("--from no puede ser posterior a --to.")
     if args.station_id is not None and parsed_start is None:
         parser.error("--station-id requiere --from y --to.")
-    if args.dry_run and (parsed_start is None or args.station_id is None):
-        parser.error("--dry-run requiere --from, --to y --station-id.")
+    if args.dry_run and parsed_start is None:
+        parser.error("--dry-run requiere --from y --to.")
     raise SystemExit(run(parsed_start, parsed_end, args.station_id, args.dry_run))

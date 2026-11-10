@@ -729,9 +729,10 @@ let datatables_tickets = $('#datatables_tickets').DataTable({
     ajax: {
         url: routeUrl('administration.datatables_tickets'),
         type: 'POST',
-        data: {
-            'from': $('input#from').val(),
-            'until': $('input#until').val(),
+        data: function (d) {
+            d.formulario = $('select#formulario').val() || [];
+            d.status = $('select#status').val() || [];
+            d.departamento = $('select#departamento').val() || [];
         },
         error: function() {
             $('#datatables_tickets').waitMe('hide');
@@ -805,6 +806,16 @@ $('#filtro-datatables_tickets input').on('keyup  change clear', function () {
         .column(18).search($('#SOLICITANTE').val().trim())
         .column(19).search($('#PROBLEMA').val().trim())
         .draw();
+});
+
+// Buscar: recarga la tabla por AJAX (POST). No se envía por GET porque con muchos
+// departamentos el query string rebasa el límite de IIS (2048 caracteres).
+$('#form_filtros_tickets').on('submit', function (e) {
+    e.preventDefault();
+    $('.table-responsive').addClass('loading');
+    datatables_tickets.ajax.reload(function () {
+        $('.table-responsive').removeClass('loading');
+    });
 });
 
 // Agregar un evento clic de refresh

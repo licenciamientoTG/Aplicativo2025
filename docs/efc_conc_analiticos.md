@@ -35,9 +35,15 @@ Programar una ejecución diaria con:
 python C:\ruta\Aplicativo2025\cron\efc_conc_analiticos_diario.py
 ```
 
+La fecha operativa de todas las papeletas se toma del nombre del archivo, no de
+las celdas de fecha de `PLANILLA` ni de la fecha de recepción del correo. Si el
+título contiene varias fechas, se usa la primera. También acepta rangos con el
+primer día abreviado, como `TOTAL GAS 07 Y 08-08-2026.xls`, que se interpreta
+como 7 de agosto de 2026.
+
 Para limitar la sincronización a fechas operativas inclusivas, se puede indicar
-un límite inicial, final o ambos. El rango se determina por la fecha del nombre
-del archivo `TOTAL GAS dd-mm-aaaa.xls`, no por la fecha de recepción del correo:
+un límite inicial, final o ambos. El rango también se determina por la fecha
+extraída del nombre del archivo:
 
 ```powershell
 python .\cron\efc_conc_analiticos_diario.py --from 2026-09-08 --to 2026-09-09
