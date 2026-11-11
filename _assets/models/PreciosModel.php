@@ -170,6 +170,50 @@ class PreciosModel extends Model{
 
         return ($rs=$this->sql->select($query, [])) ? $rs : false ;
     }
+
+    /**
+     * Estaciones para el histórico. No sondea el puerto 1433 (a diferencia de
+     * get_active_station_TG) porque el histórico vive en SG12 y una estación
+     * fuera de línea también debe poder consultarse.
+     */
+    function get_history_stations() : array {
+        $query = "SELECT Codigo, Nombre FROM [TG].[dbo].[Estaciones] WHERE activa = 1 AND Codigo > 0 ORDER BY Nombre;";
+        return $this->sql->select($query, []) ?: [];
+    }
+
+    /**
+     * Cambios de precio de combustibles entre dos fechas (enteros fch, inclusivos)
+     * para las estaciones dadas.
+     */
+    function get_price_history(array $codgas, int $from, int $until) : array {
+        $in = implode(',', array_fill(0, count($codgas), '?'));
+        $query = "SELECT t1.codgas, t1.codprd, t1.fch, t1.hra, t1.pre
+                    FROM [SG12].[dbo].[Precios] t1
+                   WHERE t1.codprd IN (179,180,181,192,193)
+                     AND t1.codgas IN ({$in})
+                     AND t1.fch BETWEEN ? AND ?
+                   ORDER BY t1.codgas, t1.codprd, t1.fch, t1.hra;";
+        return $this->sql->select($query, array_merge($codgas, [$from, $until])) ?: [];
+    }
+
+    /**
+     * Último precio registrado antes de $from por estación y producto: el precio
+     * con el que arranca el periodo consultado.
+     */
+    function get_prices_before(array $codgas, int $from) : array {
+        $in = implode(',', array_fill(0, count($codgas), '?'));
+        $query = "SELECT codgas, codprd, fch, hra, pre
+                    FROM (
+                        SELECT t1.codgas, t1.codprd, t1.fch, t1.hra, t1.pre,
+                               ROW_NUMBER() OVER (PARTITION BY t1.codgas, t1.codprd ORDER BY t1.fch DESC, t1.hra DESC) AS rn
+                          FROM [SG12].[dbo].[Precios] t1
+                         WHERE t1.codprd IN (179,180,181,192,193)
+                           AND t1.codgas IN ({$in})
+                           AND t1.fch < ?
+                    ) x
+                   WHERE rn = 1;";
+        return $this->sql->select($query, array_merge($codgas, [$from])) ?: [];
+    }
 }
 
 
