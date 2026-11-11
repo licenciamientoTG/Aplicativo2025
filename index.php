@@ -95,18 +95,19 @@ if ($routeMatch !== null) {
 
     // Estas consultas de la conciliación se lanzan juntas desde el navegador.
     // Liberar el lock de sesión tras autenticar permite que PHP las procese en
-    // paralelo, en vez de hacer que cada petición espere a la anterior. Se
-    // limita a endpoints GET que no modifican la sesión ni escriben datos.
+    // paralelo, en vez de hacer que cada petición espere a la anterior. Incluye
+    // la precarga bulk POST, que sólo consulta datos y no modifica la sesión.
     $parallelReadMethods = [
         'efc_conc_grupos_activos',
         'efc_conc_transitos',
         'efc_conc_analiticos_bandeja',
         'efc_conc_usd_globales',
         'efc_conc_resumen_papeletas_usd',
+        'efc_conc_resumen_general_datos',
         'efc_conc_tipo_cambio_turnos',
         'get_cash_banorte_deposits',
     ];
-    if ($_SERVER['REQUEST_METHOD'] === 'GET'
+    if (in_array($_SERVER['REQUEST_METHOD'], ['GET', 'POST'], true)
         && in_array($def['handler'][1], $parallelReadMethods, true)
         && session_status() === PHP_SESSION_ACTIVE) {
         session_write_close();

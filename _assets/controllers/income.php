@@ -8022,6 +8022,118 @@ public function stamped_invoices_detail(): void
         try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $money=static fn($value)=>round((float)str_replace([',','$',' '],'',(string)$value),2); $cg=$data['cg']??[]; $bank=$data['bank']??[]; foreach($cg as &$item)$item['amount']=$money($item['amount']??0); unset($item); foreach($bank as &$item){$item['amount']=$money($item['amount']??0); $item['id']='mb_'.(int)preg_replace('/\D/','',(string)($item['id']??''));} unset($item); $type=(string)($data['type']??'MANUAL'); $id=$this->efcConciliacion->saveGroup(['station_id'=>(int)$data['station_id'],'type'=>$type,'cg_total'=>$money($data['cg_total']??0),'bank_total'=>$money($data['bank_total']??0),'difference'=>$money($data['difference']??0)],$cg,$bank,(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success','id'=>$id]); }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
+
+    /** POST /income/efc_conc_resumen_general_datos {company,year,month}; read-only bulk preload for the monthly summary. */
+    public function efc_conc_resumen_general_datos(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $request=json_decode((string)file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);
+            if(!is_array($request)) throw new RuntimeException('Solicitud inválida.');
+            $companyValue=$request['company']??null;
+            if(!is_string($companyValue)) throw new RuntimeException('Empresa inválida.');
+            $company=strtoupper(trim($companyValue));
+            if(!in_array($company,['DIAZ GAS','FORANEAS','GASOMEX'],true)) throw new RuntimeException('Empresa inválida.');
+            $periodValue=static function($value,string $name): int {
+                if(!(is_int($value)||(is_string($value)&&preg_match('/^[0-9]{1,4}$/',$value)))) throw new RuntimeException($name.' inválido.');
+                return (int)$value;
+            };
+            $year=$periodValue($request['year']??null,'Año');
+            $month=$periodValue($request['month']??null,'Mes');
+            if($year<2020 || $year>2100 || $month<1 || $month>12) throw new RuntimeException('Periodo inválido.');
+
+            // Never accept station ids from the request: derive the complete scope
+            // from the selected company catalog to preserve tenant boundaries.
+            $stations=EfcConciliacionModel::stationIds($company);
+            $data=[];
+            $groupsPeriod=(new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)))->modify('+1 month');
+            $groupsYear=(int)$groupsPeriod->format('Y');
+            $groupsMonth=(int)$groupsPeriod->format('n');
+            foreach($stations as $stationId) {
+                $key=(string)$stationId;
+                $data[$key]=[
+                    'rates'=>[],
+                    'transits'=>['origin'=>[],'incoming'=>[],'next_month'=>(new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)))->modify('+1 month')->format('Y-m')],
+                    'groups'=>[],
+                    'work'=>['papers'=>[],'links'=>[]],
+                    'errors'=>[],
+                ];
+                // Keep failures local to a dataset and station so healthy stations
+                // and the remaining sources still render in the summary.
+                $loads=[
+                    'rates'=>fn()=>$this->efcAnaliticos->exchangeRatesForTurns($stationId,$year,$month),
+                    'transits'=>fn()=>$this->efcConciliacion->activeTransits($stationId,$year,$month,$company),
+                    'groups'=>fn()=>$this->efcConciliacion->activeGroups($stationId,$groupsYear,$groupsMonth),
+                    'work'=>fn()=>$this->efcAnaliticos->workspace($stationId,$year,$month,$company),
+                ];
+                foreach($loads as $dataset=>$load) {
+                    try {
+                        $result=$load();
+                        if($dataset==='work') {
+                            // The summary only needs USD amounts and link keys; do
+                            // not ship the full reconciliation workspace payload.
+                            $data[$key][$dataset]=[
+                                'papers'=>array_map(static fn($paper)=>[
+                                    'id'=>$paper['id']??null,
+                                    'real_usd'=>$paper['real_usd']??0,
+                                ],$result['papers']??[]),
+                                'links'=>array_map(static fn($link)=>[
+                                    'papeleta_id'=>$link['papeleta_id']??null,
+                                    'papeleta_secundaria_id'=>$link['papeleta_secundaria_id']??null,
+                                    'fecha_cg'=>$link['fecha_cg']??null,
+                                    'turno'=>$link['turno']??null,
+                                    'concepto'=>$link['concepto']??null,
+                                    'exchange_rate'=>$link['exchange_rate']??null,
+                                ],$result['links']??[]),
+                            ];
+                        } elseif($dataset==='rates') {
+                            $data[$key][$dataset]=array_map(static fn($rate)=>[
+                                'date'=>$rate['date']??null,
+                                'turn'=>$rate['turn']??null,
+                                'rate'=>$rate['rate']??null,
+                            ],$result);
+                        } elseif($dataset==='transits') {
+                            $data[$key][$dataset]=[
+                                'origin'=>array_map(static fn($transit)=>[
+                                    'id'=>$transit['id']??null,
+                                    'source_key'=>$transit['source_key']??null,
+                                    'date'=>$transit['date']??null,
+                                    'turn'=>$transit['turn']??null,
+                                    'currency'=>$transit['currency']??null,
+                                    'status'=>$transit['status']??null,
+                                    'amount'=>$transit['amount']??0,
+                                ],$result['origin']??[]),
+                                'incoming'=>array_map(static fn($transit)=>[
+                                    'currency'=>$transit['currency']??null,
+                                    'status'=>$transit['status']??null,
+                                    'amount'=>$transit['amount']??0,
+                                ],$result['incoming']??[]),
+                            ];
+                        } elseif($dataset==='groups') {
+                            $data[$key][$dataset]=array_map(static fn($group)=>[
+                                'cg'=>array_map(static fn($item)=>[
+                                    'id'=>$item['id']??null,
+                                    'currency'=>$item['currency']??null,
+                                    'transit'=>$item['transit']??false,
+                                ],$group['cg']??[]),
+                                'bank'=>array_map(static fn($item)=>[
+                                    'amount'=>$item['amount']??0,
+                                ],$group['bank']??[]),
+                            ],$result);
+                        } else {
+                            $data[$key][$dataset]=$result;
+                        }
+                    }
+                    catch(Throwable $e) { $data[$key]['errors'][$dataset]=$e->getMessage(); }
+                }
+            }
+            echo json_encode(['status'=>'success','data'=>['stations'=>$data]],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e) {
+            http_response_code(422);
+            echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
     public function efc_conc_grupos_activos(): void {
         ob_clean(); header('Content-Type: application/json');
         try { $station=(int)($_GET['estacion_id']??0); $year=(int)($_GET['year']??0); $month=(int)($_GET['month']??0); echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->activeGroups($station,$year,$month)]); }
