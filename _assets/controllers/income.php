@@ -5135,8 +5135,11 @@ public function anomalies_client_tickets()
             $denominaciones = [];
             foreach ($result as $row) {
                 $denominacion = trim((string)($row['Denominacion'] ?? ''));
-                if ($denominacion === 'DIAZ GAS S.A. DE C.V. (Praxedis)') $denominacion = 'Héctor Armandino Fierro Holguín';
-                elseif ($denominacion === 'DIAZ GAS S.A. DE C.V. (VILLA AHUMADA)') $denominacion = 'Gasolinera Villa Ahumada';
+                $denominacionUpper = mb_strtoupper($denominacion, 'UTF-8');
+                if (str_starts_with($denominacionUpper, 'DIAZ GAS')) $denominacion = 'DIAZ GAS';
+                elseif (str_starts_with($denominacionUpper, 'DISTRIBUIDORA GASO')) $denominacion = 'DISTRIBUIDORA GASO';
+                elseif (str_starts_with($denominacionUpper, 'ESTACION CUSTODIA')) $denominacion = 'ESTACION CUSTODIA';
+                elseif (str_starts_with($denominacionUpper, 'GRUPO OPERADOR GASOLINERO TSA DEL CENTRO')) $denominacion = 'GRUPO OPERADOR GASOLINERO TSA DEL CENTRO';
                 if ($denominacion !== '') $denominaciones[$denominacion] = ['denominacion' => $denominacion];
             }
             $denominaciones = array_values($denominaciones);
@@ -9285,7 +9288,7 @@ public function stamped_invoices_detail(): void
         $next = (new DateTimeImmutable($period . '-01'))->modify('+1 month')->format('Y-m');
         try {
             $conn = $this->v3_conn();
-            $denominacionExpr = "CASE WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (Praxedis)' THEN N'Héctor Armandino Fierro Holguín' WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (VILLA AHUMADA)' THEN N'Gasolinera Villa Ahumada' ELSE ISNULL(E.Denominacion,N'') END";
+            $denominacionExpr = "CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(E.Denominacion,N'')))) LIKE N'DIAZ GAS%' THEN N'DIAZ GAS' WHEN UPPER(LTRIM(RTRIM(ISNULL(E.Denominacion,N'')))) LIKE N'DISTRIBUIDORA GASO%' THEN N'DISTRIBUIDORA GASO' WHEN UPPER(LTRIM(RTRIM(ISNULL(E.Denominacion,N'')))) LIKE N'ESTACION CUSTODIA%' THEN N'ESTACION CUSTODIA' WHEN UPPER(LTRIM(RTRIM(ISNULL(E.Denominacion,N'')))) LIKE N'GRUPO OPERADOR GASOLINERO TSA DEL CENTRO%' THEN N'GRUPO OPERADOR GASOLINERO TSA DEL CENTRO' ELSE ISNULL(E.Denominacion,N'') END";
             $stationCompanyWhere = '';
             if ($rs === 'DIAZ GAS') $stationCompanyWhere = " AND (E.RFC='DGA930823KD3' OR E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%')";
             elseif ($rs === 'GASOMEX') $stationCompanyWhere = " AND E.RFC='DGM880621FU5'";
