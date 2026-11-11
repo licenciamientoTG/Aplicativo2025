@@ -8104,6 +8104,8 @@ public function stamped_invoices_detail(): void
                                     'amount'=>$transit['amount']??0,
                                 ],$result['origin']??[]),
                                 'incoming'=>array_map(static fn($transit)=>[
+                                    'date'=>$transit['date']??null,
+                                    'turn'=>$transit['turn']??null,
                                     'currency'=>$transit['currency']??null,
                                     'status'=>$transit['status']??null,
                                     'amount'=>$transit['amount']??0,
