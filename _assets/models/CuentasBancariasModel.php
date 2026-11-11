@@ -271,23 +271,34 @@ class CuentasBancariasModel extends Model {
     public function get_cuentas_admin() : array {
         $query = "
             SELECT
-                Id,
-                FechaAlta,
-                CuentaLocal,
-                Clave,
-                Descripcion,
-                TipoCuenta,
-                Banco,
-                Divisa,
-                TitularCuenta,
-                Tipo,
-                emp_cod,
-                proveedor_cod,
-                Activo,
-                FechaModificacion,
-                UsuarioModificacion
-            FROM [TG].[dbo].[CatalogosCuentasBancarias]
-            ORDER BY Descripcion, Banco, CuentaLocal
+                c.Id,
+                c.FechaAlta,
+                c.CuentaLocal,
+                c.Clave,
+                c.Descripcion,
+                c.TipoCuenta,
+                c.Banco,
+                c.Divisa,
+                c.TitularCuenta,
+                c.Tipo,
+                c.emp_cod,
+                c.proveedor_cod,
+                c.Direccion,
+                c.EntidadCuentaLocalABASwift,
+                c.Activo,
+                c.FechaModificacion,
+                c.UsuarioModificacion,
+                -- Alta de cuenta que la originó (el proveedor vive en la solicitud, no en ControlGas)
+                sol.id        AS solicitud_id,
+                sol.proveedor AS solicitud_proveedor
+            FROM [TG].[dbo].[CatalogosCuentasBancarias] c
+            OUTER APPLY (
+                SELECT TOP 1 r.id, r.proveedor
+                FROM [TG].[dbo].[bank_account_requests] r
+                WHERE r.catalogo_cuenta_id = c.Id AND r.status = 2
+                ORDER BY r.id DESC
+            ) sol
+            ORDER BY c.Descripcion, c.Banco, c.CuentaLocal
         ";
         return $this->sql->select($query) ?: [];
     }
@@ -304,8 +315,8 @@ class CuentasBancariasModel extends Model {
         $query = "
             INSERT INTO [TG].[dbo].[CatalogosCuentasBancarias]
                 (FechaAlta, CuentaLocal, Clave, Descripcion, Banco, TitularCuenta, Tipo,
-                 Divisa, emp_cod, proveedor_cod, Activo, FechaRegistro, UsuarioRegistro)
-            VALUES (GETDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), ?)
+                 Divisa, emp_cod, proveedor_cod, Direccion, Activo, FechaRegistro, UsuarioRegistro)
+            VALUES (GETDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE(), ?)
         ";
         $params = [
             $data['CuentaLocal'],
@@ -317,6 +328,7 @@ class CuentasBancariasModel extends Model {
             $data['Divisa']        !== '' ? $data['Divisa']        : null,
             $data['emp_cod']       !== '' ? $data['emp_cod']       : null,
             $data['proveedor_cod'] !== '' ? $data['proveedor_cod'] : null,
+            ($data['Direccion'] ?? '') !== '' ? $data['Direccion'] : null,
             (int)$data['Activo'],
             $usuario_id,
         ];
@@ -340,6 +352,7 @@ class CuentasBancariasModel extends Model {
                 Divisa              = ?,
                 emp_cod             = ?,
                 proveedor_cod       = ?,
+                Direccion           = ?,
                 Activo              = ?,
                 FechaModificacion   = GETDATE(),
                 UsuarioModificacion = ?
@@ -355,6 +368,7 @@ class CuentasBancariasModel extends Model {
             $data['Divisa']         !== '' ? $data['Divisa']         : null,
             $data['emp_cod']        !== '' ? $data['emp_cod']        : null,
             $data['proveedor_cod']  !== '' ? $data['proveedor_cod']  : null,
+            ($data['Direccion'] ?? '') !== '' ? $data['Direccion'] : null,
             (int)$data['Activo'],
             $usuario_id,
             $id,

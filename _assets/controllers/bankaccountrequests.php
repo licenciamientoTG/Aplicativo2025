@@ -220,12 +220,16 @@ class BankAccountRequests
         if ($d['proveedor'] === '') {
             return [$d, 'Escriba el nombre del proveedor.'];
         }
+        $direccion = $this->texto($_POST['direccion'] ?? '', self::LIM_DIRECCION);
+        if ($direccion === '') {
+            return [$d, 'Escriba la dirección completa del proveedor.'];
+        }
         // Los datos del layout bancario (beneficiario, plaza, sucursal…) ya no se piden al solicitante;
         // las columnas siguen en la tabla y se llenan con los valores fijos del Excel.
         $d += [
             'plaza_banxico' => '01001', 'sucursal' => '1234', 'tipo_cuenta_cod' => '40',
             'benef_app_paterno' => '', 'benef_app_materno' => '', 'benef_log' => $d['proveedor'],
-            'benef_direccion' => $this->texto($_POST['direccion'] ?? '', self::LIM_DIRECCION), 'benef_ciudad' => 'MEXICO',
+            'benef_direccion' => $direccion, 'benef_ciudad' => 'MEXICO',
         ];
         if (!in_array($d['departamento'], BankAccountRequestsModel::DEPARTAMENTOS, true)) {
             return [$d, 'Seleccione el departamento.'];

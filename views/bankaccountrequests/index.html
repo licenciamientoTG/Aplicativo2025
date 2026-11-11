@@ -6,7 +6,7 @@
 <style>
     #tabla_altas thead th { text-transform:uppercase; font-size:.7rem; letter-spacing:.05em; color:#64748b; white-space:nowrap; background:#f8fafc; }
     #tabla_altas tbody td { vertical-align:middle; }
-    #tabla_altas .ba-fila { cursor:pointer; }
+    .ba-acciones { white-space:nowrap; }
     .ba-folio { font-family:Consolas, monospace; font-weight:700; color:#1C4587; white-space:nowrap; }
     .ba-cuenta { font-family:Consolas, monospace; white-space:nowrap; }
     .badge-estatus { display:inline-flex; align-items:center; gap:.4rem; font-size:.72rem; font-weight:600; padding:.15rem .55rem; border-radius:.35rem; border:1px solid; white-space:nowrap; }
@@ -41,11 +41,11 @@
     <div class="table-responsive">
         <table class="table table-hover mb-0" id="tabla_altas">
             <thead><tr>
-                <th>Folio</th><th>Fecha</th><th>Razón social</th><th>Proveedor</th><th>Banco</th><th>Cuenta</th><th>Solicitante</th><th>Estatus</th>{% if es_tesoreria %}<th></th>{% endif %}
+                <th>Folio</th><th>Fecha</th><th>Razón social</th><th>Proveedor</th><th>Banco</th><th>Cuenta</th><th>Solicitante</th><th>Estatus</th><th class="text-end">Acciones</th>
             </tr></thead>
             <tbody>
             {% for s in solicitudes %}
-                <tr class="ba-fila" data-status="{{ s.status }}" data-busqueda="{{ s.busqueda }}" data-url="{{ url('bankaccounts.detail', {id: s.id}) }}">
+                <tr class="ba-fila" data-status="{{ s.status }}" data-busqueda="{{ s.busqueda }}">
                     <td class="ba-folio">#{{ s.id }}</td>
                     <td>{{ s.fecha_solicitud|date('d/m/Y') }}</td>
                     <td>{{ s.empresa }}</td>
@@ -54,10 +54,13 @@
                     <td class="ba-cuenta">{{ s.num_cuenta }}</td>
                     <td>{{ s.solicitante }}</td>
                     <td><span class="badge-estatus st-{{ s.status }}">{{ estatus[s.status] ?? s.status }}</span></td>
-                    {% if es_tesoreria %}<td class="text-end">{% if s.status == 1 %}<button type="button" class="btn btn-sm btn-outline-primary btn-ba-modal" data-url="{{ url('bankaccounts.decision_modal', {id: s.id}) }}"><i class="fas fa-gavel"></i> Revisar</button>{% endif %}</td>{% endif %}
+                    <td class="text-end ba-acciones">
+                        {% if es_tesoreria and s.status == 1 %}<button type="button" class="btn btn-sm btn-outline-primary btn-ba-modal" data-url="{{ url('bankaccounts.decision_modal', {id: s.id}) }}"><i class="fas fa-gavel"></i> Revisar</button>{% endif %}
+                        <a href="{{ url('bankaccounts.detail', {id: s.id}) }}" class="btn btn-sm btn-outline-secondary" title="Ver detalle de la solicitud #{{ s.id }}"><i class="fas fa-eye"></i> {{ s.status == 4 and s.es_propia ? 'Subir carátula' : 'Ver' }}</a>
+                    </td>
                 </tr>
             {% else %}
-                <tr><td colspan="{{ es_tesoreria ? 9 : 8 }}" class="text-center text-muted py-4">Aún no hay solicitudes.</td></tr>
+                <tr><td colspan="9" class="text-center text-muted py-4">Aún no hay solicitudes.</td></tr>
             {% endfor %}
             </tbody>
         </table>

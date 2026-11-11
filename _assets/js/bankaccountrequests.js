@@ -46,7 +46,7 @@
     // En el detalle el botón de subir solo se habilita con un archivo elegido
     $('#ba_archivo').on('change', function () { $('#ba_subir').prop('disabled', !(this.files && this.files.length)); });
 
-    // ---------------- Index: filtros y navegación a la fila ----------------
+    // ---------------- Index: filtros (al detalle se entra con el botón Ver, no con clic en la fila) ----------------
     var $tabla = $('#tabla_altas');
     if ($tabla.length) {
         var status = '';
@@ -66,10 +66,6 @@
             aplicar();
         });
         $('#ba_filtro_texto').on('input', aplicar);
-        $tabla.on('click', 'tr.ba-fila', function (e) {
-            if ($(e.target).closest('button, a').length) { return; }
-            window.location.href = $(this).data('url');
-        });
 
         // Tesorería: modal Aprobar / Rechazar desde la lista (vista parcial del servidor)
         $tabla.on('click', '.btn-ba-modal', function () {

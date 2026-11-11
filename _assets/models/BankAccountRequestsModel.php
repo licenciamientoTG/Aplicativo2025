@@ -85,9 +85,10 @@ class BankAccountRequestsModel extends Model
      */
     public function duplicates(string $cuenta, int $exceptRequestId = 0): array
     {
+        // La CLABE puede estar en CuentaLocal (cuentas viejas) o en Clave (altas nuevas).
         $cat = $this->sql->select(
-            'SELECT Id, CuentaLocal, Descripcion, Banco, Activo FROM [TG].[dbo].[CatalogosCuentasBancarias] WHERE CuentaLocal = ?;',
-            [$cuenta]
+            'SELECT Id, CuentaLocal, Descripcion, Banco, Activo FROM [TG].[dbo].[CatalogosCuentasBancarias] WHERE CuentaLocal = ? OR Clave = ?;',
+            [$cuenta, $cuenta]
         ) ?: [];
         $sol = $this->sql->select(
             'SELECT id, proveedor, banco FROM [TG].[dbo].[bank_account_requests]
@@ -186,15 +187,26 @@ class BankAccountRequestsModel extends Model
     }
 
     /**
-     * Aprueba: inserta la cuenta en CatalogosCuentasBancarias como 'Terceros' o, si
-     * la CLABE ya existe, la liga a la fila existente (reactivándola si estaba
-     * inactiva; sus datos, incluida la clave de beneficiario, no se tocan). Todo en una
+     * Aprueba: inserta la cuenta en CatalogosCuentasBancarias como 'Terceros' (cuenta en
+     * CuentaLocal, CLABE en Clave, emp_cod y Direccion) o, si ya existe, la liga a la fila
+     * existente (reactivándola y llenando solo Clave/emp_cod/Direccion vacíos). Todo en una
      * transacción; el UPDATE de estatus es condicional para que dos aprobaciones
      * simultáneas no dupliquen la cuenta.
      * Devuelve ['success', 'message', 'catalogo_id'?, 'ligada'?].
      */
     public function approve(array $req, int $userId, ?string $comentario): array
     {
+        $id = (int) $req['id'];
+
+        // Sin la columna Direccion el INSERT/UPDATE del catálogo truena: avisar qué falta en vez de un error genérico.
+        $col = $this->sql->select("SELECT COL_LENGTH('TG.dbo.CatalogosCuentasBancarias', 'Direccion') AS largo;", []);
+        if (!$col || $col[0]['largo'] === null) {
+            return ['success' => false, 'message' => 'No se aprobó la solicitud #' . $id . ': al catálogo de cuentas bancarias le falta la columna Direccion. '
+                . 'Pida a Sistemas correr el script docs/sql/catalogo_cuentas_direccion.sql y vuelva a intentarlo. La solicitud sigue pendiente.'];
+        }
+
+        // Paso en curso, para decir en el mensaje dónde falló.
+        $paso = 'marcar la solicitud como aprobada';
         $this->sql->beginTransaction();
         try {
             $claimed = $this->sql->updateSafe(
@@ -209,49 +221,69 @@ class BankAccountRequestsModel extends Model
                 return ['success' => false, 'message' => 'La solicitud ya cambió de estado, recargue la página.'];
             }
 
-            $clave = self::catalog_key($req);
+            // Catálogo: CuentaLocal = cuenta (MXN) o account number (USD); Clave = CLABE (MXN).
+            $cuenta    = trim((string) $req['num_cuenta']);
+            $clabe     = trim((string) ($req['clabe'] ?? ''));
+            $direccion = trim((string) ($req['benef_direccion'] ?? ''));
+            $empCod    = (int) $req['empresa_cod'] ?: null;
+
+            // Ya existe si la CLABE está en CuentaLocal (cuentas viejas) o en Clave, o si la
+            // misma cuenta ya está registrada en el mismo banco.
+            $paso = 'buscar si la cuenta ya existe en el catálogo';
             $existente = $this->sql->select(
-                'SELECT TOP 1 Id, Activo FROM [TG].[dbo].[CatalogosCuentasBancarias] WHERE CuentaLocal = ? ORDER BY Activo DESC, Id ASC;',
-                [$clave]
+                'SELECT TOP 1 Id, Activo FROM [TG].[dbo].[CatalogosCuentasBancarias]
+                 WHERE (? <> \'\' AND (CuentaLocal = ? OR Clave = ?)) OR (CuentaLocal = ? AND Banco = ?)
+                 ORDER BY Activo DESC, Id ASC;',
+                [$clabe, $clabe, $clabe, $cuenta, $req['banco']]
             );
             $ligada = false;
             if ($existente) {
                 $catId  = (int) $existente[0]['Id'];
                 $ligada = true;
+                // Se reactiva y solo se completan los datos vacíos; lo capturado no se pisa.
+                $paso = 'actualizar la cuenta existente #' . $catId . ' del catálogo';
                 $this->sql->update(
                     'UPDATE [TG].[dbo].[CatalogosCuentasBancarias]
                      SET Activo = 1,
+                         Clave     = COALESCE(NULLIF(Clave, \'\'), ?),
+                         emp_cod   = COALESCE(emp_cod, ?),
+                         Direccion = COALESCE(NULLIF(Direccion, \'\'), ?),
                          FechaModificacion = GETDATE(), UsuarioModificacion = ?
                      WHERE Id = ?;',
-                    [$userId, $catId]
+                    [$clabe ?: null, $empCod, $direccion ?: null, $userId, $catId]
                 );
             } else {
+                $paso = 'agregar la cuenta al catálogo de cuentas bancarias';
                 $catId = (int) $this->sql->insert(
                     'INSERT INTO [TG].[dbo].[CatalogosCuentasBancarias]
-                        (FechaAlta, CuentaLocal, Descripcion, TipoCuenta, Banco, Divisa,
-                         TitularCuenta, Tipo, Activo, FechaRegistro, UsuarioRegistro, EntidadCuentaLocalABASwift)
-                     VALUES (CAST(GETDATE() AS DATE), ?, ?, \'Otros Bancos Nacionales\', ?, ?, ?, \'Terceros\', 1, GETDATE(), ?, ?);',
+                        (FechaAlta, CuentaLocal, Clave, Descripcion, TipoCuenta, Banco, Divisa,
+                         TitularCuenta, Tipo, emp_cod, Direccion, Activo, FechaRegistro, UsuarioRegistro, EntidadCuentaLocalABASwift)
+                     VALUES (CAST(GETDATE() AS DATE), ?, ?, ?, \'Otros Bancos Nacionales\', ?, ?, ?, \'Terceros\', ?, ?, 1, GETDATE(), ?, ?);',
                     [
-                        $clave, $req['proveedor'], $req['banco'],
+                        $cuenta, $clabe ?: null, $req['proveedor'], $req['banco'],
                         self::DIVISAS[$req['moneda']] ?? self::DIVISAS['PESOS'],
-                        $req['proveedor'], (string) $userId,
+                        $req['proveedor'], $empCod, $direccion ?: null, (string) $userId,
                         trim((string) ($req['routing_number'] ?? '')) ?: null,  // ABA / routing number (cuentas USD)
                     ]
                 );
                 if ($catId <= 0) {
                     $this->sql->rollBack();
-                    return ['success' => false, 'message' => 'No se pudo registrar la cuenta en el catálogo.'];
+                    return ['success' => false, 'message' => 'No se aprobó la solicitud #' . $id . ': el catálogo no devolvió el id de la cuenta nueva. No se guardó ningún cambio; avise a Sistemas.'];
                 }
             }
 
-            $this->sql->update('UPDATE [TG].[dbo].[bank_account_requests] SET catalogo_cuenta_id = ? WHERE id = ?;', [$catId, (int) $req['id']]);
+            $paso = 'ligar la solicitud con la cuenta #' . $catId . ' del catálogo';
+            $this->sql->update('UPDATE [TG].[dbo].[bank_account_requests] SET catalogo_cuenta_id = ? WHERE id = ?;', [$catId, $id]);
+            $paso = 'confirmar los cambios';
             $this->sql->commit();
             return ['success' => true, 'catalogo_id' => $catId, 'ligada' => $ligada,
                 'message' => $ligada ? 'Solicitud aprobada: la cuenta ya existía en el catálogo y quedó ligada y activa.' : 'Solicitud aprobada: la cuenta se agregó al catálogo.'];
         } catch (Throwable $e) {
             $this->sql->rollBack();
-            error_log('BankAccountRequestsModel::approve(#' . $req['id'] . '): ' . $e->getMessage());
-            return ['success' => false, 'message' => 'No se pudo aprobar la solicitud.'];
+            error_log('BankAccountRequestsModel::approve(#' . $id . ') al ' . $paso . ': ' . $e->getMessage());
+            return ['success' => false, 'message' => 'No se aprobó la solicitud #' . $id . ': falló al ' . $paso . '. '
+                . 'No se guardó ningún cambio y la solicitud sigue pendiente. Si se repite, avise a Sistemas '
+                . '(el detalle técnico quedó en logs/php_errors.log con la hora del intento).'];
         }
     }
 }

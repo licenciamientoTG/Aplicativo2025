@@ -80,8 +80,8 @@
                     <option value="">Seleccione...</option>
                     {% for d in departamentos %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
                 </select></div>
-            <div class="col-12"><label>Dirección completa</label>
-                <input type="text" name="direccion" maxlength="300" class="form-control" placeholder="Calle, número, colonia / ciudad, estado, C.P., país (opcional)"></div>
+            <div class="col-12"><label>Dirección completa <span class="ba-req">*</span></label>
+                <input type="text" name="direccion" maxlength="300" class="form-control" placeholder="Calle, número, colonia, ciudad, estado, C.P., país" required></div>
             <div class="col-12"><div class="small text-muted"><i class="fas fa-exclamation-circle text-warning"></i> Si el banco no aparece en la lista, solicite que se agregue al catálogo de bancos antes de enviar la solicitud.</div></div>
             <div class="col-12"><div id="ba_aviso_dup" class="alert alert-warning py-2 px-3 mb-0 d-none"></div></div>
         </div>

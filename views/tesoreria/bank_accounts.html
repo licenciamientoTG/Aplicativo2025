@@ -66,6 +66,8 @@
                         <th>Divisa</th>
                         <th class="text-center">Emp.</th>
                         <th class="text-center">Prov.</th>
+                        <th>Dirección</th>
+                        <th>Solicitud</th>
                         <th class="text-center">Activo</th>
                         <th class="text-center">Acciones</th>
                     </tr>
@@ -146,6 +148,10 @@
                             </datalist>
                             <small class="text-muted">Este código es el que el layout usa para elegir la cuenta del proveedor (prioridad sobre el match por nombre).</small>
                         </div>
+                        <div class="col-12">
+                            <label class="form-label form-label-sm">Dirección</label>
+                            <input type="text" class="form-control form-control-sm" name="Direccion" id="ed_direccion" maxlength="300" placeholder="Calle, número, colonia, ciudad, estado, C.P., país">
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -161,6 +167,12 @@
 {% block myjs %}
 <script>
 let bankAccountsTable = null;
+// Detalle de la alta de cuenta que originó la fila (ruta con nombre; el 0 se reemplaza por el id)
+const BA_DETAIL_URL = '{{ url('bankaccounts.detail', {id: 0}) }}';
+
+function escHtml(s) {
+    return $('<div>').text(s === null || s === undefined ? '' : String(s)).html();
+}
 
 function badgeTipo(tipo) {
     if (tipo === 'Propias')  return '<span class="badge bg-info badge-tipo">Propias</span>';
@@ -183,7 +195,7 @@ function initBankAccountsTable() {
                 text: '<i class="fas fa-file-excel"></i> Excel',
                 className: 'btn btn-sm btn-success',
                 title: 'Cuentas Bancarias',
-                exportOptions: { columns: [0,1,2,3,4,5,6,7,8,9,10] }
+                exportOptions: { columns: [0,1,2,3,4,5,6,7,8,9,10,11,12] }
             },
             {
                 extend: 'colvis',
@@ -212,6 +224,16 @@ function initBankAccountsTable() {
             { data: 'Divisa', defaultContent: '—', render: function(d){ return d || '—'; } },
             { data: 'emp_cod', className: 'text-center', defaultContent: '—', render: function(d){ return (d === null || d === '') ? '—' : d; } },
             { data: 'proveedor_cod', className: 'text-center', defaultContent: '—', render: function(d){ return (d === null || d === '') ? '—' : d; } },
+            { data: 'Direccion', defaultContent: '—', render: function(d){ return d ? escHtml(d) : '—'; } },
+            {
+                data: 'solicitud_id', defaultContent: '—',
+                render: function(d, type, row) {
+                    if (!d) { return '—'; }
+                    if (type !== 'display') { return '#' + d + ' ' + (row.solicitud_proveedor || ''); }
+                    return '<a href="' + BA_DETAIL_URL.replace(/0\/?$/, d + '/') + '" target="_blank" title="Ver solicitud de alta y carátula">#' + d + '</a>'
+                         + (row.solicitud_proveedor ? ' <small class="text-muted">' + escHtml(row.solicitud_proveedor) + '</small>' : '');
+                }
+            },
             {
                 data: 'Activo', className: 'text-center', orderable: false,
                 render: function(d, type, row) {
@@ -301,6 +323,7 @@ function openEdit(id) {
     $('#ed_activo').val(parseInt(row.Activo) === 1 ? '1' : '0');
     $('#ed_emp_cod').val(row.emp_cod ?? '');
     $('#ed_proveedor_cod').val(row.proveedor_cod ?? '');
+    $('#ed_direccion').val(row.Direccion || '');
 
     setCuentaHint();
     $('#editAccountTitle').html('<i class="fas fa-edit me-2"></i>Editar Cuenta Bancaria');

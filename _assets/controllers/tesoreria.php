@@ -1456,6 +1456,7 @@ class Tesoreria
             'Divisa'        => trim($_POST['Divisa'] ?? ''),
             'emp_cod'       => trim($_POST['emp_cod'] ?? ''),
             'proveedor_cod' => trim($_POST['proveedor_cod'] ?? ''),
+            'Direccion'     => mb_substr(trim($_POST['Direccion'] ?? ''), 0, 300),
             'Activo'        => intval($_POST['Activo'] ?? 1),
         ];
 
@@ -1509,6 +1510,7 @@ class Tesoreria
             'Divisa'        => trim($_POST['Divisa'] ?? ''),
             'emp_cod'       => trim($_POST['emp_cod'] ?? ''),
             'proveedor_cod' => trim($_POST['proveedor_cod'] ?? ''),
+            'Direccion'     => mb_substr(trim($_POST['Direccion'] ?? ''), 0, 300),
             'Activo'        => intval($_POST['Activo'] ?? 1),
         ];
 
