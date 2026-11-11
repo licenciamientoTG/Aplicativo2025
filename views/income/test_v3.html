@@ -91,6 +91,7 @@
     .row-line1 { font-size:.84rem;font-weight:600;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .row-line2 { font-size:.71rem;color:#6c757d;line-height:1.25;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
     .grupo-conciliacion-badge { display:inline-flex;align-items:center;vertical-align:middle;margin-left:5px;padding:1px 6px;border:1px solid #bfdbfe;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:.64rem;font-weight:700;line-height:1.35;white-space:nowrap; }
+    .grupo-conciliacion-badge { border-color:var(--grupo-borde);background:var(--grupo-fondo);color:var(--grupo-texto); }
     .row-item:hover { background:#f8f9fa; }
     .row-item.active { background:var(--selected-bg)!important;border-left:5px solid var(--selected-border);padding-left:9px; }
     .row-item.conciliated { color:var(--matched-text);opacity:.9;border-left:5px solid rgba(0,0,0,.1); }
@@ -1330,11 +1331,20 @@ function esPilotoVillaAhumadaBankaool() {
 
 function distintivosGrupoConciliacion(registros) {
     if (!esPilotoVillaAhumadaBankaool()) return '';
+    const coloresGrupo = [
+        ['#bfdbfe', '#eff6ff', '#1d4ed8'], ['#a7f3d0', '#ecfdf5', '#047857'],
+        ['#fbcfe8', '#fdf2f8', '#be185d'], ['#fde68a', '#fffbeb', '#b45309'],
+        ['#ddd6fe', '#f5f3ff', '#6d28d9'], ['#99f6e4', '#f0fdfa', '#0f766e'],
+        ['#fecaca', '#fef2f2', '#b91c1c'], ['#c7d2fe', '#eef2ff', '#4338ca'],
+    ];
     const lista = Array.isArray(registros) ? registros : (registros ? [registros] : []);
     const grupos = [...new Set(lista
         .map(item => String(item && item.grupo_id != null ? item.grupo_id : '').trim())
         .filter(id => /^\d+$/.test(id)))].sort((a, b) => Number(a) - Number(b));
-    return grupos.map(id => `<span class="grupo-conciliacion-badge" title="Conciliado en el grupo ${escHtml(id)}">Grupo ${escHtml(id)}</span>`).join(' ');
+    return grupos.map(id => {
+        const [borde, fondo, texto] = coloresGrupo[Number(id) % coloresGrupo.length];
+        return `<span class="grupo-conciliacion-badge" style="--grupo-borde:${borde};--grupo-fondo:${fondo};--grupo-texto:${texto}" title="Conciliado en el grupo ${escHtml(id)}">Grupo ${escHtml(id)}</span>`;
+    }).join(' ');
 }
 
 function isConciliatedCGRef(ref) {
