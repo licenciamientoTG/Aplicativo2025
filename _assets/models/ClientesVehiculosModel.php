@@ -376,6 +376,22 @@ class ClientesVehiculosModel extends Model{
     }
 
     /**
+     * Solo tarjeta, vehículo y saldo de un cliente (modal "Vehículos y saldo").
+     * Sin la última carga ni el último consumo de getVehiclesBalanceByClient(),
+     * que recorren Documentos/DocumentosC/Despachos y tardan ~8 s por cliente.
+     */
+    public function getVehiclesByClient(int $codcli) : array|false {
+        $query = "
+            SELECT t1.cod AS codcli, t2.tar, t2.den, t2.debsdo
+            FROM [SG12].[dbo].[Clientes] t1
+                JOIN [SG12].[dbo].[ClientesVehiculos] t2 WITH (NOLOCK) ON t1.cod = t2.codcli
+            WHERE t1.cod = ?
+            ORDER BY t2.tar;
+        ";
+        return ($this->sql->select($query, [$codcli])) ?: false;
+    }
+
+    /**
      * Clientes débito con al menos un despacho cuyo nrofac quedó ligado a la
      * factura de un cliente distinto al propio despacho (Factura Global u otro
      * tercero) en vez de facturarse a su propio nombre. No depende de la

@@ -2509,7 +2509,8 @@ async function clients_summary_table(tipo) {
     var tipval  = tipo === 'debit' ? 4 : 3;
     // Consumo propio (débito y crédito): columna Categoría + filtro incluir/excluir/solo
     var propio  = $('#propio_' + tipo).val() || 'incluir';
-    var off     = 1;
+    // Índices: 0 Cód, 1 Cliente, 2 Consumo propio, 3 Primer, 4 Último, 5 Despachos, 6 Litros, 7 Monto, 8 Cortes, 9 Diferencia
+    var C_DESP = 5, C_LIT = 6, C_MTO = 7, C_COR = 8, C_DIF = 9;
 
     if ($.fn.DataTable.isDataTable('#' + tableId)) {
         $('#' + tableId).DataTable().destroy();
@@ -2539,7 +2540,7 @@ async function clients_summary_table(tipo) {
     };
 
     $('#' + tableId).DataTable({
-        order: [[8 + off, 'desc']],
+        order: [[C_MTO, 'desc']],
         // Clientes cuyos despachos no cuadran con los cortes (p. ej. PUBLICO EN GENERAL débito)
         createdRow: function (tr, row) {
             if (Math.abs(parseFloat(row.Diferencia) || 0) >= 0.01) $(tr).addClass('table-warning');
@@ -2563,14 +2564,14 @@ async function clients_summary_table(tipo) {
             beforeSend: function () { $('.table-responsive').addClass('loading'); }
         },
         columns: [
-            { data: 'codcli' },
-            { data: 'Cliente',         className: 'text-nowrap' },
-        ].concat([{ data: 'Categoria', className: 'text-nowrap', render: consumo_propio_render }]).concat([
-            { data: 'RazonesSociales', className: 'text-center' },
-            { data: 'Estaciones',      className: 'text-center' },
-            { data: 'PrimerConsumo',   className: 'text-center text-nowrap' },
-            { data: 'UltimoConsumo',   className: 'text-center text-nowrap' },
-            { data: 'Despachos',       render: $.fn.dataTable.render.number(',', '.', 0, ''), className: 'text-end' },
+            { data: 'codcli', className: 'col-compact', width: '55px' },
+            // El nombre sí parte en varias líneas para que la tabla quepa sin scroll horizontal;
+            // las columnas chicas (col-compact) le dejan el resto del ancho
+            { data: 'Cliente', className: 'text-wrap' },
+        ].concat([{ data: 'Categoria', className: 'col-compact text-center', width: '50px', render: consumo_propio_render }]).concat([
+            { data: 'PrimerConsumo',   className: 'col-compact text-center', width: '70px' },
+            { data: 'UltimoConsumo',   className: 'col-compact text-center', width: '70px' },
+            { data: 'Despachos',       render: $.fn.dataTable.render.number(',', '.', 0, ''), className: 'col-compact text-end', width: '50px' },
             { data: 'Litros',          render: $.fn.dataTable.render.number(',', '.', 3, ''), className: 'text-end' },
             { data: 'Monto', className: 'text-nowrap text-end', render: function (d, type) {
                 if (type !== 'display') return d;
@@ -2589,12 +2590,12 @@ async function clients_summary_table(tipo) {
         initComplete: function () { $('.table-responsive').removeClass('loading'); },
         footerCallback: function () {
             var api = this.api();
-            var desp = sumCol(api, 6 + off), lit = sumCol(api, 7 + off), mto = sumCol(api, 8 + off), cor = sumCol(api, 9 + off), dif = sumCol(api, 10 + off);
-            $(api.column(6 + off).footer()).html(desp.toLocaleString('es-MX'));
-            $(api.column(7 + off).footer()).html(lit.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }));
-            $(api.column(8 + off).footer()).html(fmtMoney(mto));
-            $(api.column(9 + off).footer()).html(fmtMoney(cor));
-            $(api.column(10 + off).footer()).html(fmtMoney(dif));
+            var desp = sumCol(api, C_DESP), lit = sumCol(api, C_LIT), mto = sumCol(api, C_MTO), cor = sumCol(api, C_COR), dif = sumCol(api, C_DIF);
+            $(api.column(C_DESP).footer()).html(desp.toLocaleString('es-MX'));
+            $(api.column(C_LIT).footer()).html(lit.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }));
+            $(api.column(C_MTO).footer()).html(fmtMoney(mto));
+            $(api.column(C_COR).footer()).html(fmtMoney(cor));
+            $(api.column(C_DIF).footer()).html(fmtMoney(dif));
             $('#sum_clientes_client_' + tipo).text(api.rows({ search: 'applied' }).count().toLocaleString('es-MX'));
             $('#sum_despachos_consumos_' + tipo).text(desp.toLocaleString('es-MX'));
             $('#sum_litros_consumos_' + tipo).text(lit.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }));
@@ -2602,9 +2603,32 @@ async function clients_summary_table(tipo) {
             var propioMto = api.rows({ search: 'applied' }).data().toArray()
                 .reduce(function (a, r) { return r.Categoria ? a + (parseFloat(r.Monto) || 0) : a; }, 0);
             $('#sum_propio_client_' + tipo).text(fmtMoney(propioMto));
+            // Clientes en amarillo (Diferencia ≠ 0), para la leyenda del encabezado
+            var noCuadran = api.rows({ search: 'applied' }).data().toArray()
+                .filter(function (r) { return Math.abs(parseFloat(r.Diferencia) || 0) >= 0.01; }).length;
+            $('#nocuadran_' + tipo).text(noCuadran.toLocaleString('es-MX'));
         }
     });
 }
+
+// ── Botón "Ver solo con diferencia" del Resumen por cliente (débito y crédito) ──
+var soloDiferencia = { debit: false, credit: false };
+
+$.fn.dataTable.ext.search.push(function (settings, searchData, dataIndex, row) {
+    var m = /^(debit|credit)_consumos_client_table$/.exec(settings.nTable.id);
+    if (!m || !soloDiferencia[m[1]]) return true;
+    return Math.abs(parseFloat(row && row.Diferencia) || 0) >= 0.01;
+});
+
+$(document).on('click', '.btn-solo-dif', function () {
+    var tipo = $(this).data('tipo');
+    var activo = soloDiferencia[tipo] = !soloDiferencia[tipo];
+    $(this).toggleClass('btn-warning', activo).toggleClass('btn-outline-warning', !activo)
+        .attr('aria-pressed', activo ? 'true' : 'false')
+        .find('span').text(activo ? 'Ver todos' : 'Ver solo con diferencia');
+    var tableId = '#' + tipo + '_consumos_client_table';
+    if ($.fn.DataTable.isDataTable(tableId)) $(tableId).DataTable().draw();
+});
 
 // ── Catálogo de consumo propio (débito y crédito): ver, quitar y clasificar nuevos ──
 
@@ -2724,47 +2748,217 @@ $(document).on('click', '#debit_consumos_client_table .client-cortes-drill, #cre
     if (row) cortes_diff_modal(tipo, row.codcli, row.Cliente);
 });
 
+// Modal "Cortes que no cuadran" con 3 tabs (mismos que el modal de Conciliación crédito):
+// 1) cortes con diferencia, 2) despachos y su factura, 3) cada despacho contra su vale del corte (ValesR).
+// Las tres tablas son DataTables (buscador, Excel y totales de las filas filtradas).
+var CC_ESTADO_CLASE = {
+    'Cuadra': 'bg-success', 'Facturado': 'bg-success',
+    'Despacho sin vale': 'bg-danger', 'Vale sin despacho': 'bg-danger', 'Sin factura': 'bg-danger',
+    'Factura cancelada': 'bg-danger', 'Factura no encontrada': 'bg-danger', 'Despacho de otro cliente': 'bg-danger',
+    'Monto distinto': 'bg-warning text-dark', 'Vale duplicado': 'bg-warning text-dark', 'Facturado después': 'bg-warning text-dark',
+    'Pagado con tarjeta bancaria': 'bg-secondary'
+};
+var CC_OK = { 'Cuadra': 1, 'Facturado': 1, 'Pagado con tarjeta bancaria': 1, 'Facturado después': 1 };
+var ccVales = [];
+var ccTitulo = '';
+
+function cc_esc(v) { return $('<div>').text(v == null ? '' : String(v)).html(); }
+function cc_money(v) { return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function cc_lit(v) { return v === null || v === undefined || v === '' ? '' : (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
+function cc_badge(e) { return '<span class="badge ' + (CC_ESTADO_CLASE[e] || 'bg-secondary') + '">' + cc_esc(e) + '</span>'; }
+function cc_turno(t) { return t === null || t === undefined || t === '' ? '' : String(parseInt(t, 10)).charAt(0); }
+
+// Renders para DataTables: texto plano al buscar/exportar, formato al mostrar
+var ccR = {
+    txt:   function (d, t) { return t === 'display' ? cc_esc(d) : d; },
+    money: function (d, t) { return t === 'display' ? cc_money(d) : (parseFloat(d) || 0); },
+    lit:   function (d, t) { return t === 'display' ? cc_lit(d) : (d === null ? '' : parseFloat(d) || 0); },
+    dif:   function (d, t) {
+        if (t !== 'display') return parseFloat(d) || 0;
+        var v = parseFloat(d) || 0;
+        return '<span class="' + (Math.abs(v) >= 0.01 ? 'text-danger fw-bold' : 'text-muted') + '">' + cc_money(v) + '</span>';
+    },
+    estado: function (d, t) { return t === 'display' ? cc_badge(d) : d; },
+    turno: function (d, t) { return cc_turno(d); }
+};
+
+// Mensaje dentro de la tabla (cargando / sin datos / error) sin DataTables
+function cc_msg(sel, cols, html) {
+    if ($.fn.DataTable.isDataTable(sel)) $(sel).DataTable().clear().destroy();
+    $(sel + ' tbody').html('<tr><td colspan="' + cols + '" class="text-center py-3">' + html + '</td></tr>');
+    $(sel + ' tfoot').html('<tr>' + new Array(cols + 1).join('<th></th>') + '</tr>');
+}
+
+// Crea la DataTable. sumas: { índiceColumna: 'money' | 'lit' | 'int' } que se totalizan con las filas filtradas.
+function cc_tabla(sel, rows, columns, sumas, nombre, filaMal) {
+    if ($.fn.DataTable.isDataTable(sel)) $(sel).DataTable().clear().destroy();
+    $(sel + ' tbody').empty();
+    $(sel + ' tfoot').html('<tr>' + new Array(columns.length + 1).join('<th></th>') + '</tr>');
+    $(sel).DataTable({
+        data: rows,
+        columns: columns,
+        order: [],
+        paging: false,
+        info: true,
+        autoWidth: false,
+        dom: '<"d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"Bf>t<"small text-muted mt-1"i>',
+        buttons: [{ extend: 'excel', className: 'btn btn-sm btn-success', text: '<i class="fas fa-file-excel"></i> Excel',
+                    title: nombre + ' — ' + ccTitulo, footer: true }],
+        language: {
+            search: 'Buscar:', zeroRecords: 'Sin coincidencias', emptyTable: 'Sin datos',
+            info: '_TOTAL_ renglones', infoEmpty: '0 renglones', infoFiltered: '(de _MAX_)'
+        },
+        createdRow: function (tr, r) { if (filaMal && filaMal(r)) $(tr).addClass('cc-mal'); },
+        footerCallback: function () {
+            var api = this.api();
+            $(api.column(0).footer()).html('Total');
+            Object.keys(sumas).forEach(function (i) {
+                var tot = api.column(i, { search: 'applied' }).data()
+                    .reduce(function (a, b) { return a + (parseFloat(b) || 0); }, 0);
+                var f = sumas[i];
+                $(api.column(i).footer()).html(f === 'money' ? cc_money(tot) : f === 'lit' ? cc_lit(tot) : tot.toLocaleString('es-MX'))
+                    .addClass('text-end');
+            });
+        }
+    });
+}
+
+// Chips por estado: cuántos renglones y cuánto monto hay en cada uno (los que no cuadran primero)
+function cc_chips(sel, rows, campoMonto) {
+    var g = {};
+    rows.forEach(function (r) {
+        g[r.estado] = g[r.estado] || { n: 0, m: 0 };
+        g[r.estado].n++;
+        g[r.estado].m += parseFloat(r[campoMonto]) || 0;
+    });
+    $(sel).html(Object.keys(g).sort(function (a, b) {
+        return ((CC_OK[a] ? 1 : 0) - (CC_OK[b] ? 1 : 0)) || (g[b].n - g[a].n);
+    }).map(function (k) {
+        return '<span class="cc-chip">' + cc_badge(k) + ' <b>' + g[k].n.toLocaleString('es-MX') + '</b> · ' + cc_money(g[k].m) + '</span>';
+    }).join(''));
+}
+
+function cc_pintar_vales() {
+    var solo = $('#cc_solo_mal').is(':checked');
+    var rows = solo ? ccVales.filter(function (r) { return !CC_OK[r.estado]; }) : ccVales;
+    if (!rows.length) {
+        cc_msg('#cc_tabla_vales', 13, solo && ccVales.length ? 'Todos los despachos cuadran con su vale.' : 'Sin despachos ni vales en el periodo.');
+        return;
+    }
+    cc_tabla('#cc_tabla_vales', rows, [
+        { data: 'estacion', render: ccR.txt },
+        { data: 'despacho', render: ccR.txt },
+        { data: 'fecha', className: 'text-nowrap', render: ccR.txt },
+        { data: 'hora', render: ccR.txt },
+        { data: 'turno_despacho', className: 'text-center', render: ccR.txt },
+        { data: 'producto', render: ccR.txt },
+        { data: 'litros', className: 'text-end', render: ccR.lit },
+        { data: 'monto_despacho', className: 'text-end', render: ccR.money },
+        { data: 'cliente_despacho', render: ccR.txt },
+        { data: 'turno_vale', className: 'text-center', render: ccR.txt },
+        { data: 'monto_vale', className: 'text-end', render: ccR.money },
+        { data: 'diferencia', className: 'text-end', render: ccR.dif },
+        { data: 'estado', render: ccR.estado }
+    ], { 6: 'lit', 7: 'money', 10: 'money', 11: 'money' }, 'Despachos vs corte', function (r) { return !CC_OK[r.estado]; });
+}
+$(document).on('change', '#cc_solo_mal', cc_pintar_vales);
+
+var ccDesp = [];
+function cc_pintar_desp() {
+    var solo = $('#cc_solo_mal_desp').is(':checked');
+    var rows = solo ? ccDesp.filter(function (r) { return !CC_OK[r.estado]; }) : ccDesp;
+    if (!rows.length) {
+        cc_msg('#cc_tabla_desp', 13, solo && ccDesp.length
+            ? 'Todos los despachos están facturados correctamente (' + ccDesp.length.toLocaleString('es-MX') + ').'
+            : 'Sin despachos en el periodo.');
+        return;
+    }
+    cc_tabla('#cc_tabla_desp', rows, [
+        { data: 'estacion', render: ccR.txt },
+        { data: 'despacho', render: ccR.txt },
+        { data: 'fecha', className: 'text-nowrap', render: ccR.txt },
+        { data: 'hora', render: ccR.txt },
+        { data: 'turno', className: 'text-center', render: ccR.txt },
+        { data: 'producto', render: ccR.txt },
+        { data: 'litros', className: 'text-end', render: ccR.lit },
+        { data: 'monto', className: 'text-end', render: ccR.money },
+        { data: 'factura', className: 'text-nowrap', render: ccR.txt },
+        { data: 'emitida_en', render: ccR.txt },
+        { data: 'fecha_factura', className: 'text-nowrap', render: ccR.txt },
+        { data: 'estado', render: ccR.estado },
+        { data: 'uuid', className: 'small text-muted', render: ccR.txt }
+    ], { 6: 'lit', 7: 'money' }, 'Despachos y factura', function (r) { return !CC_OK[r.estado]; });
+}
+$(document).on('change', '#cc_solo_mal_desp', cc_pintar_desp);
+
+// Ajusta anchos al cambiar de tab (DataTables no mide bien columnas ocultas)
+$(document).on('shown.bs.tab', '#modal_cortes_cli [data-bs-toggle="tab"]', function () {
+    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+});
+
 function cortes_diff_modal(tipo, codcli, cliente) {
     var from  = $('#from_' + tipo).val();
     var until = $('#until_' + tipo).val();
-    var esc   = function (v) { return $('<div>').text(v == null ? '' : String(v)).html(); };
-    var money = function (v) {
-        return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    };
-    var headers = ['Fecha corte', 'Turno', 'Estación', 'Despachos', 'Monto despachos', 'Monto cortes', 'Diferencia'];
-
-    $('#modal_edo_drill_title').html('Cortes que no cuadran — ' + esc(cliente) + ' <small class="text-muted">(' + esc(from) + ' → ' + esc(until) + ')</small>');
-    $('#modal_edo_drill_table thead').html('<tr><th>' + headers.join('</th><th>') + '</th></tr>');
-    $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando…</td></tr>');
-    $('#modal_edo_drill_table tfoot').empty();
-    $('#modal_edo_drill').modal('show');
-
-    $.post('/income/clients_cortes_diff', {
+    var datos = {
         codcli: codcli, from: from, until: until,
         tipval: tipo === 'debit' ? 4 : 3,
         empresa: parseInt($('#empresa_' + tipo).val(), 10) || 0
-    }, function (json) {
+    };
+    var cargando = '<i class="fas fa-spinner fa-spin"></i> Cargando…';
+    var error = '<span class="text-danger">Error al consultar.</span>';
+
+    ccTitulo = cliente + ' (' + from + ' a ' + until + ')';
+    $('#cc_titulo').html('Cortes que no cuadran — ' + cc_esc(cliente) + ' <small class="text-muted">(' + cc_esc(from) + ' → ' + cc_esc(until) + ')</small>');
+    $('#cc_cnt_cortes, #cc_cnt_desp, #cc_cnt_vales').text('…').removeClass('bg-danger bg-success').addClass('bg-secondary');
+    $('#cc_chips_desp, #cc_chips_vales').empty();
+    cc_msg('#cc_tabla_cortes', 7, cargando);
+    cc_msg('#cc_tabla_desp', 13, cargando);
+    cc_msg('#cc_tabla_vales', 13, cargando);
+    ccVales = [];
+    ccDesp = [];
+    bootstrap.Tab.getOrCreateInstance(document.querySelector('#modal_cortes_cli [data-bs-target="#cc_pane_cortes"]')).show();
+    $('#modal_cortes_cli').modal('show');
+
+    var contador = function (sel, n, malos) {
+        $(sel).text(n.toLocaleString('es-MX')).removeClass('bg-secondary bg-danger bg-success').addClass(malos ? 'bg-danger' : 'bg-success');
+    };
+
+    // Tab 1: cortes con diferencia
+    $.post('/income/clients_cortes_diff', datos, function (json) {
         var rows = (json && json.data) || [];
+        contador('#cc_cnt_cortes', rows.length, rows.length > 0);
         if (!rows.length) {
-            $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3">Todos los cortes cuadran por fecha de corte; la diferencia viene de despachos cuya fecha de corte cae fuera del periodo.</td></tr>');
+            cc_msg('#cc_tabla_cortes', 7, 'Todos los cortes cuadran por fecha de corte; la diferencia viene de despachos cuya fecha de corte cae fuera del periodo.');
             return;
         }
-        $('#modal_edo_drill_table tbody').html(rows.map(function (r) {
-            return '<tr><td>' + esc(r.FechaCorte) + '</td><td class="text-center">' + esc(r.Turno) + '</td><td>' + esc(r.Estacion) + '</td>' +
-                   '<td class="text-end">' + (parseInt(r.Despachos, 10) || 0).toLocaleString('es-MX') + '</td>' +
-                   '<td class="text-end">' + money(r.Monto) + '</td><td class="text-end">' + money(r.MontoCortes) + '</td>' +
-                   '<td class="text-end text-danger fw-bold">' + money(r.Diferencia) + '</td></tr>';
-        }).join(''));
-        var sum = function (k) { return rows.reduce(function (a, r) { return a + (parseFloat(r[k]) || 0); }, 0); };
-        $('#modal_edo_drill_table tfoot').html(
-            '<tr><th colspan="3" class="text-end">Total</th>' +
-            '<th class="text-end">' + sum('Despachos').toLocaleString('es-MX') + '</th>' +
-            '<th class="text-end">' + money(sum('Monto')) + '</th><th class="text-end">' + money(sum('MontoCortes')) + '</th>' +
-            '<th class="text-end">' + money(sum('Diferencia')) + '</th></tr>'
-        );
-    }, 'json').fail(function () {
-        $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3 text-danger">Error al consultar.</td></tr>');
-    });
+        cc_tabla('#cc_tabla_cortes', rows, [
+            { data: 'FechaCorte', className: 'text-nowrap', render: ccR.txt },
+            { data: 'Turno', className: 'text-center', render: ccR.turno },
+            { data: 'Estacion', render: ccR.txt },
+            { data: 'Despachos', className: 'text-end' },
+            { data: 'Monto', className: 'text-end', render: ccR.money },
+            { data: 'MontoCortes', className: 'text-end', render: ccR.money },
+            { data: 'Diferencia', className: 'text-end', render: ccR.dif }
+        ], { 3: 'int', 4: 'money', 5: 'money', 6: 'money' }, 'Cortes que no cuadran');
+    }, 'json').fail(function () { cc_msg('#cc_tabla_cortes', 7, error); });
+
+    // Tab 2: despachos y su factura (por default solo los que tienen algo mal)
+    $.post(routeUrl('income.clients_dispatches_invoice'), datos, function (json) {
+        ccDesp = (json && json.data) || [];
+        var malos = ccDesp.filter(function (r) { return !CC_OK[r.estado]; }).length;
+        contador('#cc_cnt_desp', malos, malos > 0);
+        cc_chips('#cc_chips_desp', ccDesp, 'monto');
+        cc_pintar_desp();
+    }, 'json').fail(function () { cc_msg('#cc_tabla_desp', 13, error); });
+
+    // Tab 3: cada despacho contra su vale del corte
+    $.post(routeUrl('income.clients_dispatches_vs_cuts'), datos, function (json) {
+        ccVales = (json && json.data) || [];
+        var malos = ccVales.filter(function (r) { return !CC_OK[r.estado]; }).length;
+        contador('#cc_cnt_vales', malos, malos > 0);
+        cc_chips('#cc_chips_vales', ccVales, 'diferencia');
+        cc_pintar_vales();
+    }, 'json').fail(function () { cc_msg('#cc_tabla_vales', 13, error); });
 }
 
 // ── Estado de Cuenta por Cliente (Débito / Crédito) ─────────────────────────
@@ -2943,7 +3137,7 @@ function client_vehicles_modal(codcli, cliente) {
     $('#modal_edo_drill_table tfoot').empty();
     $('#modal_edo_drill').modal('show');
 
-    $.post('/income/client_vehicles_balance', { codcli: codcli }, function (json) {
+    $.post('/income/client_vehicles_balance', { codcli: codcli, ligero: 1 }, function (json) {
         var rows = (json && json.data) || [];
         if (!rows.length) {
             $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3">Sin vehículos registrados.</td></tr>');

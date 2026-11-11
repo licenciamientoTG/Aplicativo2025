@@ -220,6 +220,26 @@ class Income{
         }
     }
 
+    /** Ingresos > Conciliación clientes > Clientes débito: solo las pestañas débito de clients.html (sin la Foto). */
+    public function clients_debit() : void {
+        echo $this->twig->render($this->route . 'clients.html', [
+            'modo'            => 'debito',
+            'clientes_debit'  => $this->clientesModel->get_debit_clients_list(),
+            'clientes_credit' => [],
+            'empresas'        => $this->clientesModel->get_station_companies(),
+        ]);
+    }
+
+    /** Ingresos > Conciliación clientes > Clientes crédito: solo las pestañas crédito de clients.html. */
+    public function clients_credit() : void {
+        echo $this->twig->render($this->route . 'clients.html', [
+            'modo'            => 'credito',
+            'clientes_debit'  => [],
+            'clientes_credit' => $this->clientesModel->get_credit_clients_list(),
+            'empresas'        => $this->clientesModel->get_station_companies(),
+        ]);
+    }
+
     /**
      * Ingresos > Conciliación: venta a clientes de crédito vs facturación de
      * ControlGas y cobranza vs banco (ConciliacionVentaModel + ConciliacionCobros).
@@ -311,8 +331,58 @@ class Income{
         [$from, $until, , $hasta] = $this->conciliationRange();
         $codcli = (int)($_POST['codcli'] ?? 0);
         if ($codcli <= 0) json_output(['data' => []]);
+        $rows = (new ConciliacionVentaModel)->despachos_cliente($from, $until, $this->conciliationEmpresa(), $codcli);
+        json_output(['data' => $this->filasDespachosFactura($rows, $hasta)]);
+    }
+
+    /** POST (codcli): despachos del cliente contra sus vales del corte (ValesR), con la diferencia de cada uno. */
+    public function conciliation_client_cuts() : void {
+        [$from, $until] = $this->conciliationRange();
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        if ($codcli <= 0) json_output(['data' => []]);
+        $rows = (new ConciliacionVentaModel)->despachos_vs_cortes($from, $until, $this->conciliationEmpresa(), $codcli);
+        json_output(['data' => $this->filasDespachosVsCortes($rows, $codcli)]);
+    }
+
+    /**
+     * Consumos Débito/Crédito de /income/clients, modal "Cortes que no cuadran": mismos tabs que el modal de
+     * Conciliación crédito pero con rango libre (from/until) y tipval 4 = débito (vale 127) / 3 = crédito (vale 28).
+     * POST codcli, from, until, tipval, empresa.
+     */
+    private function clientsCutsParams() : array {
+        $from    = $this->createDateTime($_POST['from']  ?? date('Y-m-01'));
+        $until   = $this->createDateTime($_POST['until'] ?? date('Y-m-d'));
+        $tipval  = (int)($_POST['tipval'] ?? 4) === 3 ? 3 : 4;
+        return [
+            dateToInt($from->format('Y-m-d')), dateToInt($until->format('Y-m-d')), $until->format('Y-m-d'),
+            (int)($_POST['codcli'] ?? 0), (int)($_POST['empresa'] ?? 0),
+            $tipval === 3 ? ConciliacionVentaModel::CODVAL_CREDITO : self::CODVAL_DEBITO_CORTES,
+        ];
+    }
+
+    /** ValesR.codval del débito (prepago) en los cortes. */
+    private const CODVAL_DEBITO_CORTES = 127;
+
+    /** POST: despachos del cliente con su factura (tab "Despachos y factura"). */
+    public function clients_dispatches_invoice() : void {
+        [$from, $until, $hasta, $codcli, $empresa] = $this->clientsCutsParams();
+        if ($codcli <= 0) json_output(['data' => []]);
+        $rows = (new ConciliacionVentaModel)->despachos_cliente($from, $until, $empresa, $codcli);
+        json_output(['data' => $this->filasDespachosFactura($rows, $hasta)]);
+    }
+
+    /** POST: despachos del cliente contra los vales del corte, uno a uno (tab "Despachos vs corte (ValesR)"). */
+    public function clients_dispatches_vs_cuts() : void {
+        [$from, $until, , $codcli, $empresa, $codval] = $this->clientsCutsParams();
+        if ($codcli <= 0) json_output(['data' => []]);
+        $rows = (new ConciliacionVentaModel)->despachos_vs_cortes($from, $until, $empresa, $codcli, $codval);
+        json_output(['data' => $this->filasDespachosVsCortes($rows, $codcli)]);
+    }
+
+    /** Filas del modal "Despachos y factura" (conciliación crédito y Consumos de /income/clients). */
+    private function filasDespachosFactura(array $rows, string $hasta) : array {
         $data = [];
-        foreach ((new ConciliacionVentaModel)->despachos_cliente($from, $until, $this->conciliationEmpresa(), $codcli) as $r) {
+        foreach ($rows as $r) {
             $hora = str_pad((string)$r['hratrn'], 4, '0', STR_PAD_LEFT);
             // Cobrado con terminal bancaria: no es consumo a crédito, no suma al Monto del desglose
             if ((int)$r['pago_bancario'] === 1)     $estado = 'Pagado con tarjeta bancaria';
@@ -337,17 +407,18 @@ class Income{
                 'estado'        => $estado,
             ];
         }
-        json_output(['data' => $data]);
+        return $data;
     }
 
-    /** POST (codcli): despachos del cliente contra sus vales del corte (ValesR), con la diferencia de cada uno. */
-    public function conciliation_client_cuts() : void {
-        [$from, $until] = $this->conciliationRange();
-        $codcli = (int)($_POST['codcli'] ?? 0);
-        if ($codcli <= 0) json_output(['data' => []]);
+    /** Filas del modal "Despachos vs corte (ValesR)": un renglón por despacho/vale con su estado. */
+    private function filasDespachosVsCortes(array $rows, int $codcli) : array {
         $data = [];
-        foreach ((new ConciliacionVentaModel)->despachos_vs_cortes($from, $until, $this->conciliationEmpresa(), $codcli) as $r) {
+        foreach ($rows as $r) {
             $tieneDesp = $r['monto_despacho'] !== null;
+            // Vale cargado al cliente en el corte, pero en Control Gas el despacho es de otro cliente o de contado (codcli 0):
+            // ese despacho no entra a los consumos del cliente, así que todo el vale es diferencia
+            $cliDesp = $tieneDesp ? (int)$r['cli_despacho'] : null;
+            $otroCliente = $tieneDesp && $cliDesp !== $codcli;
             $tieneVale = $r['monto_vale'] !== null;
             $montoDesp = $tieneDesp ? round((float)$r['monto_despacho'], 2) : 0.0;
             $montoVale = $tieneVale ? round((float)$r['monto_vale'], 2) : 0.0;
@@ -356,6 +427,7 @@ class Income{
             // Cobrado con terminal bancaria y sin vale: no es crédito, no cuenta en la diferencia
             $bancario = $tieneDesp && !$tieneVale && (int)$r['pago_bancario'] === 1;
             if ($bancario)                                $estado = 'Pagado con tarjeta bancaria';
+            elseif ($otroCliente)                         $estado = 'Despacho de otro cliente';
             elseif (!$tieneVale)                          $estado = 'Despacho sin vale';
             elseif (!$tieneDesp)                          $estado = 'Vale sin despacho';
             elseif ((int)$r['n_vales'] > 1)               $estado = 'Vale duplicado';
@@ -373,11 +445,12 @@ class Income{
                 'turno_despacho'  => $this->conciliationTurno($r['turno_despacho']),
                 'turno_vale'      => $this->conciliationTurno($r['turno']),
                 'monto_vale'      => $montoVale,
-                'diferencia'      => $bancario ? 0.0 : round($montoDesp - $montoVale, 2),
+                'diferencia'      => $bancario ? 0.0 : round(($otroCliente ? 0.0 : $montoDesp) - $montoVale, 2),
+                'cliente_despacho'=> $otroCliente ? ($cliDesp === 0 ? 'Sin cliente (contado)' : (string)$cliDesp) : '',
                 'estado'          => $estado,
             ];
         }
-        json_output(['data' => $data]);
+        return $data;
     }
 
     /** POST: folios de crédito cuyo despacho y vale del corte no cuadran, con el corte (estación + fecha + turno). */
@@ -1054,6 +1127,13 @@ public function balance_age()
         ini_set('max_execution_time', 300);
         $data = [];
         $codcli = (int)($_POST['codcli'] ?? 0);
+
+        // ligero=1 (modal "Vehículos y saldo"): solo tarjeta, vehículo y saldo, sin última carga/consumo
+        if (!empty($_POST['ligero']) && $codcli > 0) {
+            json_output(['data' => $this->vehiclesModel->getVehiclesByClient($codcli) ?: []]);
+            return;
+        }
+
         if ($vehicles = $this->vehiclesModel->getVehiclesBalanceByClient($codcli)) {
             foreach ($vehicles as $v) {
                 $data[] = [

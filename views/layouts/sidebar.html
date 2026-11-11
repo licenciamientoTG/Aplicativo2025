@@ -494,18 +494,6 @@
             </a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/income/clients">Clientes </a>
-          </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="{{ url('income.conciliation') }}">Conciliación crédito</a>
-          </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="{{ url('income.conciliation_debit') }}">Conciliación débito</a>
-          </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="{{ url('conciliacion.onegoal_controlgas') }}">Conciliación One Goal ↔ ControlGas</a>
-          </li>
-          <li class="sidebar-item">
             <a class="sidebar-link" href="{{ url('income.valeras') }}">Valeras</a>
           </li>
 
@@ -557,6 +545,34 @@
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/values_report">Valores
             </a>
+          </li>
+        </ul>
+      </li>
+
+      <li class="sidebar-item">
+        <a data-bs-target="#income_clients_conc" data-bs-toggle="collapse" class="sidebar-link collapsed"
+          aria-expanded="false">
+          <i data-feather="users"></i>
+          <span class="align-middle">Conciliación clientes</span>
+        </a>
+        <ul id="income_clients_conc" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/income/clients">Clientes</a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{{ url('income.clients_debit') }}">Clientes débito</a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{{ url('income.clients_credit') }}">Clientes crédito</a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{{ url('income.conciliation') }}">Conciliación crédito</a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{{ url('income.conciliation_debit') }}">Conciliación débito</a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="{{ url('conciliacion.onegoal_controlgas') }}">Conciliación One Goal ↔ ControlGas</a>
           </li>
         </ul>
       </li>

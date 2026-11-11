@@ -28,43 +28,76 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 .anticipos-toggle[aria-expanded="false"] .fa-chevron-up { transform: rotate(180deg); }
 .anticipos-toggle .fa-chevron-up { transition: transform .2s; }
 .anticipos-loader { color: #0095DA; }
+/* Modal "Cortes que no cuadran" (3 tabs): cabecera y pie fijos al hacer scroll */
+#modal_cortes_cli .cc-wrap { max-height: 58vh; overflow: auto; }
+#modal_cortes_cli table thead th {
+    position: sticky; top: 0; z-index: 2; background-color: #3485a8; color: #fff;
+    white-space: nowrap; font-size: .75rem; text-transform: uppercase; letter-spacing: .03em;
+}
+#modal_cortes_cli table tfoot th { position: sticky; bottom: 0; z-index: 2; background-color: #3485a8; color: #fff; }
+#modal_cortes_cli td { font-size: .82rem; vertical-align: middle; }
+#modal_cortes_cli .cc-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 999px; padding: 2px 10px; font-size: .8rem; margin: 0 6px 6px 0; }
+#modal_cortes_cli tr.cc-mal td { background-color: rgba(220, 53, 69, .07); }
+/* Resumen por cliente (Consumos): columnas chicas para darle espacio al nombre del cliente */
+#debit_consumos_client_table .col-compact, #credit_consumos_client_table .col-compact,
+.dataTables_scrollHead th.col-compact { font-size: .78rem; padding-left: 4px !important; padding-right: 4px !important; white-space: nowrap; }
 </style>
 {% endblock %}
-{% block menutitle %}Clientes{% endblock %}
+{# modo: 'todos' (/income/clients), 'debito' (/income/clients-debit/) o 'credito' (/income/clients-credit/).
+   La Foto solo vive en 'todos'. #}
+{% block menutitle %}{% if modo|default('') == 'debito' %}Clientes Débito{% elseif modo|default('') == 'credito' %}Clientes Crédito{% else %}Clientes{% endif %}{% endblock %}
 {% block content %}
+{% set modo = modo|default('todos') %}
+{% set ver_debito = modo != 'credito' %}
+{% set ver_credito = modo != 'debito' %}
+{% set ver_foto = modo == 'todos' %}
 
 <ul class="nav nav-tabs" id="myTab" role="tablist">
+    {% if ver_debito %}
     <li class="nav-item" role="presentation">
         <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#debit_clients" type="button">Débito</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#vehicles_debit" type="button">Vehículos Débito</button>
     </li>
+    {% endif %}
+    {% if ver_credito %}
     <li class="nav-item" role="presentation">
-        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#credit_clients" type="button">Crédito</button>
+        <button class="nav-link {{ ver_debito ? '' : 'active' }}" data-bs-toggle="tab" data-bs-target="#credit_clients" type="button">Crédito</button>
     </li>
+    {% endif %}
+    {% if ver_debito %}
     <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#debit_consumos" type="button">Consumos Débito</button>
     </li>
+    {% endif %}
+    {% if ver_credito %}
     <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#credit_consumos" type="button">Consumos Crédito</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edo_credit" type="button">Edo. Cuenta Crédito</button>
     </li>
+    {% endif %}
+    {% if ver_debito %}
     <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edo_debit" type="button">Edo. Cuenta Débito</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#anticipos_debit" type="button">Anticipos Débito</button>
     </li>
+    {% endif %}
+    {% if ver_foto %}
     <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edo_debit_foto" type="button">Estado de Cuenta Foto</button>
     </li>
+    {% endif %}
 </ul>
 
 <div class="tab-content">
 
+    {% if ver_debito %}
     {# ── TAB 1: DÉBITO ── #}
     <div class="tab-pane active" id="debit_clients" role="tabpanel">
         <div class="card">
@@ -313,8 +346,11 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         </div>
     </div>
 
+    {% endif %}
+
+    {% if ver_credito %}
     {# ── TAB 2: CRÉDITO ── #}
-    <div class="tab-pane" id="credit_clients" role="tabpanel">
+    <div class="tab-pane {{ ver_debito ? '' : 'active' }}" id="credit_clients" role="tabpanel">
         <div class="card">
             <div class="card-body">
                 <div class="row">
@@ -356,6 +392,9 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         </div>
     </div>
 
+    {% endif %}
+
+    {% if ver_debito %}
     {# ── TAB 3: CONSUMOS DÉBITO ── #}
     <div class="tab-pane" id="debit_consumos" role="tabpanel">
         <div class="card">
@@ -429,22 +468,35 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0"><i class="fas fa-users"></i> Resumen por cliente</h5>
-                <small class="text-muted">Un renglón por cliente con el total del periodo, comparado contra lo que entró en los cortes. Clic en el monto para ver sus despachos; clic en la diferencia para ver los cortes que no cuadran.</small>
+                <small class="text-muted">Un renglón por cliente con el total del periodo (despachos), comparado contra lo que entró en los cortes de las estaciones.</small>
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-2 small">
+                    <span class="border rounded-pill px-2 py-1"><i class="fas fa-list-ul text-primary"></i> Clic en <strong>Monto</strong>: ver sus despachos</span>
+                    <span class="border rounded-pill px-2 py-1"><i class="fas fa-search text-danger"></i> Clic en <strong>Diferencia</strong>: ver los cortes que no cuadran</span>
+                    <span class="border border-warning rounded-pill px-2 py-1" title="Diferencia ≠ $0.00: lo despachado al cliente no coincide con lo cobrado en los cortes (SG12.ValesR). Puede ser un despacho cerca del cambio de día que cayó en el corte del día siguiente, o un despacho que la estación no registró como vale de este cliente.">
+                        <span class="d-inline-block align-middle rounded bg-warning bg-opacity-50 border border-warning" style="width:14px;height:14px;"></span>
+                        Renglón amarillo = despachos ≠ cortes
+                        <span class="badge bg-warning text-dark ms-1" id="nocuadran_debit">0</span> clientes
+                        <i class="fas fa-info-circle text-muted ms-1"></i>
+                    </span>
+                    <button type="button" class="btn btn-sm btn-outline-warning text-dark rounded-pill btn-solo-dif" data-tipo="debit" id="solo_dif_debit" aria-pressed="false" title="Mostrar solo los clientes cuya diferencia no es $0.00">
+                        <i class="fas fa-filter"></i> <span>Ver solo con diferencia</span>
+                    </button>
+                </div>
             </div>
             <div class="card-body table-responsive">
                 <table id="debit_consumos_client_table" class="table table-hover table-sm w-100">
                     <thead>
                         <tr>
-                            <th>Cód.</th><th>Cliente</th><th>Consumo propio</th><th>Razones soc.</th><th>Estaciones</th>
-                            <th>Primer consumo</th><th>Último consumo</th>
-                            <th>Despachos</th><th>Litros</th><th>Monto</th>
+                            <th>Cód.</th><th>Cliente</th><th title="Consumo propio">Tipo</th>
+                            <th title="Primer consumo">Primer</th><th title="Último consumo">Último</th>
+                            <th title="Despachos">Desp.</th><th>Litros</th><th>Monto</th>
                             <th title="Lo que entró en los cortes con este cliente (SG12.ValesR), misma fuente que Venta por Rubro">Cortes</th><th title="Despachos − Cortes. Clic para ver los cortes que no cuadran">Diferencia</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                     <tfoot>
                         <tr>
-                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
                         </tr>
                     </tfoot>
                 </table>
@@ -453,6 +505,9 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 
     </div>
 
+    {% endif %}
+
+    {% if ver_credito %}
     {# ── TAB 4: CONSUMOS CRÉDITO ── #}
     <div class="tab-pane" id="credit_consumos" role="tabpanel">
         <div class="card">
@@ -526,22 +581,35 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0"><i class="fas fa-users"></i> Resumen por cliente</h5>
-                <small class="text-muted">Un renglón por cliente con el total del periodo, comparado contra lo que entró en los cortes. Clic en el monto para ver sus despachos; clic en la diferencia para ver los cortes que no cuadran.</small>
+                <small class="text-muted">Un renglón por cliente con el total del periodo (despachos), comparado contra lo que entró en los cortes de las estaciones.</small>
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-2 small">
+                    <span class="border rounded-pill px-2 py-1"><i class="fas fa-list-ul text-primary"></i> Clic en <strong>Monto</strong>: ver sus despachos</span>
+                    <span class="border rounded-pill px-2 py-1"><i class="fas fa-search text-danger"></i> Clic en <strong>Diferencia</strong>: ver los cortes que no cuadran</span>
+                    <span class="border border-warning rounded-pill px-2 py-1" title="Diferencia ≠ $0.00: lo despachado al cliente no coincide con lo cobrado en los cortes (SG12.ValesR). Puede ser un despacho cerca del cambio de día que cayó en el corte del día siguiente, o un despacho que la estación no registró como vale de este cliente.">
+                        <span class="d-inline-block align-middle rounded bg-warning bg-opacity-50 border border-warning" style="width:14px;height:14px;"></span>
+                        Renglón amarillo = despachos ≠ cortes
+                        <span class="badge bg-warning text-dark ms-1" id="nocuadran_credit">0</span> clientes
+                        <i class="fas fa-info-circle text-muted ms-1"></i>
+                    </span>
+                    <button type="button" class="btn btn-sm btn-outline-warning text-dark rounded-pill btn-solo-dif" data-tipo="credit" id="solo_dif_credit" aria-pressed="false" title="Mostrar solo los clientes cuya diferencia no es $0.00">
+                        <i class="fas fa-filter"></i> <span>Ver solo con diferencia</span>
+                    </button>
+                </div>
             </div>
             <div class="card-body table-responsive">
                 <table id="credit_consumos_client_table" class="table table-hover table-sm w-100">
                     <thead>
                         <tr>
-                            <th>Cód.</th><th>Cliente</th><th>Consumo propio</th><th>Razones soc.</th><th>Estaciones</th>
-                            <th>Primer consumo</th><th>Último consumo</th>
-                            <th>Despachos</th><th>Litros</th><th>Monto</th>
+                            <th>Cód.</th><th>Cliente</th><th title="Consumo propio">Tipo</th>
+                            <th title="Primer consumo">Primer</th><th title="Último consumo">Último</th>
+                            <th title="Despachos">Desp.</th><th>Litros</th><th>Monto</th>
                             <th title="Lo que entró en los cortes con este cliente (SG12.ValesR), misma fuente que Venta por Rubro">Cortes</th><th title="Despachos − Cortes. Clic para ver los cortes que no cuadran">Diferencia</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                     <tfoot>
                         <tr>
-                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
                         </tr>
                     </tfoot>
                 </table>
@@ -649,6 +717,9 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         </div>
     </div>
 
+    {% endif %}
+
+    {% if ver_debito %}
     {# ── TAB 6: EDO. CUENTA DÉBITO ── #}
     <div class="tab-pane" id="edo_debit" role="tabpanel">
         <div class="card">
@@ -913,6 +984,9 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         </div>
     </div>
 
+    {% endif %}
+
+    {% if ver_foto %}
     {# ── TAB 7: ESTADO DE CUENTA FOTO ── #}
     <div class="tab-pane" id="edo_debit_foto" role="tabpanel">
         <div class="card">
@@ -960,6 +1034,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
             </div>
         </div>
     </div>
+    {% endif %}
 
 </div>
 
@@ -1204,6 +1279,68 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         </tr>
                     </tbody>
                 </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Modal: Cortes que no cuadran (Consumos Débito/Crédito) — mismos tabs que el modal de Conciliación crédito ── #}
+<div class="modal fade" id="modal_cortes_cli" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="cc_titulo"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-2" role="tablist">
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#cc_pane_cortes" type="button" role="tab">
+                        Cortes que no cuadran <span class="badge bg-secondary" id="cc_cnt_cortes">…</span></button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#cc_pane_desp" type="button" role="tab">
+                        Despachos y factura <span class="badge bg-secondary" id="cc_cnt_desp">…</span></button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#cc_pane_vales" type="button" role="tab">
+                        Despachos vs corte (ValesR) <span class="badge bg-secondary" id="cc_cnt_vales">…</span></button></li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="cc_pane_cortes" role="tabpanel">
+                        <div class="text-muted small mb-2">Cortes (estación + fecha de corte + turno) donde lo despachado al cliente no coincide con lo cobrado en el corte.</div>
+                        <div class="cc-wrap"><table class="table table-sm table-hover w-100 mb-0" id="cc_tabla_cortes">
+                            <thead><tr><th>Fecha corte</th><th>Turno</th><th>Estación</th><th class="text-end">Despachos</th><th class="text-end">Monto despachos</th><th class="text-end">Monto cortes</th><th class="text-end">Diferencia</th></tr></thead>
+                            <tbody></tbody><tfoot></tfoot>
+                        </table></div>
+                    </div>
+                    <div class="tab-pane fade" id="cc_pane_desp" role="tabpanel">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                            <div class="text-muted small">Cada despacho del cliente en el periodo con la factura a la que quedó ligado y su estado.</div>
+                            <div class="form-check form-switch small mb-0">
+                                <input class="form-check-input" type="checkbox" id="cc_solo_mal_desp" checked>
+                                <label class="form-check-label" for="cc_solo_mal_desp">Solo los que tienen algo mal</label>
+                            </div>
+                        </div>
+                        <div id="cc_chips_desp"></div>
+                        <div class="cc-wrap"><table class="table table-sm table-hover w-100 mb-0" id="cc_tabla_desp">
+                            <thead><tr><th>Estación</th><th>Despacho</th><th>Fecha</th><th>Hora</th><th>Turno</th><th>Producto</th><th class="text-end">Litros</th><th class="text-end">Monto</th><th>Factura</th><th>Emitida en</th><th>Fecha factura</th><th>Estado</th><th>UUID</th></tr></thead>
+                            <tbody></tbody><tfoot></tfoot>
+                        </table></div>
+                    </div>
+                    <div class="tab-pane fade" id="cc_pane_vales" role="tabpanel">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                            <div class="text-muted small">Cada despacho de Control Gas contra su vale del corte (ValesR), ligados por estación y folio. Un vale sin despacho o un despacho sin vale explica la diferencia con el corte.</div>
+                            <div class="form-check form-switch small mb-0">
+                                <input class="form-check-input" type="checkbox" id="cc_solo_mal" checked>
+                                <label class="form-check-label" for="cc_solo_mal">Solo los que no cuadran</label>
+                            </div>
+                        </div>
+                        <div id="cc_chips_vales"></div>
+                        <div class="cc-wrap"><table class="table table-sm table-hover w-100 mb-0" id="cc_tabla_vales">
+                            <thead><tr><th>Estación</th><th>Folio</th><th>Fecha</th><th>Hora</th><th>Turno desp.</th><th>Producto</th><th class="text-end">Litros</th><th class="text-end">Monto despacho</th><th title="Cliente que tiene el despacho en Control Gas, cuando no es este cliente">Cliente del despacho</th><th>Turno vale</th><th class="text-end">Monto vale</th><th class="text-end">Diferencia</th><th>Estado</th></tr></thead>
+                            <tbody></tbody><tfoot></tfoot>
+                        </table></div>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>

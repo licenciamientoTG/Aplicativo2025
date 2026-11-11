@@ -237,10 +237,10 @@ class ConciliacionVentaModel extends Model {
      * Despachos de un cliente contra sus vales de crédito del corte (ValesR), uno a uno.
      * El vale se liga al despacho por estación + folio (ValesR.sec = -Despachos.nrotrn).
      * Salen también los vales del cliente sin despacho y los despachos sin vale.
+     * $codval: 28 crédito (default) o 127 débito (lo usa el modal de Consumos Débito de /income/clients).
      */
-    public function despachos_vs_cortes(int $from, int $until, int $empresa, int $codcli): array {
+    public function despachos_vs_cortes(int $from, int $until, int $empresa, int $codcli, int $codval = self::CODVAL_CREDITO): array {
         $emp = self::EMP_FILTER;
-        $codval = self::CODVAL_CREDITO;
         $banc = ClientesModel::pagoBancarioCond('t');
         $query = "
             SET NOCOUNT ON;
@@ -271,14 +271,25 @@ class ConciliacionVentaModel extends Model {
 
             -- Un renglón por vale (estación + folio + corte). Los vales manuales repiten folio (1, 2...) en cada corte,
             -- así que sin fecha y turno se sumarían años de vales. Un vale de otro cliente cuenta si liga con un despacho de éste.
-            SELECT r.codgas, -r.sec AS nrotrn, r.fch, r.nrotur, COUNT(*) AS n, SUM(r.mto) AS mto
+            -- Dos lecturas en vez de un OR (que barría todo ValesR del rango, ~7 s): los vales del cliente por
+            -- IX_ValesRCli y los de otros clientes solo en las estaciones de sus despachos por IX_ValesRGas.
+            SELECT x.codgas, -x.sec AS nrotrn, x.fch, x.nrotur, COUNT(*) AS n, SUM(x.mto) AS mto
               INTO #v
-              FROM SG12.dbo.ValesR r WITH (NOLOCK)
-              JOIN #k ON #k.codgas = r.codgas AND #k.nrotrn = -r.sec
-             WHERE r.codval = {$codval} AND r.fch BETWEEN @d - 10 AND @h + 10
-               AND (r.codcli = @cli OR EXISTS (SELECT 1 FROM #kd WHERE #kd.codgas = r.codgas AND #kd.nrotrn = -r.sec))
-               AND (r.fch BETWEEN @d AND @h OR EXISTS (SELECT 1 FROM #kd WHERE #kd.codgas = r.codgas AND #kd.nrotrn = -r.sec))
-             GROUP BY r.codgas, r.sec, r.fch, r.nrotur;
+              FROM (
+                SELECT r.codgas, r.sec, r.fch, r.nrotur, r.mto
+                  FROM SG12.dbo.ValesR r WITH (NOLOCK, INDEX(IX_ValesRCli))
+                  JOIN #k ON #k.codgas = r.codgas AND #k.nrotrn = -r.sec
+                 WHERE r.codcli = @cli AND r.codval = {$codval} AND r.fch BETWEEN @d - 10 AND @h + 10
+                   AND (r.fch BETWEEN @d AND @h OR EXISTS (SELECT 1 FROM #kd WHERE #kd.codgas = r.codgas AND #kd.nrotrn = -r.sec))
+                UNION ALL
+                SELECT r.codgas, r.sec, r.fch, r.nrotur, r.mto
+                  FROM (SELECT DISTINCT codgas FROM #kd) g
+                  JOIN SG12.dbo.ValesR r WITH (NOLOCK) ON r.codgas = g.codgas AND r.fch BETWEEN @d - 10 AND @h + 10
+                  JOIN #kd ON #kd.codgas = r.codgas AND #kd.nrotrn = -r.sec
+                 WHERE r.codcli <> @cli AND r.codval = {$codval}
+              ) x
+             GROUP BY x.codgas, x.sec, x.fch, x.nrotur
+            OPTION (RECOMPILE);
 
             SELECT g.abr AS estacion, COALESCE(t.nrotrn, k.nrotrn) AS nrotrn,
                    CONVERT(varchar(10), DATEADD(day, COALESCE(t.fchtrn, v.fch) - 1, '19000101'), 23) AS fecha,
