@@ -17,6 +17,7 @@ return [
         route('efc_conc_usd_globales', [Income::class, 'efc_conc_usd_globales'], name: 'income.efc_conc_usd_globales', methods: ['GET'], permission: 14),
         route('efc_conc_resumen_papeletas_usd', [Income::class, 'efc_conc_resumen_papeletas_usd'], name: 'income.efc_conc_resumen_papeletas_usd', methods: ['GET'], permission: 14),
         route('efc_conc_resumen_general_datos', [Income::class, 'efc_conc_resumen_general_datos'], name: 'income.efc_conc_resumen_general_datos', methods: ['POST'], permission: 14),
+        route('efc_conc_resumen_praxedis_guardar', [Income::class, 'efc_conc_resumen_praxedis_guardar'], name: 'income.efc_conc_resumen_praxedis_guardar', methods: ['POST'], permission: 14),
         route('efc_conc_usd_globales_asociar', [Income::class, 'efc_conc_usd_globales_asociar'], name: 'income.efc_conc_usd_globales_asociar', methods: ['POST'], permission: 14),
         route('efc_conc_usd_globales_desasociar', [Income::class, 'efc_conc_usd_globales_desasociar'], name: 'income.efc_conc_usd_globales_desasociar', methods: ['POST'], permission: 14),
 

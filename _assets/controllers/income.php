@@ -8152,6 +8152,7 @@ public function stamped_invoices_detail(): void
                     'rates'=>[],
                     'transits'=>['origin'=>[],'incoming'=>[],'next_month'=>(new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)))->modify('+1 month')->format('Y-m')],
                     'transit_deposits'=>['origin'=>[],'incoming'=>[]],
+                    'manual_summary'=>null,
                     'work'=>['papers'=>[],'links'=>[]],
                     'errors'=>[],
                 ];
@@ -8226,11 +8227,38 @@ public function stamped_invoices_detail(): void
                         );
                     } catch(Throwable $e) { $data[$key]['errors']['transit_deposits_incoming']=$e->getMessage(); }
                 }
+                if($stationId===EfcConciliacionModel::PRAXEDIS_STATION_ID) {
+                    try { $data[$key]['manual_summary']=$this->efcConciliacion->praxedisManualSummary($year,$month); }
+                    catch(Throwable $e) { $data[$key]['errors']['manual_summary']=$e->getMessage(); }
+                }
             }
             echo json_encode(['status'=>'success','data'=>['stations'=>$data]],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         } catch(Throwable $e) {
             http_response_code(422);
             echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    /** POST /income/efc_conc_resumen_praxedis_guardar {year,month,values}; manually saves Praxedis report amounts. */
+    public function efc_conc_resumen_praxedis_guardar(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $request=json_decode((string)file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);
+            if(!is_array($request)) throw new RuntimeException('Solicitud inválida.');
+            $readPeriod=static function($value,string $name): int {
+                if(!(is_int($value)||(is_string($value)&&preg_match('/^[0-9]{1,4}$/',$value)))) throw new RuntimeException($name.' inválido.');
+                return (int)$value;
+            };
+            $year=$readPeriod($request['year']??null,'Año');
+            $month=$readPeriod($request['month']??null,'Mes');
+            $userId=(int)($_SESSION['tg_user']['Id']??0);
+            if($userId<1) throw new RuntimeException('La sesión no contiene un usuario válido.');
+            $saved=$this->efcConciliacion->savePraxedisManualSummary($year,$month,$request['values']??[], $userId);
+            echo json_encode(['status'=>'success','data'=>$saved],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e) {
+            http_response_code(422);
+            echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);
         }
         exit;
     }
