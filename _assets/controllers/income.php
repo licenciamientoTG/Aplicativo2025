@@ -7930,10 +7930,31 @@ public function stamped_invoices_detail(): void
         }
         $sheet->freezePane('A5');
         $archivo = 'resumen_general_' . preg_replace('/[^A-Za-z0-9_-]/', '_', $empresa) . '_' . $periodo . '.xlsx';
+        // Genera primero el libro en memoria para impedir que avisos, espacios o
+        // salida previa del MVC se mezclen con el ZIP y dañen el archivo XLSX.
+        $salida = fopen('php://temp', 'w+b');
+        if ($salida === false) {
+            http_response_code(500);
+            echo 'No fue posible generar el archivo Excel.';
+            return;
+        }
+        (new Xlsx($spreadsheet))->save($salida);
+        rewind($salida);
+        $contenido = stream_get_contents($salida);
+        fclose($salida);
+        if (!is_string($contenido) || $contenido === '') {
+            http_response_code(500);
+            echo 'No fue posible generar el archivo Excel.';
+            return;
+        }
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment; filename="' . $archivo . '"');
-        header('Cache-Control: max-age=0');
-        (new Xlsx($spreadsheet))->save('php://output');
+        header('Content-Length: ' . strlen($contenido));
+        header('Cache-Control: private, no-store, no-cache, must-revalidate');
+        echo $contenido;
         exit;
     }
 
