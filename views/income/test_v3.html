@@ -1414,15 +1414,30 @@ function setRS(rs) { currentRS = rs; filtrarEstaciones(); }
 
 // ── ESTACIONES ────────────────────────────────────────────────
 function cargarEstaciones() {
-    $.get(URLS_V3.estaciones, function(r) {
-        if (r.status === 'success') { todasLasEstaciones = r.respuesta; filtrarEstaciones(); }
-    });
+    const $select = $('#estacionSelect');
+    $select.empty().append('<option value="">Cargando...</option>');
+    $.get(URLS_V3.estaciones)
+        .done(function(r) {
+            if (r && r.status === 'success' && Array.isArray(r.respuesta)) {
+                todasLasEstaciones = r.respuesta;
+                filtrarEstaciones();
+                return;
+            }
+            console.error('No se pudo cargar el catálogo de estaciones:', r && r.message);
+            todasLasEstaciones = [];
+            $select.empty().append('<option value="">No se pudieron cargar las estaciones</option>');
+        })
+        .fail(function(xhr, status, error) {
+            console.error('Falló la carga del catálogo de estaciones:', status, error);
+            todasLasEstaciones = [];
+            $select.empty().append('<option value="">Error al cargar estaciones</option>');
+        });
 }
 function filtrarEstaciones() {
     const $s = $('#estacionSelect').empty().append('<option value="">-- Estación --</option>');
     todasLasEstaciones.forEach(e => {
         const rfc = e.RFC || 'FORANEAS';
-        const rs  = RS_MAPPING[rfc] || 'FORANEAS';
+        const rs  = e.Empresa || RS_MAPPING[rfc] || 'FORANEAS';
         if (rs === currentRS) $s.append(`<option value="${e.Codigo}">${e.Nombre}</option>`);
     });
     limpiarPaneles();

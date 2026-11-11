@@ -5117,7 +5117,7 @@ public function anomalies_client_tickets()
                     AND T1.Nombre <> N'01 Malecón'
                     AND ISNULL(T1.Denominacion,N'') NOT LIKE N'%Colosio%'
                     $empresaWhere
-                    ORDER BY T1.Nombre";
+                    ORDER BY Nombre";
 
             $stmt = $conn->query($sql);
             $result = [];
