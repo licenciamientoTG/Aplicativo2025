@@ -372,6 +372,9 @@ class ExtraPayments
         $nombre   = $_SESSION['tg_user']['Nombre'] ?? ($_SESSION['tg_user']['Usuario'] ?? '');
         // Alta: sin id no hay adjuntos; se agregan en el detalle tras el primer guardado.
         $adjuntos = $solicitud ? $this->datos_adjuntos($solicitud) : [];
+        if ($solicitud) {
+            $solicitud['lines'] = $this->con_archivos_renglon($solicitud['lines'], $adjuntos['documentos']);
+        }
         echo $this->twig->render($this->route . 'form.html', array_merge(
             compact('solicitud', 'motivos', 'empresas', 'area', 'nombre'),
             $adjuntos
@@ -409,10 +412,29 @@ class ExtraPayments
         $es_propia   = $this->es_propia($solicitud);
         $puede_editar   = $es_propia && authorized(ExtraPaymentWorkflow::PERM_CREAR) && ExtraPaymentWorkflow::can_edit($status);
         $puede_cancelar = $es_propia && authorized(ExtraPaymentWorkflow::PERM_CREAR) && ExtraPaymentWorkflow::can_cancel($status);
+        $adjuntos = $this->datos_adjuntos($solicitud);
+        $solicitud['lines'] = $this->con_archivos_renglon($solicitud['lines'], $adjuntos['documentos']);
         echo $this->twig->render($this->route . 'detail.html', array_merge(
             compact('solicitud', 'puede_editar', 'puede_cancelar'),
-            $this->datos_adjuntos($solicitud)
+            $adjuntos
         ));
+    }
+
+    /** Agrega a cada renglón el nombre de su XML/PDF (xml_nombre, pdf_nombre); vacío si el archivo ya no está activo. */
+    private function con_archivos_renglon(array $lines, array $documentos): array
+    {
+        $nombres = array_column($documentos, 'original_filename', 'id');
+        foreach ($lines as &$l) {
+            foreach (['xml', 'pdf'] as $tipo) {
+                $docId = (int) ($l[$tipo . '_document_id'] ?? 0);
+                $l[$tipo . '_nombre'] = $nombres[$docId] ?? '';
+                if ($l[$tipo . '_nombre'] === '') {
+                    $l[$tipo . '_document_id'] = null;
+                }
+            }
+        }
+        unset($l);
+        return $lines;
     }
 
     /* ===================================================================== */
@@ -490,12 +512,6 @@ class ExtraPayments
         $this->guard([ExtraPaymentWorkflow::PERM_CREAR], true);
         $userId = $this->user_id();
 
-        // Tipo
-        $tipo = $_POST['tipo'] ?? '';
-        if ($tipo !== 'individual' && $tipo !== 'multiple') {
-            json_output(['success' => false, 'message' => 'Tipo de solicitud inválido.']);
-        }
-
         // Motivo: debe existir y estar activo (reasons() solo trae activos).
         $reasonId = (int) ($_POST['reason_id'] ?? 0);
         $motivo = null;
@@ -527,7 +543,8 @@ class ExtraPayments
         $errors = [];
         $lines  = [];
         $n = 0;
-        foreach ($rawLines as $raw) {
+        // $k es la clave del renglón en el formulario: con ella se ubican sus archivos (xml_file[k], pdf_file[k]).
+        foreach ($rawLines as $k => $raw) {
             $n++;
             if (!is_array($raw)) {
                 $errors[] = "Renglón $n: datos inválidos.";
@@ -560,6 +577,11 @@ class ExtraPayments
                 'monto'                => $monto,
                 'fecha_pago_requerida' => $fechaPago ?? '',
                 'comentario_urgencia'  => $this->texto($raw['comentario_urgencia'] ?? '', self::LIM_URGENCIA),
+                // Adjuntos ya guardados del renglón (al editar); se re-validan contra la solicitud más abajo.
+                'xml_document_id'      => (int) ($raw['xml_document_id'] ?? 0),
+                'pdf_document_id'      => (int) ($raw['pdf_document_id'] ?? 0),
+                'cfdi_uuid'            => '',
+                '_k'                   => (string) $k,
             ];
             if ($line['centro_costos'] === '') {
                 $errors[] = "Renglón $n: falta el centro de costos.";
@@ -577,7 +599,8 @@ class ExtraPayments
         // Borrador: se guarda con las mismas validaciones pero no se envía ni avisa a CxP.
         $borrador = ($_POST['borrador'] ?? '') === '1';
         $header = [
-            'tipo'           => $tipo,
+            // Ya no se pide en el formulario: se deduce de cuántos renglones trae la solicitud.
+            'tipo'           => count($lines) > 1 ? 'multiple' : 'individual',
             'reason_id'      => $reasonId,
             'motivo_otros'   => $this->texto($_POST['motivo_otros'] ?? '', self::LIM_MOTIVO),
             'requiere_texto' => $requiereTexto,
@@ -587,10 +610,8 @@ class ExtraPayments
         }
 
         $errors = array_merge($errors, ExtraPaymentWorkflow::validate_request($header, $lines));
-        if ($errors) {
-            json_output(['success' => false, 'message' => implode("\n", array_values(array_unique($errors)))]);
-        }
 
+        $actual = null;
         if ($id > 0) {
             // Edición de borrador (5) o reenvío tras rechazo (9): solo el dueño.
             $actual = $this->requestsModel->get($id);
@@ -606,28 +627,212 @@ class ExtraPayments
             if ($borrador && (int) $actual['status'] !== ExtraPaymentWorkflow::ST_BORRADOR) {
                 json_output(['success' => false, 'message' => 'Una solicitud rechazada solo se puede reenviar.']);
             }
-            $ok = $this->requestsModel->update($id, $header, $lines, $userId, $borrador);
-            if (!$ok) {
-                json_output(['success' => false, 'message' => 'No se pudo guardar la solicitud: cambió de estatus o hubo un error. Recargue e intente de nuevo.']);
-            }
-            if ($borrador) {
-                json_output(['success' => true, 'message' => 'Borrador guardado.', 'id' => $id, 'borrador' => true]);
-            }
-            $this->notify($id, 'pago_extra_cxp', 'Pago extraordinario #' . $id . ' pendiente de VoBo de Cuentas por pagar');
-            json_output(['success' => true, 'message' => 'Solicitud enviada.', 'id' => $id]);
+        } else {
+            $header['fecha']           = date('Y-m-d');
+            $header['departamento_id'] = $this->departamento_id_usuario($userId);
         }
 
-        $header['fecha']           = date('Y-m-d');
-        $header['departamento_id'] = $this->departamento_id_usuario($userId);
-        $newId = $this->requestsModel->create($header, $lines, $userId, $borrador);
-        if (!$newId) {
-            json_output(['success' => false, 'message' => 'No se pudo guardar la solicitud. Intente de nuevo.']);
+        // XML (obligatorio para enviar) y PDF (opcional) de cada renglón: se revisan ANTES de guardar nada.
+        $archivos = $this->revisar_cfdi_renglones($lines, $id, $borrador, $errors);
+        if ($errors) {
+            json_output(['success' => false, 'message' => implode("\n", array_values(array_unique($errors)))]);
         }
+
+        // Alta: se crea primero como borrador para tener id y colgarle los archivos; si algo falla
+        // al subirlos, lo capturado no se pierde (queda en borrador).
+        $nueva = $id === 0;
+        if ($nueva) {
+            $id = (int) $this->requestsModel->create($header, $lines, $userId, true);
+            if ($id <= 0) {
+                json_output(['success' => false, 'message' => 'No se pudo guardar la solicitud. Intente de nuevo.']);
+            }
+        }
+
+        [$subidos, $reemplazados, $falla] = $this->subir_archivos_renglones($id, $lines, $archivos, $userId);
+        if ($falla !== null) {
+            foreach ($subidos as $docId) {
+                $this->docsModel->soft_delete($docId, $userId);
+            }
+            if ($nueva) {
+                json_output(['success' => true, 'borrador' => true, 'warning' => true, 'id' => $id,
+                    'message' => 'Se guardó como borrador #' . $id . ', pero no se pudieron guardar los archivos (' . $falla . '). Vuelva a adjuntarlos y envíe.']);
+            }
+            json_output(['success' => false, 'message' => 'No se guardaron los cambios: ' . $falla . '. Intente de nuevo.']);
+        }
+
+        // Una nueva sin archivos que se guarda como borrador ya quedó lista con create().
+        if (!($nueva && $borrador && !$subidos)) {
+            if (!$this->requestsModel->update($id, $header, $lines, $userId, $borrador)) {
+                foreach ($subidos as $docId) {
+                    $this->docsModel->soft_delete($docId, $userId);
+                }
+                if ($nueva) {
+                    json_output(['success' => true, 'borrador' => true, 'warning' => true, 'id' => $id,
+                        'message' => 'Se guardó como borrador #' . $id . ', pero no se pudo terminar de enviar. Revise los archivos y envíe de nuevo.']);
+                }
+                json_output(['success' => false, 'message' => 'No se pudo guardar la solicitud: cambió de estatus o hubo un error. Recargue e intente de nuevo.']);
+            }
+        }
+        // Los archivos sustituidos por uno nuevo dejan de verse en adjuntos.
+        foreach ($reemplazados as $docId) {
+            $this->docsModel->soft_delete($docId, $userId);
+        }
+
         if ($borrador) {
-            json_output(['success' => true, 'message' => 'Borrador guardado.', 'id' => $newId, 'borrador' => true]);
+            json_output(['success' => true, 'message' => 'Borrador guardado.', 'id' => $id, 'borrador' => true]);
         }
-        $this->notify((int) $newId, 'pago_extra_cxp', 'Pago extraordinario #' . $newId . ' pendiente de VoBo de Cuentas por pagar');
-        json_output(['success' => true, 'message' => 'Solicitud enviada.', 'id' => $newId]);
+        $this->notify($id, 'pago_extra_cxp', 'Pago extraordinario #' . $id . ' pendiente de VoBo de Cuentas por pagar');
+        json_output(['success' => true, 'message' => 'Solicitud enviada.', 'id' => $id]);
+    }
+
+    /* ===================================================================== */
+    /* XML / PDF por renglón                                                 */
+    /* ===================================================================== */
+
+    /** Archivo subido en $_FILES[$campo][$k] (arreglo estilo upload) o null si no se eligió. */
+    private function archivo_de(string $campo, string $k): ?array
+    {
+        $f = $_FILES[$campo] ?? null;
+        if (!$f || !is_array($f['name'] ?? null) || !array_key_exists($k, $f['name'])) {
+            return null;
+        }
+        if (($f['error'][$k] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return null;
+        }
+        return ['name' => (string) $f['name'][$k], 'tmp_name' => (string) $f['tmp_name'][$k],
+                'error' => (int) $f['error'][$k], 'size' => (int) $f['size'][$k]];
+    }
+
+    /** Valida un archivo nuevo de renglón sin guardarlo. Devuelve null o el motivo. */
+    private function revisar_archivo(array $file, string $ext): ?string
+    {
+        if ($file['error'] === UPLOAD_ERR_INI_SIZE || $file['error'] === UPLOAD_ERR_FORM_SIZE || $file['size'] > ExtraPaymentDocumentsModel::MAX_SIZE) {
+            return 'excede el máximo de 10 MB';
+        }
+        if ($file['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) {
+            return 'no se recibió completo, vuelva a elegirlo';
+        }
+        if (strtolower(pathinfo($file['name'], PATHINFO_EXTENSION)) !== $ext) {
+            return 'debe ser un archivo .' . $ext;
+        }
+        return ExtraPaymentDocumentsModel::validate_content($file['tmp_name'], $ext);
+    }
+
+    /**
+     * Revisa XML/PDF de cada renglón, llena $line['cfdi_uuid'] y re-valida los ids de
+     * adjuntos que manda el cliente (deben ser de esta solicitud y del tipo correcto).
+     * Al enviar (no borrador) exige el XML y valida monto = Total, RFC receptor = empresa
+     * y UUID sin repetir. Agrega a $errors; devuelve [índice => ['xml' => file|null, 'pdf' => file|null]].
+     */
+    private function revisar_cfdi_renglones(array &$lines, int $requestId, bool $borrador, array &$errors): array
+    {
+        $docs = [];
+        if ($requestId > 0) {
+            foreach ($this->docsModel->get_by_request($requestId) as $d) {
+                $docs[(int) $d['id']] = $d;
+            }
+        }
+        $rfcEmpresa = [];
+        foreach ($this->catalogModel->empresas() as $e) {
+            $rfcEmpresa[(int) $e['cod']] = strtoupper(trim((string) ($e['rfc'] ?? '')));
+        }
+
+        $archivos = [];
+        $uuids = [];
+        foreach ($lines as $i => &$line) {
+            $n = $i + 1;
+            $k = $line['_k'];
+            foreach (['xml', 'pdf'] as $tipo) {
+                $docId = $line[$tipo . '_document_id'];
+                $ok = $docId > 0 && isset($docs[$docId]) && strtolower((string) $docs[$docId]['file_extension']) === $tipo;
+                $line[$tipo . '_document_id'] = $ok ? $docId : 0;
+            }
+            $xml = $this->archivo_de('xml_file', $k);
+            $pdf = $this->archivo_de('pdf_file', $k);
+            $archivos[$i] = ['xml' => $xml, 'pdf' => $pdf];
+
+            if ($pdf && ($e = $this->revisar_archivo($pdf, 'pdf')) !== null) {
+                $errors[] = "Renglón $n: el PDF $e.";
+            }
+            $rutaXml = null;
+            if ($xml) {
+                if (($e = $this->revisar_archivo($xml, 'xml')) !== null) {
+                    $errors[] = "Renglón $n: el XML $e.";
+                    continue;
+                }
+                $rutaXml = $xml['tmp_name'];
+            } elseif ($line['xml_document_id']) {
+                $rutaXml = ExtraPaymentDocumentsModel::ruta_absoluta($docs[$line['xml_document_id']]);
+            }
+
+            if ($rutaXml === null) {
+                if (!$borrador) {
+                    $errors[] = "Renglón $n: falta el XML (CFDI) de la factura; es obligatorio para enviar.";
+                }
+                continue;
+            }
+            $cfdi = ExtraPaymentDocumentsModel::leer_cfdi($rutaXml);
+            if ($cfdi === null) {
+                $errors[] = "Renglón $n: el XML no es un CFDI timbrado (no se encontró el UUID del timbre fiscal).";
+                continue;
+            }
+            $line['cfdi_uuid'] = $cfdi['uuid'];
+            if ($borrador) {
+                continue; // El borrador guarda lo que haya; las reglas se aplican al enviar.
+            }
+
+            $total = round((float) $cfdi['total'], 2);
+            if (abs($total - round((float) $line['monto'], 2)) > 0.005) {
+                $errors[] = "Renglón $n: el monto capturado ($" . number_format((float) $line['monto'], 2)
+                    . ") no coincide con el Total del CFDI ($" . number_format($total, 2) . ').';
+            }
+            $rfc = $rfcEmpresa[(int) $line['empresa_cod']] ?? '';
+            if ($line['empresa_cod'] !== '' && $rfc !== $cfdi['rfc_receptor']) {
+                $errors[] = "Renglón $n: la factura está a nombre del RFC " . ($cfdi['rfc_receptor'] ?: '(vacío)')
+                    . ', pero la empresa elegida tiene RFC ' . ($rfc ?: '(sin RFC en el catálogo)') . '.';
+            }
+            if (isset($uuids[$cfdi['uuid']])) {
+                $errors[] = "Renglón $n: el CFDI " . $cfdi['uuid'] . ' ya está en el renglón ' . $uuids[$cfdi['uuid']] . ' de esta solicitud.';
+            } elseif (($otra = $this->requestsModel->uuid_en_uso($cfdi['uuid'], $requestId)) !== null) {
+                $errors[] = "Renglón $n: el CFDI " . $cfdi['uuid'] . " ya se solicitó en el pago extraordinario #$otra.";
+            }
+            $uuids[$cfdi['uuid']] = $n;
+        }
+        unset($line);
+        return $archivos;
+    }
+
+    /**
+     * Sube los archivos nuevos de los renglones y pone su id en $lines.
+     * Devuelve [ids subidos, ids sustituidos, mensaje de falla|null].
+     */
+    private function subir_archivos_renglones(int $requestId, array &$lines, array $archivos, int $userId): array
+    {
+        $subidos = [];
+        $reemplazados = [];
+        foreach ($archivos as $i => $par) {
+            foreach (['xml', 'pdf'] as $tipo) {
+                if (!$par[$tipo]) {
+                    continue;
+                }
+                try {
+                    $res = $this->docsModel->upload($requestId, 'soporte', $par[$tipo], $userId);
+                } catch (Throwable $e) {
+                    error_log('ExtraPayments::subir_archivos_renglones(#' . $requestId . '): ' . $e->getMessage());
+                    $res = ['success' => false, 'message' => 'error al guardar'];
+                }
+                if (!$res['success']) {
+                    return [$subidos, [], 'renglón ' . ($i + 1) . ', ' . strtoupper($tipo) . ': ' . $res['message']];
+                }
+                if ($lines[$i][$tipo . '_document_id']) {
+                    $reemplazados[] = (int) $lines[$i][$tipo . '_document_id'];
+                }
+                $lines[$i][$tipo . '_document_id'] = (int) $res['id'];
+                $subidos[] = (int) $res['id'];
+                $this->audit_doc($requestId, 'DOC_UPLOAD', $par[$tipo]['name'] . ' (renglón ' . ($i + 1) . ', ' . $tipo . ')');
+            }
+        }
+        return [$subidos, $reemplazados, null];
     }
 
     /** Cancela una solicitud propia (estatus 1, 2 o 9). */
@@ -660,6 +865,10 @@ class ExtraPayments
             return false;
         }
         if ((int) $doc['created_by'] !== $uid) {
+            return false;
+        }
+        // El XML/PDF de un renglón se cambia desde el renglón, no se elimina suelto.
+        if ($this->docsModel->es_de_renglon((int) $doc['id'])) {
             return false;
         }
         return in_array((int) $solicitud['status'], $this->estatus_adjuntos((string) $doc['kind']), true);
@@ -807,6 +1016,9 @@ class ExtraPayments
         $solicitud = ($doc && (int) $doc['is_deleted'] === 0) ? $this->requestsModel->get((int) $doc['request_id']) : null;
         if (!$solicitud) {
             $this->fail(403, 'No tiene acceso a este documento.', true);
+        }
+        if ($this->docsModel->es_de_renglon((int) $doc['id'])) {
+            json_output(['success' => false, 'message' => 'Este archivo es el XML o PDF de un renglón: cámbielo desde el renglón en la edición de la solicitud.']);
         }
         if (!$this->puede_eliminar_doc($solicitud, $doc, $this->user_id())) {
             json_output(['success' => false, 'message' => 'No puede eliminar este documento (no es suyo o la solicitud ya no lo permite).']);

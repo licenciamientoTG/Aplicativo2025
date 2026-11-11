@@ -1,7 +1,8 @@
 {# Panel de adjuntos. Requiere: solicitud, documentos, can_upload_soporte, can_upload_comprobante. Debe ir FUERA de cualquier <form>. #}
 <div class="card border-0 shadow-sm mb-3" id="ep_docs">
     <div class="card-body">
-        <h6>Documentos adjuntos</h6>
+        <h6>{{ titulo_docs|default('Documentos adjuntos') }}</h6>
+        {% if nota_docs is defined %}<div class="small text-muted mb-2">{{ nota_docs }}</div>{% endif %}
         <div class="table-responsive">
             <table class="table table-sm mb-2">
                 <thead><tr><th>Archivo</th><th>Tipo</th><th>Subido por</th><th>Fecha</th><th class="text-end">Tamaño</th><th></th></tr></thead>

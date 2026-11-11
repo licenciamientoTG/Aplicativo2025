@@ -254,10 +254,6 @@
     var tpl = document.getElementById('tpl_linea').innerHTML;
     var siguiente = 0;
 
-    function esIndividual() {
-        return $form.find('input[name="tipo"]:checked').val() === 'individual';
-    }
-
     function formatoMonto(n) {
         return '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
@@ -270,26 +266,44 @@
             var $l = $(this);
             var v = parseFloat($l.find('.ep-monto').val());
             if (!isNaN(v)) { total += v; }
-            $l.find('.ep-num, .ep-num-txt').text(idx + 1);
+            $l.find('.ep-num').text(idx + 1);
             $l.find('.ep-linea-monto').text(!isNaN(v) && v > 0 ? formatoMonto(v) : '');
+            // Encabezado: "1 · Proveedor · $monto"
+            var prov = $.trim($l.find('.ep-prov-input').val());
+            $l.find('.ep-linea-prov').text(prov || 'Sin proveedor todavía').toggleClass('vacio', !prov);
+            revisarMonto($l);
         });
         $('#total_general').text(formatoMonto(total));
         $('#contador_lineas').text($todas.length);
+        $('#contador_lineas_txt').text($todas.length === 1 ? 'renglón' : 'renglones');
     }
 
-    function actualizarTipo() {
-        var individual = esIndividual();
-        $('#btn_agregar_linea, #btn_agregar_linea_pie').toggle(!individual);
-        $lineas.find('.btn-duplicar-linea').toggle(!individual);
-        if (individual) {
-            // Una solicitud individual conserva solo el primer renglón
-            $lineas.find('.ep-linea:gt(0)').remove();
+    // Monto vs Total del CFDI leído en este renglón (el servidor lo vuelve a validar al enviar)
+    function revisarMonto($l) {
+        var $c = $l.find('.ep-monto-check');
+        var totalCfdi = $l.data('cfdiTotal');
+        if (totalCfdi === undefined) { $c.text('').removeClass('ok mal'); return; }
+        var v = parseFloat($l.find('.ep-monto').val());
+        if (!isNaN(v) && Math.abs(v - totalCfdi) < 0.005) {
+            $c.text('✔ Coincide con el CFDI').removeClass('mal').addClass('ok');
+        } else {
+            $c.text('✗ El CFDI dice ' + formatoMonto(totalCfdi)).removeClass('ok').addClass('mal');
         }
-        $lineas.find('.btn-quitar-linea').toggle(!individual && $lineas.find('.ep-linea').length > 1);
+    }
+
+    // RFC de la empresa elegida, debajo del select
+    function mostrarRfc($l) {
+        var rfc = $l.find('.ep-empresa option:selected').attr('data-rfc') || '';
+        $l.find('.ep-rfc').text(rfc ? 'RFC ' + rfc : '');
+    }
+
+    // Ya no hay tipo de solicitud: siempre se pueden agregar renglones; "Quitar" solo si queda más de uno
+    function actualizarTipo() {
+        $lineas.find('.btn-quitar-linea').toggle($lineas.find('.ep-linea').length > 1);
         recalcular();
     }
 
-    // Tarjetas de opción (tipo y motivo): resalta la seleccionada
+    // Tarjetas de opción (motivo): resalta la seleccionada
     function marcarOpciones() {
         $form.find('.ep-opcion').each(function () {
             $(this).toggleClass('sel', $(this).find('input').prop('checked'));
@@ -313,8 +327,32 @@
             });
         }
         if (despuesDe && despuesDe.length) { despuesDe.after($l); } else { $lineas.append($l); }
+        // Archivos ya guardados del renglón (edición): se muestran con liga para abrirlos
+        ['xml', 'pdf'].forEach(function (tipo) {
+            if (datos && datos[tipo + '_document_id'] && datos[tipo + '_nombre']) {
+                var url = String($form.data('doc-url')).replace(/0\/?$/, datos[tipo + '_document_id'] + '/');
+                var $a = $('<a target="_blank" rel="noopener">').attr('href', url).text(datos[tipo + '_nombre']);
+                marcarArchivo($l, tipo, $('<span>').append('Guardado: ', $a), true);
+            }
+        });
+        mostrarRfc($l);
         actualizarTipo();
         return $l;
+    }
+
+    // Estado visual del XML / PDF de un renglón (contenido: texto o nodo jQuery)
+    function marcarArchivo($l, tipo, contenido, listo) {
+        var $caja = $l.find('.ep-archivo[data-tipo="' + tipo + '"]');
+        var $nombre = $caja.find('.ep-archivo-nombre').empty();
+        if (typeof contenido === 'string') { $nombre.text(contenido); } else { $nombre.append(contenido); }
+        $nombre.toggleClass('text-muted', !listo);
+        $caja.toggleClass('listo', !!listo).removeClass('falta');
+        $caja.find('.ep-elegir-txt').text(listo ? 'Cambiar' : (tipo === 'xml' ? 'Elegir XML' : 'Elegir PDF'));
+    }
+
+    function tieneArchivo($l, tipo) {
+        var input = $l.find(tipo === 'xml' ? '.ep-xml-input' : '.ep-pdf-input')[0];
+        return !!(input && input.files && input.files.length) || !!$l.find('.ep-archivo[data-tipo="' + tipo + '"] .ep-doc-id').val();
     }
 
     // Valores de un renglón en el formato de agregarLinea (clave sin "lines[i][...]")
@@ -332,36 +370,37 @@
         $('#wrap_motivo_otros').toggle(req);
     }
 
-    $form.on('change', 'input[name="tipo"]', function () {
-        if (esIndividual() && $lineas.find('.ep-linea').length > 1) {
-            alertify.warning('Una solicitud individual solo lleva un renglón; se conservó el primero.');
-        }
-        actualizarTipo();
-        marcarOpciones();
-    });
     $form.on('change', 'input[name="reason_id"]', function () { actualizarMotivo(); marcarOpciones(); });
-    $form.on('input', '.ep-monto', recalcular);
+    $form.on('input', '.ep-monto, .ep-prov-input', recalcular);
+    $form.on('change', '.ep-empresa', function () { mostrarRfc($(this).closest('.ep-linea')); });
+    // Si el usuario corrige a mano un dato que vino del CFDI, deja de marcarse en verde
+    $form.on('input change', '.ep-cfdi', function () { $(this).removeClass('ep-cfdi'); });
+    // Al corregir un renglón con error se quita la marca roja
+    $form.on('input change', '.ep-linea.con-error :input', function () { $(this).closest('.ep-linea').removeClass('con-error'); });
 
     // Un renglón nuevo hereda empresa y centro de costos del primero
-    $('#btn_agregar_linea, #btn_agregar_linea_pie').on('click', function () {
+    $('#btn_agregar_linea_pie').on('click', function () {
         var $primero = $lineas.find('.ep-linea').first();
         var base = $primero.length ? valoresDe($primero) : {};
         var $n = agregarLinea({ empresa_cod: base.empresa_cod, centro_costos: base.centro_costos });
-        $n.find('[name$="[proveedor]"]').focus();
+        $n[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        $n.find('.ep-xml-input').closest('label').focus();
     });
     $lineas.on('click', '.btn-quitar-linea', function () {
         $(this).closest('.ep-linea').remove();
         actualizarTipo();
     });
-    // Duplicar: copia el renglón sin el folio de factura
+    // Duplicar: copia el renglón sin el folio ni los archivos (cada renglón lleva su propia factura)
     $lineas.on('click', '.btn-duplicar-linea', function () {
         var $l = $(this).closest('.ep-linea');
         var datos = valoresDe($l);
         datos.factura = '';
+        datos.xml_document_id = '';
+        datos.pdf_document_id = '';
         agregarLinea(datos, $l);
     });
 
-    // ---------------- Cargar XML CFDI (se lee en el navegador; no se sube) ----------------
+    // ---------------- XML CFDI (se lee aquí para llenar el renglón y se sube al guardar) ----------------
     function atributo(nodo, nombre) { return nodo ? (nodo.getAttribute(nombre) || '') : ''; }
 
     function leerCfdi(texto) {
@@ -375,6 +414,8 @@
         var concepto = porNombre('Concepto');
         var serieFolio = (atributo(comp, 'Serie') + atributo(comp, 'Folio')).trim();
         return {
+            uuid: atributo(timbre, 'UUID').toUpperCase(),
+            rfc_receptor: atributo(porNombre('Receptor'), 'Rfc').toUpperCase().trim(),
             proveedor: atributo(emisor, 'Nombre'),
             monto: atributo(comp, 'Total'),
             factura: serieFolio || atributo(timbre, 'UUID'),
@@ -383,30 +424,68 @@
         };
     }
 
+    // Si el archivo elegido no sirve se descarta y el renglón vuelve a como estaba (con su archivo guardado, si tenía)
+    function descartar(input, $l, tipo, mensaje) {
+        alertify.error(mensaje);
+        input.value = '';
+        var tenia = !!$l.find('.ep-archivo[data-tipo="' + tipo + '"] .ep-doc-id').val();
+        if (!tenia) { marcarArchivo($l, tipo, tipo === 'xml' ? 'Sin archivo · llena proveedor, monto, factura y fecha' : 'Sin archivo', false); }
+    }
+
     $lineas.on('change', '.ep-xml-input', function () {
         var input = this;
         var $l = $(input).closest('.ep-linea');
         var archivo = input.files && input.files[0];
-        input.value = '';
         if (!archivo) { return; }
-        if (archivo.size > 2 * 1024 * 1024) { alertify.error('El XML es demasiado grande.'); return; }
+        if (!/\.xml$/i.test(archivo.name)) { descartar(input, $l, 'xml', 'Elija un archivo .xml'); return; }
+        if (archivo.size > 10 * 1024 * 1024) { descartar(input, $l, 'xml', 'El XML excede el máximo de 10 MB.'); return; }
         var lector = new FileReader();
         lector.onload = function () {
             var d = leerCfdi(String(lector.result));
-            if (!d || !d.monto) { alertify.error('No se pudo leer el CFDI: el archivo no es un comprobante válido.'); return; }
+            if (!d || !d.monto) { descartar(input, $l, 'xml', 'No se pudo leer el CFDI: el archivo no es un comprobante válido.'); return; }
+            if (!d.uuid) { descartar(input, $l, 'xml', 'El XML no está timbrado (no trae UUID del timbre fiscal).'); return; }
+            // Los campos que llena el CFDI se marcan en verde
             var set = function (campo, valor) {
-                if (valor) { $l.find('[name$="[' + campo + ']"]').val(valor); }
+                if (valor) { $l.find('[name$="[' + campo + ']"]').val(valor).addClass('ep-cfdi'); }
             };
+            $l.data('cfdiTotal', Math.round(parseFloat(d.monto) * 100) / 100);
             set('proveedor', d.proveedor.substring(0, 200));
             set('monto', d.monto);
             set('factura', d.factura.substring(0, 60));
             set('fecha_factura', d.fecha_factura);
             set('descripcion', d.descripcion.substring(0, 400));
+            // Empresa: se elige por el RFC receptor; si ya había otra, se avisa (al enviar se valida en el servidor)
+            var $emp = $l.find('[name$="[empresa_cod]"]');
+            var $opt = $emp.find('option').filter(function () { return $(this).attr('data-rfc') === d.rfc_receptor; }).first();
+            var avisoEmpresa = '';
+            if ($opt.length) {
+                if ($emp.val() && $emp.val() !== $opt.val()) {
+                    avisoEmpresa = ' La factura es para ' + $opt.text() + ': se cambió la empresa del renglón.';
+                }
+                $emp.val($opt.val()).addClass('ep-cfdi');
+            } else {
+                avisoEmpresa = ' Ninguna empresa tiene el RFC receptor ' + d.rfc_receptor + ': no se podrá enviar con este XML.';
+            }
+            mostrarRfc($l);
+            $l.removeClass('con-error');
             recalcular();
-            $l.find('.ep-xml-ok').removeClass('d-none').text('CFDI leído: ' + (d.proveedor || 'proveedor sin nombre') + ' · ' + formatoMonto(parseFloat(d.monto)) + '. Revise los datos; el XML no se adjunta solo.');
+            marcarArchivo($l, 'xml', archivo.name + ' · UUID ' + d.uuid, true);
+            $l.find('.ep-xml-ok').removeClass('d-none').toggleClass('aviso', !$opt.length || avisoEmpresa !== '')
+                .text((avisoEmpresa ? '⚠ ' : '✔ ') + 'CFDI leído: ' + (d.proveedor || 'proveedor sin nombre') + ' · ' + formatoMonto(parseFloat(d.monto))
+                    + ' · receptor ' + (d.rfc_receptor || '(sin RFC)') + '.' + avisoEmpresa);
         };
-        lector.onerror = function () { alertify.error('No se pudo leer el archivo.'); };
+        lector.onerror = function () { descartar(input, $l, 'xml', 'No se pudo leer el archivo.'); };
         lector.readAsText(archivo);
+    });
+
+    $lineas.on('change', '.ep-pdf-input', function () {
+        var input = this;
+        var $l = $(input).closest('.ep-linea');
+        var archivo = input.files && input.files[0];
+        if (!archivo) { return; }
+        if (!/\.pdf$/i.test(archivo.name)) { descartar(input, $l, 'pdf', 'Elija un archivo .pdf'); return; }
+        if (archivo.size > 10 * 1024 * 1024) { descartar(input, $l, 'pdf', 'El PDF excede el máximo de 10 MB.'); return; }
+        marcarArchivo($l, 'pdf', archivo.name, true);
     });
 
     // Renglones iniciales (edición) o uno vacío (alta)
@@ -420,21 +499,46 @@
     marcarOpciones();
 
     // ---------------- Guardar: enviar o guardar borrador ----------------
+    // Muestra el error arriba y marca en rojo los renglones que menciona ("Renglón N: ..."); lleva al primero
     function mostrarError(msg) {
         var $e = $('#ep_error');
         $e.html(escHtml(msg).replace(/\n/g, '<br>')).removeClass('d-none');
-        $e[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        var $todas = $lineas.find('.ep-linea').removeClass('con-error');
+        var re = /Renglón (\d+)/g;
+        var m;
+        var $primero = null;
+        while ((m = re.exec(msg)) !== null) {
+            var $l = $todas.eq(parseInt(m[1], 10) - 1);
+            if ($l.length) { $l.addClass('con-error'); $primero = $primero || $l; }
+        }
+        ($primero || $e)[0].scrollIntoView({ behavior: 'smooth', block: $primero ? 'start' : 'center' });
     }
 
     function guardar(esBorrador) {
         var $botones = $('#btn_guardar, #btn_borrador');
         $('#ep_error').addClass('d-none').empty();
+        // Para enviar, cada renglón necesita su XML (el servidor lo vuelve a exigir)
+        if (!esBorrador) {
+            var faltan = [];
+            $lineas.find('.ep-linea').each(function (idx) {
+                if (!tieneArchivo($(this), 'xml')) {
+                    faltan.push(idx + 1);
+                    $(this).find('.ep-archivo[data-tipo="xml"]').addClass('falta');
+                }
+            });
+            if (faltan.length) {
+                mostrarError('Falta el XML (CFDI) en el renglón ' + faltan.join(', ') + '. Es obligatorio para enviar; si aún no lo tiene, use "Guardar borrador".');
+                return;
+            }
+        }
         $botones.prop('disabled', true);
-        var datos = $form.serialize() + (esBorrador ? '&borrador=1' : '');
-        $.ajax({ url: $form.data('save-url'), type: 'POST', dataType: 'json', data: datos })
+        // FormData lleva los campos y los archivos XML/PDF de cada renglón
+        var datos = new FormData($form[0]);
+        if (esBorrador) { datos.append('borrador', '1'); }
+        $.ajax({ url: $form.data('save-url'), type: 'POST', dataType: 'json', data: datos, processData: false, contentType: false })
             .done(function (resp) {
                 if (resp.success) {
-                    alertify.success(escHtml(resp.message));
+                    (resp.warning ? alertify.warning : alertify.success)(escHtml(resp.message));
                     // Borrador: va a la edición (con adjuntos); envío: va al detalle
                     var plantilla = String($form.data(resp.borrador ? 'edit-url' : 'detail-url'));
                     window.location.href = plantilla.replace(/\/0(\/edit)?(\/?)$/, function (m, ed, barra) { return '/' + resp.id + (ed || '') + barra; });

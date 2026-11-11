@@ -464,8 +464,9 @@ class ExtraPaymentRequestsModel extends Model
             $this->sql->insert('
                 INSERT INTO [TG].[dbo].[extra_payment_lines]
                     (request_id, empresa_cod, centro_costos, proveedor, factura, fecha_factura,
-                     orden_compra, descripcion, monto, fecha_pago_requerida, comentario_urgencia)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     orden_compra, descripcion, monto, fecha_pago_requerida, comentario_urgencia,
+                     xml_document_id, pdf_document_id, cfdi_uuid)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ', [
                 $requestId,
                 (int)$line['empresa_cod'],
@@ -478,8 +479,26 @@ class ExtraPaymentRequestsModel extends Model
                 round((float)$line['monto'], 2),
                 (string)$line['fecha_pago_requerida'],
                 $this->nullable($line['comentario_urgencia'] ?? null),
+                !empty($line['xml_document_id']) ? (int)$line['xml_document_id'] : null,
+                !empty($line['pdf_document_id']) ? (int)$line['pdf_document_id'] : null,
+                $this->nullable($line['cfdi_uuid'] ?? null),
             ]);
         }
+    }
+
+    /**
+     * Solicitud (no cancelada, distinta de $exceptRequestId) que ya trae este UUID en
+     * algún renglón; null si está libre. Evita pagar dos veces la misma factura.
+     */
+    public function uuid_en_uso(string $uuid, int $exceptRequestId) : ?int {
+        $r = $this->sql->select('
+            SELECT TOP 1 l.request_id
+            FROM [TG].[dbo].[extra_payment_lines] l
+            JOIN [TG].[dbo].[extra_payment_requests] r ON r.id = l.request_id
+            WHERE l.cfdi_uuid = ? AND r.status <> ? AND r.id <> ?
+            ORDER BY l.request_id
+        ', [$uuid, ExtraPaymentWorkflow::ST_CANCELADA, $exceptRequestId]);
+        return $r ? (int)$r[0]['request_id'] : null;
     }
 
     /** Cadena vacía o solo espacios -> NULL. */

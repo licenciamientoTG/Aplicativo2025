@@ -23,7 +23,7 @@ class ExtraPaymentCatalogModel extends Model
      */
     public function empresas() : array {
         $query = '
-            SELECT cod, den
+            SELECT cod, den, rfc
             FROM [SG12].[dbo].[Empresas]
             ORDER BY den ASC
         ';

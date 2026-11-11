@@ -4,41 +4,75 @@
 {% block menutitle %}Pago extraordinario{% endblock %}
 {% block mycss %}
 <style>
-    .ep-opcion { display:flex; gap:.65rem; align-items:flex-start; border:1px solid #dee2e6; border-radius:.6rem; padding:.7rem .85rem; cursor:pointer; height:100%; margin:0; background:#fff; position:relative; transition:border-color .15s, background .15s, box-shadow .15s; }
+    .ep-form { font-size:.95rem; }
+    /* Tarjetas de motivo: la seleccionada lleva borde azul y fondo suave */
+    .ep-opcion { display:flex; gap:.65rem; align-items:center; border:1px solid #dee2e6; border-radius:.6rem; padding:.6rem .85rem; cursor:pointer; height:100%; margin:0; background:#fff; position:relative; transition:border-color .15s, background .15s, box-shadow .15s; }
     .ep-opcion:hover { border-color:#adb5bd; }
     .ep-opcion input { position:absolute; opacity:0; pointer-events:none; }
-    .ep-opcion .dot { flex:0 0 1rem; width:1rem; height:1rem; margin-top:.1rem; border:1px solid #adb5bd; border-radius:50%; background:#fff; display:inline-flex; align-items:center; justify-content:center; }
-    .ep-opcion .tit { font-weight:600; font-size:.85rem; line-height:1.25; display:block; color:#212529; }
-    .ep-opcion .desc { font-size:.75rem; color:#6c757d; display:block; margin-top:.15rem; line-height:1.3; }
+    .ep-opcion .dot { flex:0 0 1rem; width:1rem; height:1rem; border:1px solid #adb5bd; border-radius:50%; background:#fff; display:inline-flex; align-items:center; justify-content:center; }
+    .ep-opcion .tit { font-weight:600; font-size:.88rem; line-height:1.25; color:#212529; }
     .ep-opcion input:focus-visible ~ .dot { box-shadow:0 0 0 .2rem rgba(28,69,135,.25); }
-    /* Seleccionada: tipo = borde azul con aro y fondo suave */
     .ep-opcion.sel { border-color:#1C4587; background:#eef3fb; box-shadow:0 0 0 1px #1C4587; }
     .ep-opcion.sel .dot { border-color:#1C4587; background:#1C4587; }
     .ep-opcion.sel .dot::after { content:''; width:.4rem; height:.4rem; border-radius:50%; background:#fff; }
-    /* Seleccionada: motivo = relleno oscuro con texto claro */
-    .ep-opcion.motivo.sel { background:#1e293b; border-color:#1e293b; box-shadow:none; }
-    .ep-opcion.motivo.sel .tit { color:#fff; }
-    .ep-opcion.motivo.sel .dot { border-color:#38bdf8; background:#38bdf8; }
-    .ep-opcion.motivo.sel .dot::after { background:#1e293b; }
+    .ep-opcion.sel .tit { color:#1C4587; }
+
     .ep-req { color:#dc3545; font-weight:700; font-size:.95em; }
-    .ep-leyenda { font-size:.75rem; color:#6c757d; }
     .ep-titulo { font-size:1.25rem; font-weight:700; margin:0; }
     .ep-folio { font-family:monospace; font-size:.75rem; font-weight:600; padding:.15rem .5rem; border-radius:.3rem; background:#eef3fb; color:#1C4587; border:1px solid #c7d6ee; }
-    .ep-solicitante { display:inline-flex; flex-wrap:wrap; align-items:center; gap:.4rem; font-size:.78rem; background:#fff; border:1px solid #e2e8f0; border-radius:.5rem; padding:.4rem .75rem; box-shadow:0 1px 2px rgba(0,0,0,.04); }
-    .ep-linea { border:1px solid #e2e8f0; border-radius:.6rem; padding:.9rem 1rem; margin-bottom:.9rem; background:#fff; }
-    .ep-linea label { font-size:.7rem; text-transform:uppercase; color:#6c757d; margin-bottom:.1rem; font-weight:600; }
-    .ep-linea-head { display:flex; align-items:center; gap:.5rem; border-bottom:1px solid #f1f3f5; padding-bottom:.6rem; margin-bottom:.75rem; }
-    .ep-num { width:1.6rem; height:1.6rem; border-radius:.4rem; background:#1C4587; color:#fff; font-weight:700; font-size:.78rem; display:inline-flex; align-items:center; justify-content:center; }
-    .ep-linea-monto { font-weight:700; font-size:.85rem; margin-left:.4rem; }
-    .ep-xml-ok { font-size:.75rem; color:#0d6e3f; background:#e8f6ee; border-radius:.4rem; padding:.3rem .6rem; margin-top:.6rem; }
-    .ep-total { font-size:1.6rem; font-weight:700; }
+    .ep-solicitante { display:inline-flex; flex-wrap:wrap; align-items:center; gap:.4rem; font-size:.8rem; background:#fff; border:1px solid #e2e8f0; border-radius:.5rem; padding:.4rem .75rem; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+    .ep-card-tit { font-size:1rem; font-weight:700; color:#0f172a; margin-bottom:.75rem; }
+
+    /* Renglón */
+    .ep-linea { border:1px solid #e2e8f0; border-radius:.75rem; padding:1rem 1.1rem; margin-bottom:1rem; background:#fff; transition:border-color .15s, box-shadow .15s; }
+    .ep-linea.con-error { border-color:#f87171; box-shadow:0 0 0 3px #fee2e2; }
+    .ep-linea-head { display:flex; align-items:center; gap:.6rem; margin-bottom:.8rem; }
+    .ep-num { flex:0 0 auto; width:1.8rem; height:1.8rem; border-radius:.45rem; background:#1C4587; color:#fff; font-weight:700; font-size:.85rem; display:inline-flex; align-items:center; justify-content:center; }
+    .ep-linea.con-error .ep-num { background:#dc2626; }
+    .ep-linea-prov { font-weight:600; color:#0f172a; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ep-linea-prov.vacio { color:#94a3b8; font-weight:500; font-style:italic; }
+    .ep-linea-monto { font-weight:700; font-size:.95rem; color:#0f172a; white-space:nowrap; }
+    .ep-form label.ep-lbl { display:block; font-size:.8rem; color:#475569; font-weight:600; margin-bottom:.25rem; cursor:pointer; }
+    .ep-seccion { display:flex; align-items:center; gap:.6rem; font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; font-weight:700; margin:1rem 0 .55rem; }
+    .ep-seccion::after { content:''; flex:1; border-top:1px solid #eef2f7; }
+    .ep-seccion .ep-seccion-nota { text-transform:none; letter-spacing:0; font-weight:500; color:#94a3b8; }
+    /* Campo llenado desde el CFDI */
+    .ep-form .ep-cfdi { background-color:#f0fdf4; border-color:#86efac; }
+    .ep-rfc { font-size:.75rem; color:#64748b; margin-top:.2rem; min-height:1rem; }
+    .ep-monto-check { font-size:.75rem; margin-top:.2rem; min-height:1rem; }
+    .ep-monto-check.ok { color:#15803d; }
+    .ep-monto-check.mal { color:#b91c1c; font-weight:600; }
+    .ep-monto { text-align:right; font-variant-numeric:tabular-nums; }
+
+    /* XML / PDF del renglón */
+    .ep-archivos { display:flex; flex-wrap:wrap; gap:.75rem; }
+    .ep-archivo { flex:1 1 18rem; display:flex; align-items:center; gap:.7rem; border:1px dashed #cbd5e1; border-radius:.6rem; padding:.6rem .8rem; background:#f8fafc; min-width:0; }
+    .ep-archivo.listo { border-style:solid; border-color:#86efac; background:#f0fdf4; }
+    .ep-archivo.falta { border-color:#f87171; background:#fef2f2; }
+    .ep-archivo > div { min-width:0; }
+    .ep-archivo .ep-archivo-ico { font-size:1.5rem; color:#94a3b8; }
+    .ep-archivo.listo .ep-archivo-ico { color:#15803d; }
+    .ep-archivo .ep-archivo-tit { font-size:.75rem; text-transform:uppercase; color:#475569; font-weight:700; }
+    .ep-archivo .ep-archivo-nombre { font-size:.82rem; word-break:break-all; }
+    .ep-form label.ep-elegir { margin:0 0 0 auto; white-space:nowrap; font-size:.8rem; }
+    .ep-xml-ok { font-size:.82rem; border-radius:.5rem; padding:.45rem .75rem; margin-top:.6rem; color:#14532d; background:#dcfce7; }
+    .ep-xml-ok.aviso { color:#7c2d12; background:#ffedd5; }
+
+    .ep-agregar { display:block; width:100%; border:2px dashed #cbd5e1; background:#f8fafc; color:#1C4587; border-radius:.75rem; padding:.8rem; font-weight:600; transition:border-color .15s, background .15s; }
+    .ep-agregar:hover { border-color:#1C4587; background:#eef3fb; }
+
+    /* Barra fija con total y acciones */
+    .ep-barra { position:sticky; bottom:0; z-index:30; display:flex; flex-wrap:wrap; align-items:center; gap:.75rem 1.25rem; background:#fff; border:1px solid #e2e8f0; border-radius:.75rem .75rem 0 0; box-shadow:0 -6px 16px rgba(15,23,42,.08); padding:.75rem 1rem; margin-top:1rem; }
+    .ep-barra-total { line-height:1.1; }
+    .ep-barra-total .ep-barra-lbl { font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:#64748b; font-weight:600; }
+    .ep-total { font-size:1.5rem; font-weight:700; font-variant-numeric:tabular-nums; }
+    .ep-barra-nota { font-size:.78rem; color:#64748b; }
 </style>
 {% endblock %}
 {% block content %}
-<form id="form_extra" data-save-url="{{ url('extrapayments.save') }}" data-detail-url="{{ url('extrapayments.detail', {id: 0}) }}" data-edit-url="{{ url('extrapayments.edit', {id: 0}) }}" autocomplete="off">
+<div class="ep-form">
+<form id="form_extra" enctype="multipart/form-data" data-doc-url="{{ url('extrapayments.doc_view', {doc_id: 0}) }}" data-save-url="{{ url('extrapayments.save') }}" data-detail-url="{{ url('extrapayments.detail', {id: 0}) }}" data-edit-url="{{ url('extrapayments.edit', {id: 0}) }}" autocomplete="off">
     {% if solicitud %}<input type="hidden" name="id" value="{{ solicitud.id }}">{% endif %}
-
-    <div id="ep_error" class="alert alert-danger d-none"></div>
 
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 border-bottom pb-3 mb-3">
         <div>
@@ -46,7 +80,7 @@
                 <h1 class="ep-titulo">{{ solicitud ? (solicitud.status == 5 ? 'Continuar borrador' : 'Corregir solicitud de pago extraordinario') : 'Nueva solicitud de pago extraordinario' }}</h1>
                 {% if solicitud %}<span class="ep-folio">#{{ solicitud.id }}</span>{% endif %}
             </div>
-            <div class="small text-muted mt-1">Completa los datos del requerimiento; después pasa a VoBo de Cuentas por Pagar. Los campos con <span class="ep-req">*</span> son obligatorios.</div>
+            <div class="small text-muted mt-1">Sube el XML de cada factura y completa los datos del pago. Pasa a VoBo de Cuentas por Pagar y después a autorización de Administración y Finanzas. <span class="ep-req">*</span> = obligatorio.</div>
         </div>
         <div class="ep-solicitante">
             <span class="text-muted">Solicitante:</span><strong>{{ nombre }}</strong>
@@ -54,6 +88,8 @@
             <span class="text-muted">·</span><span class="text-muted">{{ solicitud ? solicitud.fecha|date('d/m/Y') : 'now'|date('d/m/Y') }}</span>
         </div>
     </div>
+
+    <div id="ep_error" class="alert alert-danger d-none"></div>
     {% if solicitud %}
     {% for a in solicitud.approvals %}
     {% if a.decision == 'rechazada' %}
@@ -64,14 +100,7 @@
 
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-body">
-            <h6>Tipo de solicitud</h6>
-            <div class="row g-2 mb-4">
-                <div class="col-md-6"><label class="ep-opcion"><input type="radio" name="tipo" value="individual" {{ (not solicitud or solicitud.tipo == 'individual') ? 'checked' }}>
-                    <i class="dot"></i><span><span class="tit">Individual (un solo pago)</span><span class="desc">Una factura o un pago directo a un proveedor.</span></span></label></div>
-                <div class="col-md-6"><label class="ep-opcion"><input type="radio" name="tipo" value="multiple" {{ (solicitud and solicitud.tipo == 'multiple') ? 'checked' }}>
-                    <i class="dot"></i><span><span class="tit">Múltiple (varios pagos en bloque)</span><span class="desc">Varios renglones, proveedores o facturas en una sola autorización.</span></span></label></div>
-            </div>
-            <h6>Motivo del pago extraordinario <span class="ep-req" title="Obligatorio">*</span></h6>
+            <div class="ep-card-tit">Motivo del pago extraordinario <span class="ep-req" title="Obligatorio">*</span></div>
             <div class="row g-2">
             {% for m in motivos %}
                 <div class="col-md-6 col-lg-4"><label class="ep-opcion motivo"><input type="radio" name="reason_id" value="{{ m.id }}" data-requiere-texto="{{ m.requiere_texto ? 1 : 0 }}" {{ solicitud and solicitud.reason_id == m.id ? 'checked' }}>
@@ -79,74 +108,105 @@
             {% endfor %}
             </div>
             <div id="wrap_motivo_otros" class="mt-2" style="display:none;">
-                <input type="text" name="motivo_otros" maxlength="200" class="form-control form-control-sm" placeholder="Especifique el motivo" value="{{ solicitud.motivo_otros|default('') }}">
+                <input type="text" name="motivo_otros" maxlength="200" class="form-control" placeholder="Especifique el motivo" value="{{ solicitud.motivo_otros|default('') }}">
             </div>
         </div>
     </div>
 
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <h6 class="mb-0">Renglones de pago <span class="badge bg-secondary ms-1" id="contador_lineas">1</span></h6>
-                <button type="button" id="btn_agregar_linea" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> Agregar renglón</button>
-            </div>
+            <div class="ep-card-tit">Renglones de pago</div>
             <div id="lineas"></div>
-            <div class="text-center"><button type="button" id="btn_agregar_linea_pie" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> Agregar otro renglón</button></div>
-        </div>
-    </div>
-
-    <div class="card border-0 shadow-sm mb-4">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                <div class="small text-muted">Total calculado con los montos de los renglones.<br>Flujo: VoBo de Cuentas por Pagar y después autorización de Administración y Finanzas.</div>
-                <div class="text-end"><div class="small text-muted">TOTAL SOLICITADO (MXN)</div><div class="ep-total" id="total_general">$0.00</div></div>
-            </div>
-            <div class="d-flex justify-content-between flex-wrap gap-2">
-                <a href="{{ url('extrapayments.index') }}" class="btn btn-outline-secondary">Volver</a>
-                <div class="d-flex gap-2">
-                    {% if not solicitud or solicitud.status == 5 %}
-                    <button type="button" id="btn_borrador" class="btn btn-outline-primary"><i class="fas fa-save"></i> Guardar borrador</button>
-                    {% endif %}
-                    <button type="submit" id="btn_guardar" class="btn btn-primary"><i class="fas fa-paper-plane"></i> {{ solicitud and solicitud.status == 9 ? 'Reenviar' : 'Enviar solicitud' }}</button>
-                </div>
-            </div>
+            <button type="button" id="btn_agregar_linea_pie" class="ep-agregar"><i class="fas fa-plus"></i> Agregar renglón</button>
         </div>
     </div>
 </form>
 
-{# Adjuntos: solo al editar (una solicitud nueva aún no tiene id; con "Guardar borrador" ya se puede adjuntar). #}
-{% if solicitud %}{% include "views/extrapayments/partials/documentos.html" %}{% endif %}
+{# Adjuntos sueltos: solo al editar; va fuera del <form> (el panel trae sus propios controles). #}
+{% if solicitud %}{% include "views/extrapayments/partials/documentos.html" with {titulo_docs: 'Otros soportes', nota_docs: 'El XML y el PDF de cada factura van en su renglón; aquí puede agregar otros documentos de soporte.'} %}{% endif %}
+
+{# Barra fija: total y acciones. Los botones apuntan al formulario con el atributo form. #}
+<div class="ep-barra">
+    <a href="{{ url('extrapayments.index') }}" class="btn btn-outline-secondary">Volver</a>
+    <div class="ep-barra-nota d-none d-md-block"><span id="contador_lineas">1</span> <span id="contador_lineas_txt">renglón</span></div>
+    <div class="ms-auto d-flex align-items-center flex-wrap gap-3">
+        <div class="ep-barra-total text-end"><div class="ep-barra-lbl">Total solicitado (MXN)</div><div class="ep-total" id="total_general">$0.00</div></div>
+        {% if not solicitud or solicitud.status == 5 %}
+        <button type="button" id="btn_borrador" class="btn btn-outline-primary"><i class="fas fa-save"></i> Guardar borrador</button>
+        {% endif %}
+        <button type="submit" form="form_extra" id="btn_guardar" class="btn btn-primary"><i class="fas fa-paper-plane"></i> {{ solicitud and solicitud.status == 9 ? 'Reenviar' : 'Enviar solicitud' }}</button>
+    </div>
+</div>
+</div>
 
 {# Plantilla de renglón: el JS la clona y reemplaza __I__ por el índice #}
 <template id="tpl_linea">
     <div class="ep-linea" data-i="__I__">
         <div class="ep-linea-head">
             <span class="ep-num">1</span>
-            <strong class="small text-uppercase">Renglón <span class="ep-num-txt">1</span></strong>
-            <span class="ep-linea-monto"></span>
-            <div class="ms-auto d-flex gap-1">
-                <label class="btn btn-sm btn-outline-info mb-0" style="text-transform:none;font-size:.75rem;" title="Lee un CFDI (.xml) y llena proveedor, factura, fecha, monto y concepto"><i class="fas fa-file-code"></i> Cargar XML CFDI<input type="file" accept=".xml,text/xml" class="d-none ep-xml-input"></label>
-                <button type="button" class="btn btn-sm btn-outline-secondary btn-duplicar-linea" title="Duplicar este renglón"><i class="fas fa-copy"></i></button>
-                <button type="button" class="btn btn-sm btn-outline-danger btn-quitar-linea"><i class="fas fa-trash"></i> Quitar</button>
+            <span class="ep-linea-prov vacio">Sin proveedor todavía</span>
+            <span class="ep-linea-monto ms-auto"></span>
+            <div class="d-flex gap-1">
+                <button type="button" class="btn btn-sm btn-outline-secondary btn-duplicar-linea" title="Duplicar este renglón (sin archivos ni folio)"><i class="fas fa-copy"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-danger btn-quitar-linea" title="Quitar este renglón"><i class="fas fa-trash"></i></button>
             </div>
         </div>
-        <div class="row g-2">
-            <div class="col-md-3"><label>Empresa <span class="ep-req" title="Obligatorio">*</span></label>
-                <select name="lines[__I__][empresa_cod]" class="form-control form-control-sm">
-                    <option value="">Seleccione...</option>
-                    {% for e in empresas %}<option value="{{ e.cod }}">{{ e.den }}</option>{% endfor %}
-                </select></div>
-            <div class="col-md-3"><label>Centro de costos / estación <span class="ep-req" title="Obligatorio">*</span></label><input type="text" name="lines[__I__][centro_costos]" maxlength="80" class="form-control form-control-sm"></div>
-            <div class="col-md-4"><label>Proveedor <span class="ep-req" title="Obligatorio">*</span></label><input type="text" name="lines[__I__][proveedor]" maxlength="200" class="form-control form-control-sm"></div>
-            <div class="col-md-2"><label>Monto (con IVA) <span class="ep-req" title="Obligatorio">*</span></label><input type="number" step="0.01" min="0" name="lines[__I__][monto]" class="form-control form-control-sm ep-monto"></div>
-            <div class="col-md-3"><label>Factura / folio</label><input type="text" name="lines[__I__][factura]" maxlength="60" class="form-control form-control-sm"></div>
-            <div class="col-md-3"><label>Fecha de emisión de la factura</label><input type="date" name="lines[__I__][fecha_factura]" class="form-control form-control-sm"></div>
-            <div class="col-md-3"><label>Orden de compra (opcional)</label><input type="text" name="lines[__I__][orden_compra]" maxlength="60" class="form-control form-control-sm"></div>
-            <div class="col-md-3"><label>Fecha de pago requerida <span class="ep-req" title="Obligatorio">*</span></label><input type="date" name="lines[__I__][fecha_pago_requerida]" class="form-control form-control-sm"></div>
-            <div class="col-md-6"><label>Descripción del concepto <span class="ep-req" title="Obligatorio">*</span></label><input type="text" name="lines[__I__][descripcion]" maxlength="400" class="form-control form-control-sm" placeholder="Bien, servicio, refacción o flete a cubrir"></div>
-            <div class="col-md-6"><label>¿Por qué es urgente?</label><input type="text" name="lines[__I__][comentario_urgencia]" maxlength="300" class="form-control form-control-sm" placeholder="¿Por qué no puede esperar al pago normal?"></div>
+
+        <div class="ep-archivos">
+            <div class="ep-archivo" data-tipo="xml">
+                <i class="fas fa-file-code ep-archivo-ico"></i>
+                <div>
+                    <div class="ep-archivo-tit">XML de la factura (CFDI) <span class="ep-req" title="Obligatorio para enviar">*</span></div>
+                    <div class="ep-archivo-nombre text-muted">Sin archivo · llena proveedor, monto, factura y fecha</div>
+                </div>
+                <input type="hidden" name="lines[__I__][xml_document_id]" class="ep-doc-id">
+                <label class="btn btn-sm btn-primary ep-elegir"><i class="fas fa-upload"></i> <span class="ep-elegir-txt">Elegir XML</span><input type="file" name="xml_file[__I__]" accept=".xml,text/xml" class="d-none ep-xml-input"></label>
+            </div>
+            <div class="ep-archivo" data-tipo="pdf">
+                <i class="fas fa-file-pdf ep-archivo-ico"></i>
+                <div>
+                    <div class="ep-archivo-tit">PDF de la factura <span class="text-muted fw-normal text-lowercase">(opcional)</span></div>
+                    <div class="ep-archivo-nombre text-muted">Sin archivo</div>
+                </div>
+                <input type="hidden" name="lines[__I__][pdf_document_id]" class="ep-doc-id">
+                <label class="btn btn-sm btn-outline-secondary ep-elegir"><i class="fas fa-upload"></i> <span class="ep-elegir-txt">Elegir PDF</span><input type="file" name="pdf_file[__I__]" accept=".pdf,application/pdf" class="d-none ep-pdf-input"></label>
+            </div>
         </div>
         <div class="ep-xml-ok d-none"></div>
+
+        <div class="ep-seccion">Datos de la factura <span class="ep-seccion-nota">se llenan con el XML</span></div>
+        <div class="row g-3">
+            <div class="col-md-5"><label class="ep-lbl" for="ep__I___proveedor">Proveedor <span class="ep-req" title="Obligatorio">*</span></label>
+                <input type="text" id="ep__I___proveedor" name="lines[__I__][proveedor]" maxlength="200" class="form-control ep-prov-input"></div>
+            <div class="col-md-2"><label class="ep-lbl" for="ep__I___factura">Factura / folio</label>
+                <input type="text" id="ep__I___factura" name="lines[__I__][factura]" maxlength="60" class="form-control"></div>
+            <div class="col-md-2"><label class="ep-lbl" for="ep__I___fecha_factura">Emisión</label>
+                <input type="date" id="ep__I___fecha_factura" name="lines[__I__][fecha_factura]" class="form-control"></div>
+            <div class="col-md-3"><label class="ep-lbl" for="ep__I___monto">Monto con IVA <span class="ep-req" title="Obligatorio">*</span></label>
+                <div class="input-group"><span class="input-group-text">$</span>
+                    <input type="number" step="0.01" min="0" id="ep__I___monto" name="lines[__I__][monto]" class="form-control ep-monto" placeholder="0.00"></div>
+                <div class="ep-monto-check"></div></div>
+        </div>
+
+        <div class="ep-seccion">Datos del pago</div>
+        <div class="row g-3">
+            <div class="col-md-4"><label class="ep-lbl" for="ep__I___empresa_cod">Empresa (paga) <span class="ep-req" title="Obligatorio">*</span></label>
+                <select id="ep__I___empresa_cod" name="lines[__I__][empresa_cod]" class="form-select ep-empresa">
+                    <option value="">Seleccione...</option>
+                    {% for e in empresas %}<option value="{{ e.cod }}" data-rfc="{{ e.rfc|trim|upper }}">{{ e.den }}</option>{% endfor %}
+                </select>
+                <div class="ep-rfc"></div></div>
+            <div class="col-md-3"><label class="ep-lbl" for="ep__I___centro_costos">Centro de costos / estación <span class="ep-req" title="Obligatorio">*</span></label>
+                <input type="text" id="ep__I___centro_costos" name="lines[__I__][centro_costos]" maxlength="80" class="form-control"></div>
+            <div class="col-md-3"><label class="ep-lbl" for="ep__I___fecha_pago_requerida">Fecha de pago requerida <span class="ep-req" title="Obligatorio">*</span></label>
+                <input type="date" id="ep__I___fecha_pago_requerida" name="lines[__I__][fecha_pago_requerida]" class="form-control"></div>
+            <div class="col-md-2"><label class="ep-lbl" for="ep__I___orden_compra">Orden de compra</label>
+                <input type="text" id="ep__I___orden_compra" name="lines[__I__][orden_compra]" maxlength="60" class="form-control" placeholder="Opcional"></div>
+            <div class="col-md-6"><label class="ep-lbl" for="ep__I___descripcion">Descripción del concepto <span class="ep-req" title="Obligatorio">*</span></label>
+                <input type="text" id="ep__I___descripcion" name="lines[__I__][descripcion]" maxlength="400" class="form-control" placeholder="Bien, servicio, refacción o flete a cubrir"></div>
+            <div class="col-md-6"><label class="ep-lbl" for="ep__I___comentario_urgencia">¿Por qué es urgente?</label>
+                <input type="text" id="ep__I___comentario_urgencia" name="lines[__I__][comentario_urgencia]" maxlength="300" class="form-control" placeholder="¿Por qué no puede esperar al pago normal?"></div>
+        </div>
     </div>
 </template>
 {% endblock %}

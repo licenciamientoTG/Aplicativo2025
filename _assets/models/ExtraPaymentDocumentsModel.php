@@ -27,13 +27,75 @@ class ExtraPaymentDocumentsModel extends Model
         ) ?: [];
     }
 
+    /** Adjuntos activos sueltos (no cuenta el XML/PDF de los renglones, que no tienen tope propio). */
     public function count_active(int $requestId): int
     {
         $r = $this->sql->select(
-            'SELECT COUNT(*) AS n FROM [TG].[dbo].[extra_payment_documents] WHERE request_id = ? AND is_deleted = 0;',
+            'SELECT COUNT(*) AS n FROM [TG].[dbo].[extra_payment_documents] d
+             WHERE d.request_id = ? AND d.is_deleted = 0
+               AND NOT EXISTS (SELECT 1 FROM [TG].[dbo].[extra_payment_lines] l
+                               WHERE l.request_id = d.request_id AND d.id IN (l.xml_document_id, l.pdf_document_id));',
             [$requestId]
         );
         return (int) ($r[0]['n'] ?? 0);
+    }
+
+    /** ¿El documento es el XML o el PDF de algún renglón? (no se elimina suelto) */
+    public function es_de_renglon(int $docId): bool
+    {
+        return (bool) $this->sql->select(
+            'SELECT TOP 1 1 AS x FROM [TG].[dbo].[extra_payment_lines] WHERE xml_document_id = ? OR pdf_document_id = ?;',
+            [$docId, $docId]
+        );
+    }
+
+    /** Ruta absoluta del archivo de un documento, o null si no está en la carpeta de adjuntos. */
+    public static function ruta_absoluta(array $doc): ?string
+    {
+        $raiz = realpath(__DIR__ . '/../../' . self::UPLOAD_BASE);
+        $ruta = realpath(__DIR__ . '/../../' . $doc['file_path']);
+        if (!$raiz || !$ruta || !is_file($ruta) || strncmp($ruta, $raiz . DIRECTORY_SEPARATOR, strlen($raiz) + 1) !== 0) {
+            return null;
+        }
+        return $ruta;
+    }
+
+    /**
+     * Lee los datos fiscales de un CFDI (3.3 o 4.0). Devuelve null si el archivo no es un
+     * comprobante timbrado. Sin DTD ni entidades (se valida antes con validate_content).
+     * @return array{uuid:string,total:string,rfc_emisor:string,nombre_emisor:string,rfc_receptor:string,fecha:string,serie_folio:string,descripcion:string}|null
+     */
+    public static function leer_cfdi(string $path): ?array
+    {
+        $xml = (string) file_get_contents($path);
+        if ($xml === '' || stripos($xml, '<!DOCTYPE') !== false || stripos($xml, '<!ENTITY') !== false) {
+            return null;
+        }
+        $prev = libxml_use_internal_errors(true);
+        $dom  = new DOMDocument();
+        $ok   = $dom->loadXML($xml, LIBXML_NONET);
+        libxml_clear_errors();
+        libxml_use_internal_errors($prev);
+        if (!$ok) {
+            return null;
+        }
+        $nodo = fn(string $n) => $dom->getElementsByTagNameNS('*', $n)->item(0);
+        $attr = fn($el, string $a) => $el ? trim((string) $el->getAttribute($a)) : '';
+        $comp = $nodo('Comprobante');
+        $tfd  = $nodo('TimbreFiscalDigital');
+        if (!$comp || $attr($tfd, 'UUID') === '') {
+            return null;
+        }
+        return [
+            'uuid'          => strtoupper($attr($tfd, 'UUID')),
+            'total'         => $attr($comp, 'Total'),
+            'rfc_emisor'    => strtoupper($attr($nodo('Emisor'), 'Rfc')),
+            'nombre_emisor' => $attr($nodo('Emisor'), 'Nombre'),
+            'rfc_receptor'  => strtoupper($attr($nodo('Receptor'), 'Rfc')),
+            'fecha'         => substr($attr($comp, 'Fecha'), 0, 10),
+            'serie_folio'   => trim($attr($comp, 'Serie') . $attr($comp, 'Folio')),
+            'descripcion'   => $attr($nodo('Concepto'), 'Descripcion'),
+        ];
     }
 
     public function get_by_id(int $id): ?array

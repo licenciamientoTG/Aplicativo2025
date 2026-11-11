@@ -42,7 +42,7 @@
     <div class="card-body p-0">
         <div class="table-responsive p-3">
             <table class="table table-sm table-hover mb-0">
-                <thead><tr><th>Empresa</th><th>Centro de costos</th><th>Proveedor</th><th>Factura</th><th>OC</th><th>Descripción</th><th>Pago requerido</th><th class="text-end">Monto</th></tr></thead>
+                <thead><tr><th>Empresa</th><th>Centro de costos</th><th>Proveedor</th><th>Factura</th><th>OC</th><th>Descripción</th><th>Pago requerido</th><th>CFDI</th><th class="text-end">Monto</th></tr></thead>
                 <tbody>
                 {% for l in solicitud.lines %}
                     <tr>
@@ -53,6 +53,11 @@
                         <td>{{ l.orden_compra }}</td>
                         <td>{{ l.descripcion }}{% if l.comentario_urgencia %}<br><small class="text-danger">Urgencia: {{ l.comentario_urgencia }}</small>{% endif %}</td>
                         <td>{{ l.fecha_pago_requerida|date('d/m/Y') }}</td>
+                        <td class="text-nowrap">
+                            {% if l.xml_document_id %}<a href="{{ url('extrapayments.doc_view', {doc_id: l.xml_document_id}) }}" class="btn btn-sm btn-outline-primary py-0" title="{{ l.xml_nombre }}"><i class="fas fa-file-code"></i> XML</a>{% else %}<span class="badge bg-warning text-dark">Sin XML</span>{% endif %}
+                            {% if l.pdf_document_id %}<a href="{{ url('extrapayments.doc_view', {doc_id: l.pdf_document_id}) }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-danger py-0" title="{{ l.pdf_nombre }}"><i class="fas fa-file-pdf"></i> PDF</a>{% endif %}
+                            {% if l.cfdi_uuid %}<div class="small text-muted font-monospace">{{ l.cfdi_uuid }}</div>{% endif %}
+                        </td>
                         <td class="text-end">${{ l.monto|number_format(2) }}</td>
                     </tr>
                 {% endfor %}
