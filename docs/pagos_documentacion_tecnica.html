@@ -51,7 +51,7 @@
 <body>
 
 <h1>Pago a Proveedores — Documentación técnica</h1>
-<p class="subtitulo">Módulo <code>/payment/</code> del aplicativo TotalGas · Abastos / Tesorería / Contabilidad · Última actualización: 22 de julio de 2026</p>
+<p class="subtitulo">Módulo <code>/payment/</code> del aplicativo TotalGas · Abastos / Tesorería / Contabilidad · Última actualización: 10 de noviembre de 2026</p>
 
 <div class="nota">
 Este documento <b>sustituye</b> al <code>docs/manual_tecnico_pagos_proveedores.md</code>
@@ -181,7 +181,8 @@ notas de crédito / cargo con CFDI, y agrupación contable para archivo físico.
     <code>getBulkAuthorizationHistory</code>, <code>undoBulkAuthorization</code></td></tr>
   <tr><td>Layouts / dispersión</td>
     <td><code>generate_santander_layout</code>, <code>generate_banorte_layout</code>,
-    <code>download_layout</code>, <code>delete_layout</code>, <code>configLayoutModal</code></td></tr>
+    <code>download_layout</code>, <code>delete_layout</code>, <code>configLayoutModal</code>,
+    <code>layout_texto_preview</code>, <code>layout_texto_generate</code></td></tr>
   <tr><td>Comprobantes</td>
     <td><code>preview_comprobantes_match</code>, <code>conciliar_comprobantes</code>,
     <code>get_transaction_documents</code>, <code>view_payment_document</code>,
@@ -422,6 +423,28 @@ método del controlador</b>. Los checks Twig en las vistas solo ocultan botones 
     <td><code>get_applications_report()</code>.</td></tr>
   <tr><td><code>views/layouts/sidebar.html</code></td>
     <td>"Facturas Vencidas" → "Estado Facturas"; "Facturas de Combustible" oculto.</td></tr>
+  <tr><td><b>Layout desde texto</b> (2026-11-10)<br><code>payment_list.html</code>,
+    <code>payment.js</code>, <code>payment.php</code>,
+    <code>LayoutTexto.class.php</code>, <code>CuentasBancariasModel</code></td>
+    <td>Tab propio "Layout desde texto" en Lista de Pagos (solo permiso 68). Tesorería pega la
+    lista de pagos recibida como texto (número, proveedor, monto, empresa, referencia
+    opcional y totales por empresa) y descarga el layout Santander y/o Banorte aunque los
+    pagos no estén registrados. Endpoints <code>layout_texto_preview</code> (resumen:
+    líneas incluidas, excluidas con motivo y advertencias) y
+    <code>layout_texto_generate</code> (archivo; vuelve a interpretar el texto en el
+    servidor). El monto es siempre el del texto; empresa y proveedor se resuelven por
+    nombre contra <code>SG12.dbo.Empresas</code> / <code>Proveedores</code> y las cuentas
+    salen de <code>CatalogosCuentasBancarias</code>. Reutiliza
+    <code>generar_layout_santander_multi_empresa</code> /
+    <code>generar_layout_banorte_multi_empresa</code> (llaves nuevas opcionales
+    <code>linea_idx</code> y <code>concepto_fijo</code>). No registra pagos ni modifica
+    requisiciones. Pruebas: <code>php tests/LayoutTextoTest.php</code>.</td></tr>
+  <tr><td><code>CatalogosCuentasBancarias.Clave</code> (2026-11-10)</td>
+    <td>Columna nueva <code>VARCHAR(50) NULL</code>, visible y editable en
+    <code>/tesoreria/bank_accounts</code> (que ahora también muestra el Id). Guarda la
+    CLABE de 18 dígitos cuando <code>CuentaLocal</code> trae la cuenta corta. Solo el
+    layout desde texto la lee; los layouts normales siguen tomando la CLABE de
+    <code>CuentaLocal</code>.</td></tr>
 </table>
 
 <h2>11. Pendientes conocidos</h2>

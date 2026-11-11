@@ -115,7 +115,8 @@ class ConciliacionDebitoModel extends Model {
      *  - cobro_aplicado: suma de DocumentosA.mtoapl / 100 de los cobros prepago (tip 4, subope 19, no cancelados)
      *    del MISMO rango que aplican a la factura (nroapl). Los consumos que la factura va "gastando" (Serie E, tip 3)
      *    y los cobros de otros meses no cuentan: un cobro de octubre no cubre un anticipo de septiembre.
-     *  - estatus: 'Con cobro' | 'Sin cobro' (aplicado < total − 0.01).
+     *  - estatus: 'Con cobro' | 'Cobro en otro mes' (el del mes no alcanza, pero con cobros de fuera del rango sí) | 'Sin cobro'.
+     *  - cobro_posterior: texto con el último cobro aplicado fuera del rango (fecha · folio · importe), vacío si no hay.
      */
     public function anticipos(int $from, int $until, int $empresa): array {
         $filas = (new ClientesModel)->get_debit_anticipos_report($from, $until, 0, $empresa) ?: [];
@@ -137,11 +138,37 @@ class ConciliacionDebitoModel extends Model {
         foreach ($this->sql->select($query, [min($nros), max($nros), $from, $until]) ?: [] as $r) {
             $aplicado[(int)$r['nro']] = (float)$r['aplicado'];
         }
+        // Cobros prepago de FUERA del rango (p. ej. emitido el 30/09, cobrado el 01/10) aplicados a estas facturas.
+        $fuera = [];
+        $query = "
+            SET NOCOUNT ON;
+            SELECT a.nroapl AS nro, c.nro AS cobro, CONVERT(varchar(10), DATEADD(day, c.fch - 1, '19000101'), 23) AS fecha,
+                   a.mtoapl / 100.0 AS aplicado
+              FROM SG12.dbo.DocumentosA a WITH (NOLOCK)
+              JOIN SG12.dbo.DocumentosC c WITH (NOLOCK) ON c.nro = a.nro AND c.codgas = a.codgas AND c.tip = a.tip
+             WHERE a.tip = 4
+               AND a.nroapl BETWEEN ? AND ?
+               AND c.subope = " . ConciliacionVentaModel::SUBOPE_COBRO_DEBITO . "
+               AND (c.fch < ? OR c.fch > ?)
+               AND CAST(c.txtref AS varchar(40)) NOT LIKE '@N:CANCELAD%'
+             ORDER BY c.fch, c.nro
+            OPTION (RECOMPILE);";
+        foreach ($this->sql->select($query, [min($nros), max($nros), $from, $until]) ?: [] as $r) {
+            $n = (int)$r['nro'];
+            $fuera[$n]['monto'] = ($fuera[$n]['monto'] ?? 0.0) + (float)$r['aplicado'];
+            $fuera[$n]['ultimo'] = $r['fecha'] . ' · cobro ' . $r['cobro'];   // ordenado por fecha: queda el último
+        }
         foreach ($filas as &$f) {
             $total = round((float)$f['Total'], 2);
             $cobro = round($aplicado[(int)$f['Factura']] ?? 0.0, 2);
             $f['cobro_aplicado'] = $cobro;
             $f['estatus'] = $cobro < $total - 0.01 ? 'Sin cobro' : 'Con cobro';
+            $f['cobro_posterior'] = '';
+            $otro = round($fuera[(int)$f['Factura']]['monto'] ?? 0.0, 2);
+            if ($otro > 0) {
+                $f['cobro_posterior'] = $fuera[(int)$f['Factura']]['ultimo'] . ' ($' . number_format($otro, 2) . ')';
+                if ($f['estatus'] === 'Sin cobro' && $cobro + $otro >= $total - 0.01) $f['estatus'] = 'Cobro en otro mes';
+            }
         }
         unset($f);
         return $filas;

@@ -180,9 +180,12 @@ class ClientesModel extends Model{
      * no es consumo a crédito (se pagó con tarjeta bancaria; el cliente solo quedó asignado al facturar). Solo tipval 3.
      */
     private function pagoBancarioFilter(int $tipval, string $alias) : string {
-        return $tipval === 3
-            ? "AND NOT (ISNULL({$alias}.rut, '') LIKE 'SBT:%' AND {$alias}.nroveh = 0 AND {$alias}.tar = 0)"
-            : '';
+        return $tipval === 3 ? 'AND NOT ' . self::pagoBancarioCond($alias) : '';
+    }
+
+    /** Condición SQL (entre paréntesis) del despacho cobrado con terminal bancaria. Única definición: la usa también ConciliacionVentaModel. */
+    public static function pagoBancarioCond(string $alias) : string {
+        return "(ISNULL({$alias}.rut, '') LIKE 'SBT:%' AND {$alias}.nroveh = 0 AND {$alias}.tar = 0)";
     }
 
     /**

@@ -2613,7 +2613,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
     function groupAndSumCompay(data) {
         return data.reduce((acc, item) => {
             let Empresa = item.Empresa;
-            let paymentMethod = item.MedioPago;
+            let paymentMethod = medioDeFila(item);
             if (!acc[Empresa]) {// Si el grupo no existe en el acumulador, lo inicializamos con su total general
                 acc[Empresa] = { 
                     Grupo: Empresa, 
@@ -2644,7 +2644,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
     function groupAndSumEstation(data) {
         return data.reduce((acc, item) => {
             let Estacion = item.Estacion;
-            let paymentMethod = item.MedioPago;
+            let paymentMethod = medioDeFila(item);
             if (!acc[Estacion]) {// Si el grupo no existe en el acumulador, lo inicializamos con su total general
                 acc[Estacion] = {
                     Grupo: Estacion,
@@ -2692,6 +2692,73 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         date.setFullYear(date.getFullYear() - 1);
         return date.toISOString().split('T')[0];
     }
+    // Rubros que en las cards salen agrupados en un renglón; el ícono [+] muestra su desglose
+    const MEDIO_GRUPOS = {
+        'TARJETAS': ['TARJETAS CREDITO', 'TARJETAS DEBITO', 'TARJETAS SIN CLASIFICAR'],
+        'CONSUMO PROPIO': ['CONSUMO PROPIO CREDITO', 'CONSUMO PROPIO DEBITO']
+    };
+    const MEDIO_PADRE = {};
+    Object.keys(MEDIO_GRUPOS).forEach(padre => MEDIO_GRUPOS[padre].forEach(hijo => { MEDIO_PADRE[hijo] = padre; }));
+
+    // ['EFECTIVO','TARJETAS CREDITO','TARJETAS DEBITO'] → [{medio:'EFECTIVO', hijos:null}, {medio:'TARJETAS', hijos:[...]}]
+    // El grupo queda en la posición de su primer hijo.
+    function agruparMedios(medios) {
+        const out = [];
+        const idx = {};
+        medios.forEach(m => {
+            const padre = medioPadre(m);
+            if (!padre) { out.push({ medio: m, hijos: null }); return; }
+            if (!idx[padre]) { idx[padre] = { medio: padre, hijos: [] }; out.push(idx[padre]); }
+            idx[padre].hijos.push(m);
+        });
+        out.forEach(it => {
+            if (!it.hijos) return;
+            const fijo = MEDIO_GRUPOS[it.medio];
+            it.hijos.sort((a, b) => fijo ? fijo.indexOf(a) - fijo.indexOf(b) : a.localeCompare(b));
+        });
+        return out;
+    }
+
+    // Valeras llega por marca como 'VALERAS - {concepto}' (las marcas no son fijas, por eso no van en MEDIO_GRUPOS)
+    const VALERAS_PREFIJO = 'VALERAS - ';
+    function medioPadre(medio) {
+        if (MEDIO_PADRE[medio]) return MEDIO_PADRE[medio];
+        return String(medio).indexOf(VALERAS_PREFIJO) === 0 ? 'VALERAS' : null;
+    }
+    // Rubro de una fila de Ingresos: VALERAS se abre por concepto del corte cuando la fila lo trae
+    function medioDeFila(item) {
+        return (item.MedioPago === 'VALERAS' && item.Descripcion) ? VALERAS_PREFIJO + String(item.Descripcion).trim() : item.MedioPago;
+    }
+
+    // Renglones de una tabla de card. celdas(nombres) devuelve los <td> (sin el del nombre) con la suma de esos rubros.
+    function medioRowsHtml(items, celdas) {
+        return items.map(it => {
+            if (!it.hijos) return `<tr><td>${it.medio}</td>${celdas([it.medio])}</tr>`;
+            const hijos = it.hijos.map(h => `
+                <tr class="medio-hijo d-none" data-grupo="${it.medio}">
+                    <td class="ps-4 text-muted">${h.replace(it.medio + ' - ', '').replace(it.medio + ' ', '')}</td>${celdas([h])}
+                </tr>`).join('');
+            return `
+                <tr class="medio-padre" data-grupo="${it.medio}">
+                    <td class="text-nowrap"><a href="#" class="medio-toggle" title="Ver desglose"><i class="far fa-plus-square"></i></a> ${it.medio}</td>${celdas(it.hijos)}
+                </tr>${hijos}`;
+        }).join('');
+    }
+
+    // Abre/cierra el desglose en todas las cards del mismo bloque (año anterior / actual / diferencia)
+    $(document).on('click', '.medio-toggle', function (e) {
+        e.preventDefault();
+        const tr = $(this).closest('tr');
+        const grupo = tr.data('grupo');
+        let scope = tr.closest('.medio-scope');
+        if (!scope.length) scope = tr.closest('table');
+        const hijos = scope.find(`tr.medio-hijo[data-grupo="${grupo}"]`);
+        const abrir = hijos.first().hasClass('d-none');
+        hijos.toggleClass('d-none', !abrir);
+        scope.find(`tr.medio-padre[data-grupo="${grupo}"] .medio-toggle i`)
+            .toggleClass('fa-plus-square', !abrir).toggleClass('fa-minus-square', abrir);
+    });
+
     function buildPaymentTable(mediosPago, totalSum) {
         let table = document.createElement('table');
         table.className = 'table table_card table-sm';
@@ -2708,16 +2775,15 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         `;
         table.appendChild(thead);
         let tbody = document.createElement('tbody');
-        mediosArray.forEach(med => {
-            let tr = document.createElement('tr');
-            let porcentaje = (med.TotalSum / totalSum) * 100;
-            tr.innerHTML = `
-                <td>${med.MedioPago}</td>
-                <td class="text-end">${Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN' }).format(med.TotalSum)}</td>
-                ${hasEventos ? `<td class="text-end">${(med.Eventos || 0).toLocaleString('es-MX')}</td>` : ''}
+        tbody.innerHTML = medioRowsHtml(agruparMedios(Object.keys(mediosPago)), nombres => {
+            const monto = nombres.reduce((a, n) => a + (mediosPago[n].TotalSum || 0), 0);
+            const eventos = nombres.reduce((a, n) => a + (mediosPago[n].Eventos || 0), 0);
+            const porcentaje = totalSum ? (monto / totalSum) * 100 : 0;
+            return `
+                <td class="text-end">${Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN' }).format(monto)}</td>
+                ${hasEventos ? `<td class="text-end">${eventos.toLocaleString('es-MX')}</td>` : ''}
                 <td class="text-end">${porcentaje.toFixed(2)}%</td>
             `;
-            tbody.appendChild(tr);
         });
         table.appendChild(tbody);
         return table;
@@ -2742,6 +2808,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
 
             // Contenedor para la comparación (fila en display flex)
             let rowDiv = document.createElement('div');
+            rowDiv.className = 'medio-scope';
             rowDiv.style.display = 'flex';
             rowDiv.style.alignItems = 'flex-start';
             rowDiv.style.gap = '10px';
@@ -2883,9 +2950,10 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         
         // Cuerpo de la tabla
         let tbody = document.createElement('tbody');
-        allMedios.forEach(medio => {
-            const previousValue = previousMedios[medio] ? previousMedios[medio].TotalSum : 0;
-            const currentValue  = currentMedios[medio]  ? currentMedios[medio].TotalSum  : 0;
+        const suma = (medios, nombres, campo) => nombres.reduce((a, n) => a + ((medios[n] || {})[campo] || 0), 0);
+        tbody.innerHTML = medioRowsHtml(agruparMedios([...allMedios]), nombres => {
+            const previousValue = suma(previousMedios, nombres, 'TotalSum');
+            const currentValue  = suma(currentMedios, nombres, 'TotalSum');
             const diffAmount = currentValue - previousValue;
             
             // Calcular el porcentaje que representa cada medio en el total del grupo
@@ -2896,16 +2964,13 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             // Se asigna color en función de la diferencia de porcentajes
             const diffColor = diffAmount > 0 ? 'green' : (diffAmount < 0 ? 'red' : 'gray');
             
-            let tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${medio}</td>
+            return `
                 <td class="text-end" style="color: ${diffColor};">${Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(diffAmount)}</td>
-                ${hasEventos ? `<td class="text-end">${(((currentMedios[medio] || {}).Eventos || 0) - ((previousMedios[medio] || {}).Eventos || 0)).toLocaleString('es-MX')}</td>` : ''}
+                ${hasEventos ? `<td class="text-end">${(suma(currentMedios, nombres, 'Eventos') - suma(previousMedios, nombres, 'Eventos')).toLocaleString('es-MX')}</td>` : ''}
                 <td class="text-end" style="color: ${diffColor};">
                     <strong>${diffPercentage.toFixed(2)}%</strong>
                 </td>
             `;
-            tbody.appendChild(tr);
         });
         
         table.appendChild(tbody);
@@ -2994,9 +3059,13 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             $('#mounth_estation_table tfoot').empty(); // Limpia el pie de tabla si lo usas
         }
         $(ESTATION_CONTAINERS.join(',')).empty().addClass('loading');
+        estationExport = null;
+        $('#excel_mounth_estation').prop('disabled', true);
         var fromDate = document.getElementById('from5').value;
         var untilDate = document.getElementById('until5').value;
-        var estation = document.getElementById('estation5').value;
+        // Select múltiple: códigos separados por coma; sin selección (o todas marcadas) = '0' = Todas
+        var estacionesSel = $('#estation5').val() || [];
+        var estation = (estacionesSel.length === 0 || estacionesSel.length === $('#estation5 option').length) ? '0' : estacionesSel.join(',');
 
         var dynamicColumns = getMounthCompanyColumns(fromDate, untilDate,'mounth_estation_table');
         updateTableHeaders(fromDate, untilDate,'mounth_estation_table');
@@ -3114,6 +3183,124 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
     }
 
     const ESTATION_CONTAINERS = ['#comparativeEstationContainer', '#despachosEstationContainer', '#ingresosVsDespachosContainer'];
+    const ORDEN_MEDIOS_COMPARATIVA = ['CREDITO', 'DEBITO', 'CONSUMO PROPIO DEBITO', 'CONSUMO PROPIO CREDITO', 'EFECTIVO', 'TARJETAS CREDITO', 'TARJETAS DEBITO', 'TARJETAS SIN CLASIFICAR', 'VALERAS', 'OTRO'];
+
+    // ── Excel del tab Venta por Estación Mensual: una hoja por sub-tab, con lo mismo que hay en pantalla ──
+    // Se arma aquí (los datos ya están cargados) y Commercial::estation_excel solo le da formato.
+    let estationExport = null; // datos del último "Generar Reporte"
+    const xCell = (v, f, extra) => Object.assign({ v: v, f: f }, extra || {});
+    const xColor = v => Math.abs(v) < 0.005 ? null : (v > 0 ? '008000' : 'C00000');
+    const xSuma = (grupo, nombres, campo) => nombres.reduce((a, n) => a + (((grupo && grupo.MediosPago[n]) || {})[campo] || 0), 0);
+
+    // Renglones con TARJETAS / VALERAS / CONSUMO PROPIO agrupados: 'group' + sus 'child' (en Excel quedan contraídos)
+    function xRowsAgrupados(medios, celdas) {
+        const rows = [];
+        agruparMedios(medios).forEach(it => {
+            if (!it.hijos) { rows.push({ t: 'row', c: [it.medio].concat(celdas([it.medio])) }); return; }
+            rows.push({ t: 'group', c: [it.medio].concat(celdas(it.hijos)) });
+            it.hijos.forEach(h => rows.push({ t: 'child', c: [h.replace(it.medio + ' - ', '').replace(it.medio + ' ', '')].concat(celdas([h])) }));
+        });
+        return rows;
+    }
+
+    // Hojas Ingresos y Despachos: por estación, Año anterior / Año actual / Diferencia en columnas
+    function xSheetAnual(name, nota, cur, prev, conEventos) {
+        const rows = [{ t: 'note', c: [nota] }, { t: 'blank', c: [] }];
+        const head = conEventos
+            ? ['Medio de pago', 'Año anterior', 'Transacc. ant.', '% ant.', 'Año actual', 'Transacc. act.', '% act.', 'Diferencia', 'Dif. transacc.', 'Dif. %']
+            : ['Medio de pago', 'Año anterior', '% ant.', 'Año actual', '% act.', 'Diferencia', 'Dif. %'];
+        [...new Set([...Object.keys(cur), ...Object.keys(prev)])].sort().forEach(est => {
+            const a = prev[est], b = cur[est];
+            const ta = a ? a.TotalSum : 0, tb = b ? b.TotalSum : 0;
+            const medios = [...new Set([...Object.keys(a ? a.MediosPago : {}), ...Object.keys(b ? b.MediosPago : {})])];
+            const celdas = nombres => {
+                const va = xSuma(a, nombres, 'TotalSum'), vb = xSuma(b, nombres, 'TotalSum');
+                const pa = ta ? va / ta : 0, pb = tb ? vb / tb : 0;
+                const col = { color: xColor(vb - va) };
+                if (!conEventos) return [xCell(va, 'money'), xCell(pa, 'pct'), xCell(vb, 'money'), xCell(pb, 'pct'), xCell(vb - va, 'money', col), xCell(pb - pa, 'pct', col)];
+                const ea = xSuma(a, nombres, 'Eventos'), eb = xSuma(b, nombres, 'Eventos');
+                return [xCell(va, 'money'), xCell(ea, 'int'), xCell(pa, 'pct'), xCell(vb, 'money'), xCell(eb, 'int'), xCell(pb, 'pct'),
+                        xCell(vb - va, 'money', col), xCell(eb - ea, 'int'), xCell(pb - pa, 'pct', col)];
+            };
+            rows.push({ t: 'title', c: [est] }, { t: 'head', c: head });
+            xRowsAgrupados(medios, celdas).forEach(r => rows.push(r));
+            rows.push({ t: 'total', c: ['Total'].concat(celdas(medios)) }, { t: 'blank', c: [] });
+        });
+        return { name: name, rows: rows };
+    }
+
+    // Hoja Comparativa: Ingresos vs Despachos del periodo, igual que renderIngresosVsDespachos
+    function xSheetComparativa(nota, ing, desp) {
+        const rubro = m => medioPadre(m) === 'VALERAS' ? 'VALERAS' : m;
+        const pos = m => { const i = ORDEN_MEDIOS_COMPARATIVA.indexOf(rubro(m)); return i < 0 ? ORDEN_MEDIOS_COMPARATIVA.length : i; };
+        const rows = [{ t: 'note', c: [nota] }, { t: 'blank', c: [] }];
+        [...new Set([...Object.keys(ing), ...Object.keys(desp)])].sort().forEach(est => {
+            const I = ing[est] || { TotalSum: 0, MediosPago: {} };
+            const D = desp[est] || { TotalSum: 0, EventosSum: 0, MediosPago: {} };
+            const medios = [...new Set([...Object.keys(I.MediosPago), ...Object.keys(D.MediosPago)])].sort((x, y) => pos(x) - pos(y));
+            const porRubro = {};
+            medios.forEach(m => { porRubro[rubro(m)] = (porRubro[rubro(m)] || 0) + xSuma(D, [m], 'TotalSum') - xSuma(I, [m], 'TotalSum'); });
+            const sumAbs = Object.values(porRubro).reduce((s, d) => s + Math.abs(d), 0);
+            const difTotal = D.TotalSum - I.TotalSum;
+            const celdas = nombres => {
+                const vI = xSuma(I, nombres, 'TotalSum'), vD = xSuma(D, nombres, 'TotalSum');
+                const col = { color: xColor(vD - vI) };
+                return [xCell(vI, 'money'), xCell(vD, 'money'), xCell(xSuma(D, nombres, 'Eventos'), 'int'),
+                        xCell(vD - vI, 'money', col), xCell(vI ? (vD - vI) / vI : null, 'pct', col)];
+            };
+            rows.push({ t: 'title', c: [est] });
+            rows.push({ t: 'note', c: ['Ingresos', xCell(I.TotalSum, 'money'), 'Despachos', xCell(D.TotalSum, 'money'), 'Diferencia', xCell(difTotal, 'money', { color: xColor(difTotal) })] });
+            rows.push({ t: 'note', c: ['En medio distinto', xCell(I.TotalSum ? sumAbs / 2 / I.TotalSum : 0, 'pct'), 'Transacciones', xCell(D.EventosSum || 0, 'int')] });
+            rows.push({ t: 'head', c: ['Medio de pago', 'Ingresos', 'Despachos', 'Transacc.', 'Diferencia', 'Dif. %'] });
+            xRowsAgrupados(medios, celdas).forEach(r => rows.push(r));
+            rows.push({ t: 'total', c: ['Total'].concat(celdas(medios)) }, { t: 'blank', c: [] });
+        });
+        return { name: 'Comparativa', rows: rows };
+    }
+
+    // Hoja Detalle: la tabla tal cual (estación, concepto, medio de pago y meses)
+    function xSheetDetalle(data, fromDate, untilDate) {
+        const cols = getMounthCompanyColumns(fromDate, untilDate, 'mounth_estation_table');
+        const rows = [{ t: 'head', c: cols.map(c => c.title) }];
+        data.forEach(r => rows.push({ t: 'row', c: cols.map((c, i) => i < 3 ? String(r[c.data] == null ? '' : r[c.data]).trim() : xCell(parseFloat(r[c.data]) || 0, 'money')) }));
+        return { name: 'Detalle', rows: rows };
+    }
+
+    async function exportEstationExcel() {
+        const x = estationExport;
+        if (!x) { alertify.error('Primero genera el reporte.'); return; }
+        const periodo = `${x.fromDate} a ${x.untilDate}`;
+        const sheets = [
+            xSheetAnual('Ingresos', `Venta por estación — Ingresos (corte) — ${periodo}, contra el mismo periodo del año anterior`, x.ingresosActual, x.ingresosPrev, false),
+            xSheetAnual('Despachos', `Venta por estación — Despachos — ${periodo}, contra el mismo periodo del año anterior`, x.despachosActual, x.despachosPrev, true),
+            xSheetComparativa(`Venta por estación — Despachos vs Ingresos — ${periodo}`, x.ingresosActual, x.despachosActual),
+            xSheetDetalle(x.detalle, x.fromDate, x.untilDate)
+        ];
+        const $btn = $('#excel_mounth_estation').prop('disabled', true);
+        try {
+            const res = await fetch(routeUrl('commercial.estation_excel'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ sheets: sheets })
+            });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const url = URL.createObjectURL(await res.blob());
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `venta_por_estacion_${x.fromDate}_a_${x.untilDate}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.error(e);
+            alertify.error('No se pudo generar el Excel.');
+        } finally {
+            $btn.prop('disabled', false);
+        }
+    }
+    $(document).on('click', '#excel_mounth_estation', exportEstationExcel);
 
     // Llena los sub-tabs Ingresos / Despachos / Comparativa del tab Venta por Estación Mensual.
     // currentData = filas de Ingresos del periodo (las mismas de la tabla Detalle).
@@ -3143,9 +3330,15 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             const ingresosActual = groupAndSumEstation(currentData);
             const despachosActual = groupDespachosEstation(currentEventos);
 
-            renderGroupCards(ingresosActual, groupAndSumEstation(previousData), 'comparativeEstationContainer');
-            renderGroupCards(despachosActual, groupDespachosEstation(previousEventos), 'despachosEstationContainer');
+            const ingresosPrev = groupAndSumEstation(previousData);
+            const despachosPrev = groupDespachosEstation(previousEventos);
+
+            renderGroupCards(ingresosActual, ingresosPrev, 'comparativeEstationContainer');
+            renderGroupCards(despachosActual, despachosPrev, 'despachosEstationContainer');
             renderIngresosVsDespachos(ingresosActual, despachosActual, 'ingresosVsDespachosContainer');
+
+            estationExport = { fromDate, untilDate, ingresosActual, ingresosPrev, despachosActual, despachosPrev, detalle: currentData };
+            $('#excel_mounth_estation').prop('disabled', false);
         } catch (error) {
             console.error("Error al obtener los datos de las cards por estación:", error);
         } finally {
@@ -3161,8 +3354,9 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         const money = v => Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(v);
         const pct = (dif, base) => base !== 0 ? `${((dif / base) * 100).toFixed(2)}%` : '—';
         const color = v => Math.abs(v) < 0.005 ? 'gray' : (v > 0 ? 'green' : 'red');
-        const orden = ['CREDITO', 'DEBITO', 'CONSUMO PROPIO DEBITO', 'CONSUMO PROPIO CREDITO', 'EFECTIVO', 'TARJETAS', 'VALERAS', 'OTRO'];
-        const posicion = medio => orden.includes(medio) ? orden.indexOf(medio) : orden.length;
+        const orden = ORDEN_MEDIOS_COMPARATIVA;
+        const rubro = medio => medioPadre(medio) === 'VALERAS' ? 'VALERAS' : medio; // las marcas de valera cuentan como un solo rubro
+        const posicion = medio => orden.includes(rubro(medio)) ? orden.indexOf(rubro(medio)) : orden.length;
 
         let container = document.getElementById(containerId);
         container.innerHTML = '';
@@ -3177,30 +3371,30 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             const medios = [...new Set([...Object.keys(ing.MediosPago), ...Object.keys(desp.MediosPago)])]
                 .sort((a, b) => posicion(a) - posicion(b));
 
-            let sumAbs = 0;
-            let rows = '';
-            medios.forEach(medio => {
-                const vIng = ing.MediosPago[medio] ? ing.MediosPago[medio].TotalSum : 0;
-                const vDesp = desp.MediosPago[medio] ? desp.MediosPago[medio].TotalSum : 0;
-                const eventos = desp.MediosPago[medio] ? desp.MediosPago[medio].Eventos : 0;
+            const suma = (grupo, nombres, campo) => nombres.reduce((a, n) => a + ((grupo.MediosPago[n] || {})[campo] || 0), 0);
+            // "En medio distinto" se sigue midiendo rubro por rubro (crédito y débito de tarjeta por separado)
+            // y valeras como un solo rubro (el corte y la terminal no siempre nombran igual la marca)
+            const porRubro = {};
+            medios.forEach(m => { porRubro[rubro(m)] = (porRubro[rubro(m)] || 0) + suma(desp, [m], 'TotalSum') - suma(ing, [m], 'TotalSum'); });
+            const sumAbs = Object.values(porRubro).reduce((a, d) => a + Math.abs(d), 0);
+            const rows = medioRowsHtml(agruparMedios(medios), nombres => {
+                const vIng = suma(ing, nombres, 'TotalSum');
+                const vDesp = suma(desp, nombres, 'TotalSum');
+                const eventos = suma(desp, nombres, 'Eventos');
                 const dif = vDesp - vIng;
-                sumAbs += Math.abs(dif);
-                rows += `
-                    <tr>
-                        <td>${medio}</td>
+                return `
                         <td class="text-end">${money(vIng)}</td>
                         <td class="text-end">${money(vDesp)}</td>
-                        <td class="text-end">${(eventos || 0).toLocaleString('es-MX')}</td>
+                        <td class="text-end">${eventos.toLocaleString('es-MX')}</td>
                         <td class="text-end" style="color: ${color(dif)};">${money(dif)}</td>
-                        <td class="text-end" style="color: ${color(dif)};"><strong>${pct(dif, vIng)}</strong></td>
-                    </tr>`;
+                        <td class="text-end" style="color: ${color(dif)};"><strong>${pct(dif, vIng)}</strong></td>`;
             });
             const difTotal = desp.TotalSum - ing.TotalSum;
             const medioDistinto = ing.TotalSum !== 0 ? (sumAbs / 2 / ing.TotalSum) * 100 : 0;
             const nivel = medioDistinto > 15 ? 'text-danger' : (medioDistinto > 5 ? 'text-warning' : (medioDistinto > 1 ? 'text-info' : 'text-success'));
 
             let card = document.createElement('div');
-            card.className = 'card card_compare';
+            card.className = 'card card_compare medio-scope';
             card.innerHTML = `
                 <div class="card-body body_card">
                     <h5 class="card-title">${estacion}</h5>

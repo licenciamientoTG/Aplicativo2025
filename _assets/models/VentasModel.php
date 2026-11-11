@@ -1007,9 +1007,9 @@ class VentasModel extends Model
         $company_string = ((int)$company > 0) ? "AND emp.cod = " . (int)$company : '';
         $cp = self::CONSUMO_PROPIO_CODVAL;
         $cpc = self::CONSUMO_PROPIO_CODVAL_CREDITO;
-        $tarjeta_credito = "' SMARTBT - American Express',' Tarjetas American Express','HTI - Tarjeta American Express','INTERL - Tarjeta American Express','INTERL - Tarjeta de Crédito','HTI - Tarjeta de Crédito'";
-        $tarjeta_debito = "'INTERL - Tarjeta de Débito','HTI - Tarjeta de Débito'";
-        $tarjeta_manual = "' SMARTBT - MANUAL Bancarias','SMARTBT - MANUAL Bancarias',' Tarjetas Bancomer',' Tarjetas Santander',' Tarjetas Banorte',' Tarjetas Afirme','INTERLOGIC Manual',' Tarjetas Scotiabank',' Banca MiFel',' Tarjeta Inbursa',' BANKAOOL (Propinas)'";
+        $tarjeta_credito = $this->conceptosTarjetaCredito();
+        $tarjeta_debito = $this->conceptosTarjetaDebito();
+        $tarjeta_manual = $this->conceptosTarjetaManual();
         $valeras = "' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro',' Tarjeta Inburgas',' Tarjeta TicketCar',' Tarjeta TicketCar +',' Vale Efectivale',' SMARTBT - EFECTIVALE','Ultra Gas','Tarjetas Sodexo (Pluxee)',' Tarjeta EfectiCard +',' GASnGO MEXICO'";
 
         $query = "
@@ -1017,27 +1017,7 @@ class VentasModel extends Model
                 DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '$untilstring') + 1;
 
                 WITH ratio AS (
-                    -- % crédito (tiptrn 51) por estación, mes y terminal (@B: de datref), sin clientes crédito/débito
-                    SELECT x.codgas, x.mes, x.bval,
-                           SUM(CASE WHEN x.tiptrn = 51 THEN x.mto ELSE 0 END) / NULLIF(SUM(x.mto), 0) AS pc
-                    FROM (
-                        SELECT d.codgas, d.tiptrn, d.mto,
-                               DATEFROMPARTS(YEAR(CAST(CAST(d.fchcor AS DATETIME) - 1 AS DATE)), MONTH(CAST(CAST(d.fchcor AS DATETIME) - 1 AS DATE)), 1) AS mes,
-                               TRY_CONVERT(INT, CASE WHEN CHARINDEX('@B:', d.datref) > 0
-                                   THEN SUBSTRING(d.datref, CHARINDEX('@B:', d.datref) + 3,
-                                        CASE WHEN CHARINDEX('@', d.datref, CHARINDEX('@B:', d.datref) + 3) > 0
-                                             THEN CHARINDEX('@', d.datref, CHARINDEX('@B:', d.datref) + 3) - CHARINDEX('@B:', d.datref) - 3
-                                             ELSE 20 END) END) AS bval
-                        FROM SG12.dbo.Despachos d
-                        LEFT JOIN SG12.dbo.Clientes c ON c.cod = d.codcli
-                        -- fchtrn (con 1 día de margen) permite usar IX_DespachosFch en vez de recorrer toda la tabla por fchcor
-                        WHERE d.fchtrn BETWEEN @fecha_inicial_int - 1 AND @fecha_fin_int + 1
-                          AND d.fchcor BETWEEN @fecha_inicial_int AND @fecha_fin_int
-                          AND d.tiptrn IN (51, 52)
-                          AND ISNULL(c.tipval, 0) NOT IN (3, 4)
-                    ) x
-                    WHERE x.bval IN (-3001, -3090)
-                    GROUP BY x.codgas, x.mes, x.bval
+                    {$this->ratioTarjetaCreditoSql()}
                 ), base AS (
                     SELECT emp.den AS Empresa, i.codgas,
                            DATEFROMPARTS(YEAR(f.Fecha), MONTH(f.Fecha), 1) AS mes,
@@ -1095,6 +1075,56 @@ class VentasModel extends Model
     public function conceptosValeras() : string
     {
         return "' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro',' Tarjeta Inburgas',' Tarjeta TicketCar',' Tarjeta TicketCar +',' Vale Efectivale',' SMARTBT - EFECTIVALE','Ultra Gas','Tarjetas Sodexo (Pluxee)',' Tarjeta EfectiCard +',' GASnGO MEXICO'";
+    }
+
+    /**
+     * Desglose de conceptosTarjetas() en crédito / débito / terminal manual. Los que faltan aquí son
+     * ' SMARTBT - Bancarias' (-3001) y ' BANKAOOL' (-3090): un solo concepto para ambos tipos de tarjeta,
+     * se reparten con ratioTarjetaCreditoSql(). American Express siempre es crédito.
+     */
+    private function conceptosTarjetaCredito() : string
+    {
+        return "' SMARTBT - American Express',' Tarjetas American Express','HTI - Tarjeta American Express','INTERL - Tarjeta American Express','INTERL - Tarjeta de Crédito','HTI - Tarjeta de Crédito'";
+    }
+    private function conceptosTarjetaDebito() : string
+    {
+        return "'INTERL - Tarjeta de Débito','HTI - Tarjeta de Débito'";
+    }
+    /** Terminales manuales: ni el corte ni el voucher dicen si la tarjeta fue de crédito o de débito. */
+    private function conceptosTarjetaManual() : string
+    {
+        return "' SMARTBT - MANUAL Bancarias','SMARTBT - MANUAL Bancarias',' Tarjetas Bancomer',' Tarjetas Santander',' Tarjetas Banorte',' Tarjetas Afirme','INTERLOGIC Manual',' Tarjetas Scotiabank',' Banca MiFel',' Tarjeta Inbursa',' BANKAOOL (Propinas)'";
+    }
+
+    /**
+     * % crédito (tiptrn 51 contra 51+52) de los despachos pagados en SMARTBT-Bancarias (-3001) y BANKAOOL (-3090),
+     * por estación, mes y terminal (@B: de datref), sin clientes crédito/débito. Columnas: codgas, mes, bval, pc.
+     * Sirve para repartir en crédito/débito el monto del corte de esos dos conceptos.
+     * Requiere @fecha_inicial_int / @fecha_fin_int. $filtro: condición extra sobre Despachos d (p. ej. "AND d.codgas = 5").
+     */
+    private function ratioTarjetaCreditoSql(string $filtro = '') : string
+    {
+        return "SELECT x.codgas, x.mes, x.bval,
+                           SUM(CASE WHEN x.tiptrn = 51 THEN x.mto ELSE 0 END) / NULLIF(SUM(x.mto), 0) AS pc
+                    FROM (
+                        SELECT d.codgas, d.tiptrn, d.mto,
+                               DATEFROMPARTS(YEAR(CAST(CAST(d.fchcor AS DATETIME) - 1 AS DATE)), MONTH(CAST(CAST(d.fchcor AS DATETIME) - 1 AS DATE)), 1) AS mes,
+                               TRY_CONVERT(INT, CASE WHEN CHARINDEX('@B:', d.datref) > 0
+                                   THEN SUBSTRING(d.datref, CHARINDEX('@B:', d.datref) + 3,
+                                        CASE WHEN CHARINDEX('@', d.datref, CHARINDEX('@B:', d.datref) + 3) > 0
+                                             THEN CHARINDEX('@', d.datref, CHARINDEX('@B:', d.datref) + 3) - CHARINDEX('@B:', d.datref) - 3
+                                             ELSE 20 END) END) AS bval
+                        FROM SG12.dbo.Despachos d
+                        LEFT JOIN SG12.dbo.Clientes c ON c.cod = d.codcli
+                        -- fchtrn (con 1 día de margen) permite usar IX_DespachosFch en vez de recorrer toda la tabla por fchcor
+                        WHERE d.fchtrn BETWEEN @fecha_inicial_int - 1 AND @fecha_fin_int + 1
+                          AND d.fchcor BETWEEN @fecha_inicial_int AND @fecha_fin_int
+                          AND d.tiptrn IN (51, 52)
+                          AND ISNULL(c.tipval, 0) NOT IN (3, 4)
+                          {$filtro}
+                    ) x
+                    WHERE x.bval IN (-3001, -3090)
+                    GROUP BY x.codgas, x.mes, x.bval";
     }
 
     /**
@@ -1274,6 +1304,16 @@ class VentasModel extends Model
         return $this->sql->select($query, array_merge($params_i, $params_d));
     }
 
+    /**
+     * Filtro de estaciones del tab Venta por Estación Mensual: recibe '0' (todas), un código o varios
+     * separados por coma ('5,31') y devuelve la lista de enteros para un IN (...), o '' si son todas.
+     */
+    private function estacionesCsv($estation) : string
+    {
+        $ids = array_filter(array_map('intval', explode(',', (string)$estation)), fn($id) => $id > 0);
+        return implode(',', array_unique($ids));
+    }
+
     function getMounthEstationPayment($from, $until, $estation, $total)
     {
         $fromstring = date('Y-m-d', strtotime($from));
@@ -1305,67 +1345,86 @@ class VentasModel extends Model
             return "ISNULL($col, 0)";
         }, $months));
 
-        $group_total = '  Estacion, Descripcion,MedioPago, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)';
-        $Descripcion = 'Descripcion,';
-
         $estation_string = '';
-
-        if ($estation != '0') {
-            $estation_string = "and i.codgas = '{$estation}' ";
+        $ratio_filter = '';
+        if ($ids = $this->estacionesCsv($estation)) {
+            $estation_string = "and i.codgas IN ({$ids}) ";
+            $ratio_filter = "AND d.codgas IN ({$ids})";
         }
+        $cp = self::CONSUMO_PROPIO_CODVAL;
+        $cpc = self::CONSUMO_PROPIO_CODVAL_CREDITO;
 
+        // TARJETAS va desglosado (igual que getCompanyPaymentDesglosado, pero por estación y mes):
+        //   TARJETAS CREDITO / TARJETAS DEBITO = HTI e INTERL (el concepto del corte ya lo dice), American Express
+        //                                        (siempre crédito) y SMARTBT-Bancarias / BANKAOOL repartidos con el
+        //                                        % crédito/débito de los despachos de la misma estación y mes.
+        //   TARJETAS SIN CLASIFICAR            = terminales manuales (Santander, Banorte, Bancomer, Afirme...) y
+        //                                        SMARTBT/BANKAOOL de estaciones-mes sin despachos con tarjeta.
+        // El total por estación no cambia: solo se reparte lo que antes era TARJETAS.
         $query = "
                 DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '$fromstring') + 1;
                 DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '$untilstring') + 1;
 
-                WITH ValuesTable AS (
-                     SELECT
-                        v.cod AS CodFormaPago,
-                        CONVERT(DATE, DATEADD(DAY, -1, i.fch)) AS Fecha,
-                        v.den AS Descripcion,
-                        SUM(i.can) AS Cantidad,
-                        SUM(i.mto) AS Monto,
-                       CASE
-							WHEN v.cod = " . self::CONSUMO_PROPIO_CODVAL . " THEN 'CONSUMO PROPIO DEBITO'
-							WHEN v.cod = " . self::CONSUMO_PROPIO_CODVAL_CREDITO . " THEN 'CONSUMO PROPIO CREDITO'
-							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'HTI - Efectivo', 'INTERL - Efectivo') THEN 'EFECTIVO'
-							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
-							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
-							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express', 'HTI - Tarjeta American Express', 'INTERL - Tarjeta American Express', ' Banca MiFel', ' Tarjeta Inbursa', ' BANKAOOL', ' BANKAOOL (Propinas)') THEN 'TARJETAS'
-							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +', ' GASnGO MEXICO') THEN 'VALERAS'
-						    ELSE 'OTRO'
-                        END AS MedioPago,
-                    E.Nombre as Estacion
+                WITH ratio AS (
+                    {$this->ratioTarjetaCreditoSql($ratio_filter)}
+                ), base AS (
+                    SELECT i.codgas, E.Nombre AS Estacion,
+                           DATEFROMPARTS(YEAR(f.Fecha), MONTH(f.Fecha), 1) AS mes,
+                           v.cod AS cod, v.den AS Descripcion, SUM(i.mto) AS Monto
                     FROM {$this->ingresosConConsumoPropioFrom()}
                     INNER JOIN TG.dbo.Estaciones E ON i.codgas = E.Codigo
+                    CROSS APPLY (SELECT CONVERT(DATE, DATEADD(DAY, -1, i.fch)) AS Fecha) f
                     WHERE i.fch BETWEEN @fecha_inicial_int AND @fecha_fin_int
                     $estation_string
-                    GROUP BY
-                        CONVERT(DATE, DATEADD(DAY, -1, i.fch)),
-                        v.cod,v.den,E.Nombre
-                    )
+                    GROUP BY i.codgas, E.Nombre, DATEFROMPARTS(YEAR(f.Fecha), MONTH(f.Fecha), 1), v.cod, v.den
+                )
 
-                SELECT 
+                SELECT
                     Estacion,
                     MedioPago,
-                    $Descripcion
+                    Descripcion,
                     ($totalSum) AS Total,
                     $pivotColumns_final
                 FROM (
-                    SELECT 
-                        Estacion,
-                        MedioPago,
-                        Descripcion,
-                        SUM(Monto) AS sum_monto,
-                        CONCAT(YEAR(Fecha), '_', MONTH(Fecha)) AS AñoMes
-                    FROM ValuesTable
-                  GROUP BY  $group_total
+                    -- base se lee UNA sola vez (referenciarla varias veces recalcula Ingresos + ValesR en cada UNION)
+                    SELECT
+                        b.Estacion,
+                        x.MedioPago,
+                        b.Descripcion,
+                        SUM(x.Monto) AS sum_monto,
+                        CONCAT(YEAR(b.mes), '_', MONTH(b.mes)) AS AñoMes
+                    FROM base b
+                    LEFT JOIN ratio r ON r.codgas = b.codgas AND r.mes = b.mes AND r.bval = b.cod
+                    CROSS APPLY (
+                        SELECT
+                            CASE
+                                WHEN b.cod = {$cp} THEN 'CONSUMO PROPIO DEBITO'
+                                WHEN b.cod = {$cpc} THEN 'CONSUMO PROPIO CREDITO'
+                                WHEN b.Descripcion IN ({$this->conceptosEfectivo()}) THEN 'EFECTIVO'
+                                WHEN b.Descripcion IN ('Clientes Crédito') THEN 'CREDITO'
+                                WHEN b.Descripcion IN ('Clientes Débito') THEN 'DEBITO'
+                                WHEN b.Descripcion IN ({$this->conceptosTarjetaCredito()}) THEN 'TARJETAS CREDITO'
+                                WHEN b.Descripcion IN ({$this->conceptosTarjetaDebito()}) THEN 'TARJETAS DEBITO'
+                                WHEN b.Descripcion IN ({$this->conceptosTarjetaManual()}) THEN 'TARJETAS SIN CLASIFICAR'
+                                WHEN b.Descripcion IN ({$this->conceptosValeras()}) THEN 'VALERAS'
+                                ELSE 'OTRO'
+                            END AS MedioPago,
+                            b.Monto AS Monto
+                        WHERE b.cod NOT IN (-3001, -3090)
+                        UNION ALL
+                        SELECT 'TARJETAS CREDITO', b.Monto * r.pc WHERE b.cod IN (-3001, -3090) AND r.pc IS NOT NULL
+                        UNION ALL
+                        SELECT 'TARJETAS DEBITO', b.Monto * (1 - r.pc) WHERE b.cod IN (-3001, -3090) AND r.pc IS NOT NULL
+                        UNION ALL
+                        SELECT 'TARJETAS SIN CLASIFICAR', b.Monto WHERE b.cod IN (-3001, -3090) AND r.pc IS NULL
+                    ) x
+                    GROUP BY b.Estacion, x.MedioPago, b.Descripcion, b.mes
                 ) AS src
                 PIVOT (
                     SUM(sum_monto)
                     FOR AñoMes IN ($pivotColumns)
                 ) ptv
-                ORDER BY Estacion, Descripcion;
+                ORDER BY Estacion, Descripcion, MedioPago;
             ";
 
 
@@ -1413,8 +1472,8 @@ class VentasModel extends Model
         }, $months));
 
         $estation_string = '';
-        if ($estation != '0') {
-            $estation_string = "and t1.codgas = '{$estation}' ";
+        if ($ids = $this->estacionesCsv($estation)) {
+            $estation_string = "and t1.codgas IN ({$ids}) ";
         }
 
         $query = "
@@ -1431,14 +1490,19 @@ class VentasModel extends Model
                             WHEN t2.tipval = 3 THEN 'CREDITO'
                             WHEN t2.tipval = 4 THEN 'DEBITO'
                             WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias', 'HTI - Efectivo', 'INTERL - Efectivo') THEN 'EFECTIVO'
-                            WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express', 'HTI - Tarjeta American Express', 'INTERL - Tarjeta American Express', ' Banca MiFel', ' Tarjeta Inbursa', ' BANKAOOL', ' BANKAOOL (Propinas)') THEN 'TARJETAS'
-                            WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Tarjeta TicketCar +', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +', ' GASnGO MEXICO') THEN 'VALERAS'
+                            -- Tarjetas: primero manda el concepto del voucher (HTI/INTERL crédito o débito, AmEx = crédito),
+                            -- igual que en el corte; si el concepto no lo dice (SMARTBT-Bancarias, BANKAOOL, terminales
+                            -- manuales) lo dice el tipo de transacción: 51 = crédito, 52 = débito
+                            WHEN v.den IN ({$this->conceptosTarjetaCredito()}) THEN 'TARJETAS CREDITO'
+                            WHEN v.den IN ({$this->conceptosTarjetaDebito()}) THEN 'TARJETAS DEBITO'
+                            WHEN v.den IN ({$this->conceptosTarjetas()}) THEN CASE t1.tiptrn WHEN 51 THEN 'TARJETAS CREDITO' WHEN 52 THEN 'TARJETAS DEBITO' ELSE 'TARJETAS SIN CLASIFICAR' END
+                            WHEN v.den IN ({$this->conceptosValeras()}) THEN 'VALERAS - ' + LTRIM(v.den) -- por marca: la card la agrupa en VALERAS
                             WHEN v.den IS NULL AND t1.tiptrn IN (0, 49) THEN 'EFECTIVO'
-                            WHEN v.den IS NULL AND t1.tiptrn = 53 THEN 'VALERAS' -- vale sin voucher ligado
+                            WHEN v.den IS NULL AND t1.tiptrn = 53 THEN 'VALERAS - Sin voucher' -- vale sin voucher ligado
                             WHEN v.den IS NULL AND t1.tiptrn = 50 THEN 'EFECTIVO' -- cheque (datref @P:02)
                             -- tarjeta bancaria (51=crédito, 52=débito) sin voucher ligado; solo si el
                             -- cliente no existe: clientes contado también usan 51 (p.ej. choferes de plataforma)
-                            WHEN v.den IS NULL AND t1.tiptrn IN (51, 52) AND t2.cod IS NULL THEN 'TARJETAS'
+                            WHEN v.den IS NULL AND t1.tiptrn IN (51, 52) AND t2.cod IS NULL THEN CASE t1.tiptrn WHEN 51 THEN 'TARJETAS CREDITO' ELSE 'TARJETAS DEBITO' END
                             -- cliente contado (ni crédito ni débito) con 51/52 sin voucher: pagó en efectivo
                             WHEN v.den IS NULL AND t1.tiptrn IN (51, 52) THEN 'EFECTIVO'
                             ELSE 'OTRO'

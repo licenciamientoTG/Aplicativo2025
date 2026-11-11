@@ -56,8 +56,10 @@
             <table id="bank_accounts_table" class="table table-hover table-sm w-100 mb-0">
                 <thead class="cb-thead">
                     <tr>
+                        <th class="text-center">ID</th>
                         <th>Descripción</th>
-                        <th>Cuenta / CLABE</th>
+                        <th>Cuenta</th>
+                        <th>Clave</th>
                         <th>Banco</th>
                         <th>Titular</th>
                         <th>Tipo</th>
@@ -94,12 +96,16 @@
                             <label class="form-label form-label-sm">Banco</label>
                             <input type="text" class="form-control form-control-sm" name="Banco" id="ed_banco" placeholder="SANTANDER, BANORTE...">
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label form-label-sm">Cuenta / CLABE <span class="text-danger">*</span></label>
+                        <div class="col-md-5">
+                            <label class="form-label form-label-sm">Cuenta <span class="text-danger">*</span></label>
                             <input type="text" class="form-control form-control-sm" name="CuentaLocal" id="ed_cuentalocal" required>
                             <small class="text-muted" id="ed_cuentalocal_hint"></small>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-3">
+                            <label class="form-label form-label-sm">Clave</label>
+                            <input type="text" class="form-control form-control-sm" name="Clave" id="ed_clave" maxlength="50">
+                        </div>
+                        <div class="col-md-4">
                             <label class="form-label form-label-sm">Titular</label>
                             <input type="text" class="form-control form-control-sm" name="TitularCuenta" id="ed_titular">
                         </div>
@@ -177,7 +183,7 @@ function initBankAccountsTable() {
                 text: '<i class="fas fa-file-excel"></i> Excel',
                 className: 'btn btn-sm btn-success',
                 title: 'Cuentas Bancarias',
-                exportOptions: { columns: [0,1,2,3,4,5,6,7,8] }
+                exportOptions: { columns: [0,1,2,3,4,5,6,7,8,9,10] }
             },
             {
                 extend: 'colvis',
@@ -196,8 +202,10 @@ function initBankAccountsTable() {
             error: function() { alertify.error('Error al cargar las cuentas'); }
         },
         columns: [
+            { data: 'Id', className: 'text-center font-monospace' },
             { data: 'Descripcion', defaultContent: '—' },
             { data: 'CuentaLocal', className: 'font-monospace', render: function(d){ return d || '—'; } },
+            { data: 'Clave', className: 'font-monospace', defaultContent: '—', render: function(d){ return d ? $('<div>').text(d).html() : '—'; } },
             { data: 'Banco', defaultContent: '—' },
             { data: 'TitularCuenta', defaultContent: '—' },
             { data: 'Tipo', className: 'text-center', render: function(d){ return badgeTipo(d); } },
@@ -221,7 +229,7 @@ function initBankAccountsTable() {
                 }
             }
         ],
-        order: [[0, 'asc']],
+        order: [[1, 'asc']],
         pageLength: 50,
         initComplete: function () {
             var api = this.api();
@@ -286,6 +294,7 @@ function openEdit(id) {
     $('#ed_descripcion').val(row.Descripcion || '');
     $('#ed_banco').val(row.Banco || '');
     $('#ed_cuentalocal').val(row.CuentaLocal || '');
+    $('#ed_clave').val(row.Clave || '');
     $('#ed_titular').val(row.TitularCuenta || '');
     $('#ed_tipo').val(row.Tipo || '');
     $('#ed_divisa').val(row.Divisa || '');

@@ -113,6 +113,65 @@
     .tab-toolbar { display:flex; flex-direction:column; gap:.75rem; padding:.75rem 1rem; border-bottom:1px solid #e2e8f0; background:#f8fafc; }
     @media(min-width:576px){ .tab-toolbar { flex-direction:row; justify-content:space-between; align-items:center; } }
 
+    /* ── Tab "Layout desde texto" ── */
+    .lt-panel-texto { padding:1rem; border-right:1px solid #e2e8f0; background:#fbfcfe; }
+    .lt-panel-resultado { padding:1rem 1.25rem 1.5rem; min-height:420px; }
+    @media(max-width:991px){ .lt-panel-texto { border-right:0; border-bottom:1px solid #e2e8f0; } }
+    .lt-paso { display:flex; align-items:center; gap:.5rem; font-size:.8rem; font-weight:700; color:#1e293b; margin-bottom:.6rem; }
+    .lt-paso-num { width:22px; height:22px; border-radius:50%; background:#1f3864; color:#fff; font-size:.72rem; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .lt-paso + .lt-paso-nota { margin-top:-.4rem; }
+    .lt-paso-nota { font-size:.74rem; color:#64748b; margin-bottom:.6rem; padding-left:1.9rem; }
+    #layoutTextoInput { font-size:.74rem; line-height:1.5; white-space:pre; overflow-x:auto; border-color:#cbd5e1; border-radius:.5rem; background:#fff; resize:vertical; }
+    #layoutTextoInput:focus { border-color:#1f3864; box-shadow:0 0 0 .15rem rgba(31,56,100,.12); }
+    .lt-btn-leer { background:#1f3864; color:#fff; border-radius:.5rem; font-size:.82rem; padding:.45rem .9rem; }
+    .lt-btn-leer:hover, .lt-btn-leer:focus { background:#172a4d; color:#fff; }
+    .lt-ayuda { margin-top:1rem; font-size:.74rem; color:#64748b; }
+    .lt-ayuda strong { color:#475569; }
+    .lt-ayuda-cols { display:flex; flex-wrap:wrap; gap:.3rem; margin:.4rem 0 .5rem; }
+    .lt-ayuda-cols span { background:#e2e8f0; color:#334155; border-radius:.3rem; padding:.1rem .45rem; font-weight:600; font-size:.7rem; }
+    .lt-ayuda-cols span.lt-opc { background:#fff; border:1px dashed #94a3b8; color:#64748b; font-weight:500; }
+    .lt-ayuda ul { padding-left:1.1rem; margin:0; }
+    .lt-ayuda code { color:#1f3864; }
+
+    .lt-vacio { display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; color:#94a3b8; min-height:360px; gap:.5rem; font-size:.85rem; }
+    .lt-vacio i { font-size:2rem; color:#cbd5e1; }
+
+    .lt-kpis { display:grid; grid-template-columns:repeat(3, 1fr); gap:.75rem; margin-bottom:1.25rem; }
+    @media(max-width:575px){ .lt-kpis { grid-template-columns:1fr; } }
+    .lt-kpi { border:1px solid #e2e8f0; border-radius:.6rem; padding:.7rem .9rem; background:#fff; }
+    .lt-kpi-label { font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:#64748b; }
+    .lt-kpi-monto { font-size:1.15rem; font-weight:700; line-height:1.3; color:#1e293b; font-variant-numeric:tabular-nums; }
+    .lt-kpi-sub { font-size:.72rem; color:#64748b; }
+    .lt-kpi.ok { background:#f0fdf4; border-color:#bbf7d0; } .lt-kpi.ok .lt-kpi-monto { color:#15803d; }
+    .lt-kpi.mal { background:#fef2f2; border-color:#fecaca; } .lt-kpi.mal .lt-kpi-monto { color:#b91c1c; }
+
+    .lt-bancos { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:.75rem; margin-bottom:1.25rem; }
+    .lt-banco { border:1px solid #e2e8f0; border-left:4px solid var(--lt-color); border-radius:.6rem; padding:.8rem 1rem; display:flex; align-items:center; justify-content:space-between; gap:.75rem; background:#fff; }
+    .lt-banco-nombre { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--lt-color); }
+    .lt-banco-monto { font-size:1.05rem; font-weight:700; color:#1e293b; font-variant-numeric:tabular-nums; }
+    .lt-banco-sub { font-size:.72rem; color:#64748b; }
+    .lt-banco .btn { background:var(--lt-color); color:#fff; border-radius:.5rem; font-size:.8rem; padding:.45rem .85rem; white-space:nowrap; }
+    .lt-banco .btn:hover, .lt-banco .btn:focus { color:#fff; filter:brightness(.92); }
+
+    .lt-aviso { border-radius:.6rem; padding:.7rem .9rem; font-size:.8rem; margin-bottom:1.25rem; }
+    .lt-aviso.amarillo { background:#fffbeb; border:1px solid #fde68a; color:#78350f; }
+    .lt-aviso ul { margin:.3rem 0 0; padding-left:1.1rem; }
+
+    .lt-seccion { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:#64748b; margin:0 0 .45rem; display:flex; align-items:center; gap:.4rem; }
+    .lt-tabla { width:100%; border:1px solid #e2e8f0; border-radius:.6rem; border-collapse:separate; border-spacing:0; overflow:hidden; margin-bottom:1.25rem; font-size:.8rem; }
+    .lt-tabla th { background:#f8fafc; color:#475569; font-size:.66rem; text-transform:uppercase; letter-spacing:.05em; font-weight:700; padding:.45rem .7rem; border-bottom:1px solid #e2e8f0; }
+    .lt-tabla td { padding:.5rem .7rem; border-bottom:1px solid #f1f5f9; vertical-align:top; color:#334155; }
+    .lt-tabla tr:last-child td { border-bottom:0; }
+    .lt-tabla td small { display:block; color:#64748b; font-size:.72rem; }
+    .lt-tabla .lt-num { font-weight:700; white-space:nowrap; }
+    .lt-tabla .lt-monto { text-align:right; font-weight:700; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .lt-tabla tr.lt-grupo td { background:#f1f5f9; font-weight:700; color:#1e293b; border-left:4px solid var(--lt-color); padding:.4rem .7rem; }
+    .lt-tabla.fuera { border-color:#fecaca; }
+    .lt-tabla.fuera th { background:#fef2f2; color:#991b1b; border-bottom-color:#fecaca; }
+    .lt-tabla.fuera td { border-bottom-color:#fee2e2; }
+    .lt-motivo { color:#b91c1c; font-weight:600; }
+    .lt-mono { font-family:var(--bs-font-monospace); font-size:.74rem; }
+
     .badge-updated { animation: pulse-badge .4s ease; }
     @keyframes pulse-badge { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }
     .badge[style*="C9302C"] { background-color: #C9302C !important; }
@@ -133,6 +192,11 @@
         <button class="pl-tab-link" onclick="plTab(this,'pl-tab-facturas-auth')">
             <i class="fas fa-file-invoice-dollar"></i> Facturas Autorizadas
         </button>
+        {% if authorized(68) %}
+        <button class="pl-tab-link" onclick="plTab(this,'pl-tab-layout-texto')">
+            <i class="fas fa-paste"></i> Layout desde texto
+        </button>
+        {% endif %}
         <button class="pl-tab-link" onclick="plTab(this,'pl-tab-archivos'); loadAccountingGroupsTable();" id="tab_archivos_contabilidad_link">
             <i class="fas fa-folder-open"></i> Archivos Contabilidad
         </button>
@@ -368,6 +432,51 @@
             </table>
         </div>
     </div>
+
+    {% if authorized(68) %}
+    <!-- ===== TAB: LAYOUT DESDE TEXTO (pagos pegados que aún no están en el sistema) ===== -->
+    <div id="pl-tab-layout-texto" class="pl-tab-content">
+        <div class="tab-toolbar">
+            <div>
+                <p class="mb-0 fw-semibold" style="font-size:.85rem;color:#1e293b;">Layout desde texto</p>
+                <p class="mb-0" style="font-size:.72rem;color:#64748b;">Para pagos que te pasan por mensaje y todavía no están registrados. Solo arma el archivo del banco: no registra pagos ni cambia requisiciones.</p>
+            </div>
+        </div>
+
+        <div class="row g-0">
+            <!-- Columna izquierda: el texto -->
+            <div class="col-12 col-lg-4 lt-panel-texto">
+                <div class="lt-paso"><span class="lt-paso-num">1</span> Pega la lista de pagos</div>
+                <textarea id="layoutTextoInput" class="form-control font-monospace" rows="16" spellcheck="false"
+                          placeholder="1948  ALTOS ENERGETICOS  968,530.63  FORMULAGAS&#10;1962  MGC MEXICO  2,118,708.94  GASOMEX  88400000001&#10;&#10;GASOMEX  4,230,534.71"></textarea>
+                <div class="d-flex align-items-center gap-2 mt-2">
+                    <button type="button" id="btnLayoutTextoLeer" onclick="leerLayoutTexto()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium flex-grow-1 justify-content-center lt-btn-leer">
+                        <i class="fas fa-search" style="font-size:.75rem;"></i> Leer texto
+                    </button>
+                    <button type="button" onclick="limpiarLayoutTexto()" class="btn btn-sm btn-light border" style="border-radius:.5rem;font-size:.82rem;padding:.45rem .9rem;">
+                        Limpiar
+                    </button>
+                </div>
+                <div class="lt-ayuda">
+                    <strong>Formato de cada línea</strong>
+                    <div class="lt-ayuda-cols">
+                        <span>Número</span><span>Proveedor</span><span>Monto</span><span>Empresa</span><span class="lt-opc">Referencia</span>
+                    </div>
+                    <ul>
+                        <li>El monto lleva dos decimales: <code>968,530.63</code>.</li>
+                        <li>La referencia es opcional y va al final.</li>
+                        <li>Si pegas también los totales por empresa, se comparan contra las líneas.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Columna derecha: lo que se leyó -->
+            <div class="col-12 col-lg-8 lt-panel-resultado">
+                <div id="layoutTextoResultado"></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- ===== TAB: ARCHIVOS CONTABILIDAD ===== -->
     <div id="pl-tab-archivos" class="pl-tab-content">

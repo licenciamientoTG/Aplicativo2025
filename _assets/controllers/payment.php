@@ -3509,11 +3509,15 @@ class Payment
             // Una línea (transferencia) por requisición: Tesorería necesita cada orden de pago
             // por separado. Vale también para MGC (su referencia fija solo cambia el concepto,
             // las líneas no se combinan).
+            // linea_idx solo viene en el layout desde texto: ahí cada renglón pegado
+            // es una transferencia aparte aunque repita número.
             $key = $pago['cuenta_cargo_empresa'] . '|' . $pago['proveedor_codigo']
-                . '|' . $pago['tipo_pago'] . '|' . $pago['payment_request_id'];
+                . '|' . $pago['tipo_pago'] . '|' . $pago['payment_request_id']
+                . '|' . ($pago['linea_idx'] ?? '');
 
             if (!isset($consolidados[$key])) {
                 $consolidados[$key] = [
+                    'concepto_fijo' => $pago['concepto_fijo'] ?? null,
                     'cuenta_cargo' => $pago['cuenta_cargo_empresa'],
                     'clabe_beneficiario' => $pago['clabe_beneficiario'],
                     'titular_beneficiario' => $pago['titular_beneficiario'] ?: $pago['proveedor_nombre'],
@@ -3552,7 +3556,9 @@ class Payment
 
             // MGC exige que el concepto sea únicamente su referencia de cuenta
             // propia fija por empresa pagadora (sin folio ni nombre de proveedor).
-            $referencia_mgc = $this->referencia_mgc_por_empresa($grupo['proveedor_codigo'], $grupo['empresa_cod']);
+            // concepto_fijo: referencia escrita a mano en el layout desde texto.
+            $referencia_mgc = $grupo['concepto_fijo']
+                ?? $this->referencia_mgc_por_empresa($grupo['proveedor_codigo'], $grupo['empresa_cod']);
 
             if ($referencia_mgc !== null) {
                 $concepto_texto = $referencia_mgc;
@@ -3796,11 +3802,14 @@ class Payment
         // cada orden de pago por separado. Vale también para MGC (su referencia fija solo
         // cambia el concepto, las líneas no se combinan).
         foreach ($pagos as $pago) {
+            // linea_idx solo viene en el layout desde texto (ver Santander).
             $key = $pago['cuenta_cargo_banorte'] . '|' . $pago['proveedor_codigo']
-                . '|' . $pago['tipo_pago'] . '|' . $pago['payment_request_id'];
+                . '|' . $pago['tipo_pago'] . '|' . $pago['payment_request_id']
+                . '|' . ($pago['linea_idx'] ?? '');
 
             if (!isset($consolidados[$key])) {
                 $consolidados[$key] = [
+                    'concepto_fijo' => $pago['concepto_fijo'] ?? null,
                     'cuenta_cargo' => $this->normalizar_cuenta_banorte($pago['cuenta_cargo_banorte']),
                     'cuenta_destino' => $pago['clabe_beneficiario'],
                     'clave_id' => $pago['clave_id_beneficiario'] ?? '',
@@ -3838,7 +3847,8 @@ class Payment
             // de 11 dígitos con "El contenido de Referencia sobrepasa la
             // longitud definida"), así que la de MGC va como propósito de la
             // transferencia (concepto) y la referencia numérica queda genérica.
-            $referencia_mgc = $this->referencia_mgc_por_empresa($grupo['proveedor_codigo'], $grupo['empresa_cod']);
+            $referencia_mgc = $grupo['concepto_fijo']
+                ?? $this->referencia_mgc_por_empresa($grupo['proveedor_codigo'], $grupo['empresa_cod']);
             $referencia = $referencia_default;
             // Operación y cuenta destino según el tipo de cuenta del beneficiario:
             //   04 = interbancaria SPEI (CLABE completa de 18)
@@ -3901,6 +3911,267 @@ class Payment
         }
 
         return implode("\r\n", $lineas);
+    }
+
+
+    /* ===================================================================== */
+    /* Layout desde texto: pagos pegados (WhatsApp) que aún no están en el   */
+    /* sistema. Solo lee el texto y arma el archivo del banco; no registra   */
+    /* pagos ni toca requisiciones.                                          */
+    /* ===================================================================== */
+
+    /**
+     * Interpreta el texto pegado y resuelve cada línea contra los catálogos:
+     * empresa -> banco y cuenta de cargo, proveedor -> cuenta de abono.
+     * El monto siempre es el del texto.
+     *
+     * @return array{lineas: array, no_leidas: array, advertencias: string[], pagos: array<string, array>}
+     *         `pagos` trae, por banco, las filas listas para los generadores de layout.
+     */
+    private function layout_texto_resolver(string $texto): array
+    {
+        $parsed = LayoutTexto::parse($texto);
+
+        $empresas = [];
+        foreach ($this->CuentasBancariasModel->get_empresas_con_cuentas_propias() as $e) {
+            $empresas[(int)$e['cod']] = $e;
+        }
+        $proveedores = [];
+        foreach (($this->proveedores->get_actives() ?: []) as $p) {
+            $proveedores[(int)$p['cod']] = $p;
+        }
+        $catEmpresas    = array_map(fn($e) => (string)$e['den'], $empresas);
+        $catProveedores = array_map(fn($p) => (string)$p['den'], $proveedores);
+
+        $cuentasProveedor = []; // cache por proveedor_cod
+        $lineas = [];
+        $pagos = ['Santander' => [], 'Banorte' => []];
+        $advertencias = LayoutTexto::verificarTotales($parsed['lineas'], $parsed['totales']);
+
+        $repetidos = array_filter(array_count_values(array_column($parsed['lineas'], 'numero')), fn($n) => $n > 1);
+        foreach (array_keys($repetidos) as $numero) {
+            $advertencias[] = "El número {$numero} aparece más de una vez; cada renglón sale como un pago aparte.";
+        }
+
+        foreach ($parsed['lineas'] as $idx => $l) {
+            $motivos = [];
+            $fila = $l + [
+                'ok' => false, 'motivo' => '', 'banco' => null,
+                'empresa_nombre' => null, 'proveedor_nombre' => null,
+                'cuenta_cargo' => null, 'cuenta_abono' => null, 'banco_abono' => null,
+                'titular_abono' => null, 'cuenta_por_nombre' => false,
+            ];
+
+            if ($l['monto'] <= 0) {
+                $motivos[] = 'El monto debe ser mayor a cero';
+            }
+
+            // ── Empresa pagadora: banco y cuenta de cargo ──
+            $emp = null;
+            $cuentaCargo = '';
+            $re = LayoutTexto::resolver($l['empresa'], $catEmpresas);
+            if ($re['cod'] === null) {
+                $motivos[] = "Empresa {$l['empresa']}: {$re['motivo']}";
+            } else {
+                $emp = $empresas[(int)$re['cod']];
+                $fila['empresa_nombre'] = trim((string)$emp['den']);
+                $banco = $this->banco_por_emp_cod($emp['cod']);
+                if ($banco === 'Sin asignar') {
+                    $motivos[] = "{$fila['empresa_nombre']} no tiene banco asignado para pagar";
+                } else {
+                    $fila['banco'] = $banco;
+                    if ($banco === 'Santander') {
+                        $cuentaCargo = trim((string)($emp['cuenta_santander'] ?? ''));
+                        $valida = strlen($cuentaCargo) === 11;
+                    } else {
+                        $cuentaCargo = $this->normalizar_cuenta_banorte($emp['cuenta_banorte'] ?? '');
+                        $valida = strlen($cuentaCargo) === 10;
+                    }
+                    if ($valida) {
+                        $fila['cuenta_cargo'] = $cuentaCargo;
+                    } else {
+                        $motivos[] = "{$fila['empresa_nombre']} no tiene cuenta propia {$banco} válida en el catálogo";
+                    }
+                }
+            }
+
+            // ── Proveedor: cuenta de abono ──
+            $prov = null;
+            $cuenta = false;
+            $rp = LayoutTexto::resolver($l['proveedor'], $catProveedores);
+            if ($rp['cod'] === null) {
+                $motivos[] = "Proveedor {$l['proveedor']}: {$rp['motivo']}";
+            } else {
+                $prov = $proveedores[(int)$rp['cod']];
+                $provCod = (int)$prov['cod'];
+                $fila['proveedor_nombre'] = trim((string)$prov['den']);
+                if (!array_key_exists($provCod, $cuentasProveedor)) {
+                    $cuentasProveedor[$provCod] = $this->CuentasBancariasModel
+                        ->get_cuenta_tercero_por_proveedor($provCod, $fila['proveedor_nombre']);
+                }
+                $cuenta = $cuentasProveedor[$provCod];
+                if (!$cuenta || trim((string)$cuenta['cuenta']) === '') {
+                    $motivos[] = "{$fila['proveedor_nombre']} no tiene cuenta de abono (Terceros) en el catálogo";
+                    $cuenta = false;
+                } else {
+                    $abono = trim((string)$cuenta['cuenta']);
+                    $fila['cuenta_abono'] = $abono;
+                    $fila['banco_abono'] = trim((string)($cuenta['Banco'] ?? ''));
+                    $fila['titular_abono'] = trim((string)($cuenta['Descripcion'] ?? ''));
+                    $fila['cuenta_por_nombre'] = (int)$cuenta['por_vinculo'] !== 1;
+                    $largo = strlen($abono);
+                    if ($fila['banco'] === 'Santander' && $largo !== 18) {
+                        $motivos[] = "La cuenta de {$fila['proveedor_nombre']} no es CLABE de 18 dígitos ({$largo})";
+                    } elseif ($fila['banco'] === 'Banorte' && $largo !== 10 && $largo !== 18) {
+                        $motivos[] = "La cuenta de {$fila['proveedor_nombre']} no es válida para Banorte ({$largo} dígitos)";
+                    }
+                }
+            }
+
+            if (!$motivos) {
+                $fila['ok'] = true;
+                $claveId = trim((string)($cuenta['IdBeneficiario'] ?? ''));
+                $esMgc = (int)$prov['cod'] === self::PROVIDER_COD_MGC;
+                if ($fila['banco'] === 'Banorte' && !$esMgc && ($claveId === '' || $claveId === '0')) {
+                    $advertencias[] = "{$l['numero']}: {$fila['proveedor_nombre']} no tiene clave de beneficiario; Banorte puede rechazar esa línea.";
+                }
+                if ($l['referencia'] !== '' && $esMgc) {
+                    $fija = $this->referencia_mgc_por_empresa($prov['cod'], $emp['cod']);
+                    if ($fija !== null && $fija !== $l['referencia']) {
+                        $advertencias[] = "{$l['numero']}: la referencia {$l['referencia']} no es la registrada para MGC en {$fila['empresa_nombre']} ({$fija}); se usará la del texto.";
+                    }
+                }
+
+                // Mismas llaves que get_facturas_para_layout(), para reutilizar los generadores.
+                $pagos[$fila['banco']][] = [
+                    'linea_idx'             => $idx,
+                    'payment_request_id'    => $l['numero'],
+                    'folio'                 => $l['numero'],
+                    'tipo_pago'             => 'FACTURA',
+                    'concepto_fijo'         => $l['referencia'] !== '' ? $l['referencia'] : null,
+                    'monto_autorizado'      => $l['monto'],
+                    'proveedor_codigo'      => (int)$prov['cod'],
+                    'proveedor_nombre'      => $fila['proveedor_nombre'],
+                    'proveedor_rfc'         => trim((string)($prov['rfc'] ?? '')),
+                    'clabe_beneficiario'    => $fila['cuenta_abono'],
+                    'titular_beneficiario'  => $fila['titular_abono'],
+                    'clave_id_beneficiario' => $claveId,
+                    'empresa_cod'           => (int)$emp['cod'],
+                    'empresa_nombre'        => $fila['empresa_nombre'],
+                    'cuenta_cargo_empresa'  => $fila['banco'] === 'Santander' ? $cuentaCargo : null,
+                    'cuenta_cargo_banorte'  => $fila['banco'] === 'Banorte' ? $cuentaCargo : null,
+                ];
+            } else {
+                $fila['motivo'] = implode('. ', $motivos);
+            }
+
+            $lineas[] = $fila;
+        }
+
+        return [
+            'lineas'       => $lineas,
+            'no_leidas'    => $parsed['no_leidas'],
+            'advertencias' => array_values(array_unique($advertencias)),
+            'pagos'        => $pagos,
+        ];
+    }
+
+    /** Valida permiso y tamaño del texto pegado. Devuelve el mensaje de error o null. */
+    private function layout_texto_validar(string $texto): ?string
+    {
+        if (!authorized(68)) {
+            return 'Solo Tesorería puede generar layouts';
+        }
+        if (trim($texto) === '') {
+            return 'Pega el texto con los pagos';
+        }
+        if (strlen($texto) > 50000) {
+            return 'El texto es demasiado largo';
+        }
+        return null;
+    }
+
+    /** JSON con el resumen de lo leído (qué entra a cada layout y qué queda fuera). */
+    public function layout_texto_preview()
+    {
+        header('Content-Type: application/json');
+        try {
+            $texto = (string)($_POST['texto'] ?? '');
+            if ($error = $this->layout_texto_validar($texto)) {
+                json_output(['success' => false, 'message' => $error]);
+                return;
+            }
+
+            $r = $this->layout_texto_resolver($texto);
+
+            $bancos = [];
+            foreach ($r['pagos'] as $banco => $filas) {
+                $bancos[$banco] = ['pagos' => count($filas), 'total' => round(array_sum(array_column($filas, 'monto_autorizado')), 2)];
+            }
+            $totalLeido = round(array_sum(array_column($r['lineas'], 'monto')), 2);
+            $totalIncluido = round(array_sum(array_column($bancos, 'total')), 2);
+
+            json_output([
+                'success'        => true,
+                'lineas'         => $r['lineas'],
+                'no_leidas'      => $r['no_leidas'],
+                'advertencias'   => $r['advertencias'],
+                'bancos'         => $bancos,
+                'total_leido'    => $totalLeido,
+                'total_incluido' => $totalIncluido,
+                'total_excluido' => round($totalLeido - $totalIncluido, 2),
+            ]);
+        } catch (Exception $e) {
+            error_log('Error en layout_texto_preview: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al leer el texto: ' . $e->getMessage()]);
+        }
+    }
+
+    /** Descarga el layout del banco indicado con las líneas del texto que sí se resolvieron. */
+    public function layout_texto_generate()
+    {
+        try {
+            $input = json_decode(file_get_contents('php://input'), true) ?: [];
+            $texto = (string)($input['texto'] ?? '');
+            $banco = (string)($input['banco'] ?? '');
+
+            $error = $this->layout_texto_validar($texto);
+            if (!$error && !in_array($banco, ['Santander', 'Banorte'], true)) {
+                $error = 'Banco no válido';
+            }
+            if ($error) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => $error]);
+                return;
+            }
+
+            $pagos = $this->layout_texto_resolver($texto)['pagos'][$banco];
+            if (empty($pagos)) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => "No hay pagos de {$banco} que se puedan incluir en el layout"]);
+                return;
+            }
+
+            $contenido = $banco === 'Santander'
+                ? $this->generar_layout_santander_multi_empresa($pagos, 'SUSANA.PANTOJA@TOTALGAS.COM')
+                : $this->generar_layout_banorte_multi_empresa($pagos);
+
+            $filename = 'LAYOUT_' . strtoupper($banco) . '_TEXTO_' . date('YmdHis') . '.txt';
+
+            header('Content-Type: text/plain; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Length: ' . strlen($contenido));
+            header('Cache-Control: no-cache, no-store, must-revalidate');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+            echo $contenido;
+            exit;
+        } catch (Exception $e) {
+            error_log('Error en layout_texto_generate: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Error al generar layout: ' . $e->getMessage()]);
+            exit;
+        }
     }
 
 

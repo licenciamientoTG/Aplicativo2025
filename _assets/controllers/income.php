@@ -314,8 +314,10 @@ class Income{
         $data = [];
         foreach ((new ConciliacionVentaModel)->despachos_cliente($from, $until, $this->conciliationEmpresa(), $codcli) as $r) {
             $hora = str_pad((string)$r['hratrn'], 4, '0', STR_PAD_LEFT);
-            if ((int)$r['nrofac'] === 0)            $estado = 'Sin factura';
-            elseif ($r['cancelada'] === null)       $estado = 'Factura no encontrada';
+            // Cobrado con terminal bancaria: no es consumo a crédito, no suma al Monto del desglose
+            if ((int)$r['pago_bancario'] === 1)     $estado = 'Pagado con tarjeta bancaria';
+            elseif ((int)$r['nrofac'] === 0)        $estado = 'Sin factura';
+            elseif ($r['cancelada'] === null)      $estado = 'Factura no encontrada';
             elseif ((int)$r['cancelada'] === 1)     $estado = 'Factura cancelada';
             elseif ($r['fecha_factura'] > $hasta)   $estado = 'Facturado después';
             else                                    $estado = 'Facturado';
@@ -351,7 +353,10 @@ class Income{
             $montoVale = $tieneVale ? round((float)$r['monto_vale'], 2) : 0.0;
             // Despacho de $0 sin vale: no mueve nada, no se lista
             if ($tieneDesp && !$tieneVale && abs($montoDesp) < 0.005) continue;
-            if (!$tieneVale)                              $estado = 'Despacho sin vale';
+            // Cobrado con terminal bancaria y sin vale: no es crédito, no cuenta en la diferencia
+            $bancario = $tieneDesp && !$tieneVale && (int)$r['pago_bancario'] === 1;
+            if ($bancario)                                $estado = 'Pagado con tarjeta bancaria';
+            elseif (!$tieneVale)                          $estado = 'Despacho sin vale';
             elseif (!$tieneDesp)                          $estado = 'Vale sin despacho';
             elseif ((int)$r['n_vales'] > 1)               $estado = 'Vale duplicado';
             elseif (abs($montoDesp - $montoVale) >= 0.01) $estado = 'Monto distinto';
@@ -368,7 +373,7 @@ class Income{
                 'turno_despacho'  => $this->conciliationTurno($r['turno_despacho']),
                 'turno_vale'      => $this->conciliationTurno($r['turno']),
                 'monto_vale'      => $montoVale,
-                'diferencia'      => round($montoDesp - $montoVale, 2),
+                'diferencia'      => $bancario ? 0.0 : round($montoDesp - $montoVale, 2),
                 'estado'          => $estado,
             ];
         }
@@ -387,7 +392,11 @@ class Income{
             $mtoD = $enD ? (float)$r['mto_d'] : ($r['mto_o'] !== null ? (float)$r['mto_o'] : 0.0);
             $mtoV = $tieneVale ? (float)$r['mto_v'] : 0.0;
             $hayDespacho = $enD || $r['mto_o'] !== null;
-            if (!$hayDespacho) {
+            // Cobrado con terminal bancaria y sin vale: no es crédito (el Desglose venta ya no lo suma), diferencia 0
+            $bancario = $enD && !$tieneVale && (int)$r['pago_bancario'] === 1;
+            if ($bancario) {
+                $estado = 'Pagado con tarjeta bancaria';
+            } elseif (!$hayDespacho) {
                 $estado = (int)$r['manual'] === 1 ? 'Vale manual sin despacho' : 'Vale con producto sin despacho';
             } elseif (!$enD) {
                 $estado = ($r['fecha_despacho'] >= $desde && $r['fecha_despacho'] <= $hasta) ? 'Despacho de otro cliente' : 'Despacho de otro mes';
@@ -418,7 +427,7 @@ class Income{
                 'corte_vale'     => $tieneVale ? $r['fecha_vale'] . ' T' . $this->conciliationTurno($r['turno_vale']) : '',
                 'monto_vale'     => $tieneVale ? round($mtoV, 2) : null,
                 // Solo lo que cae en el mes: despacho por su fecha, vale por la fecha del corte
-                'diferencia'     => round(($enD ? $mtoD : 0.0) - ($enV ? $mtoV : 0.0), 2),
+                'diferencia'     => $bancario ? 0.0 : round(($enD ? $mtoD : 0.0) - ($enV ? $mtoV : 0.0), 2),
                 'estado'         => $estado,
             ];
         }
@@ -679,6 +688,7 @@ class Income{
                 'total'          => round((float)$r['Total'], 2),
                 'cobro_aplicado' => $r['cobro_aplicado'],
                 'estatus'        => $r['estatus'],
+                'cobro_posterior' => $r['cobro_posterior'] ?? '',
             ];
         }
         $vigentes = $data;
@@ -687,7 +697,7 @@ class Income{
             $data[] = [
                 'factura' => get_invoice_series((int)$r['nro']), 'nro' => (int)$r['nro'], 'fecha' => $r['fecha'],
                 'codcli' => (int)$r['codcli'], 'cliente' => trim((string)$r['cliente']), 'estacion' => '', 'razon_social' => '',
-                'subtotal' => null, 'iva' => null, 'total' => null, 'cobro_aplicado' => null, 'estatus' => 'Cancelada',
+                'subtotal' => null, 'iva' => null, 'total' => null, 'cobro_aplicado' => null, 'estatus' => 'Cancelada', 'cobro_posterior' => '',
             ];
         }
         usort($data, fn($a, $b) => [$a['fecha'], $a['nro']] <=> [$b['fecha'], $b['nro']]);

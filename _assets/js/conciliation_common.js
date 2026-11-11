@@ -7,6 +7,7 @@
     'Pendiente de facturar': 'cv-warn', 'Sin facturar': 'cv-bad', 'Sin factura': 'cv-bad',
     'Factura cancelada': 'cv-bad', 'Factura no encontrada': 'cv-bad',
     'Venta': 'cv-info', 'Consumo propio': 'cv-muted', 'Bonificación': 'cv-muted',
+    'Pagado con tarjeta bancaria': 'cv-info',
     // Despachos vs corte
     'Vale manual sin despacho': 'cv-warn', 'Vale con producto sin despacho': 'cv-bad', 'Despacho de otro mes': 'cv-info',
     'Despacho de otro cliente': 'cv-warn', 'Vale en otro mes': 'cv-info', 'Cuadra en otro corte': 'cv-info',

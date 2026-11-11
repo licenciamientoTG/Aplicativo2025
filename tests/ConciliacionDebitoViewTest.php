@@ -87,4 +87,13 @@ foreach ($lineas[0] as $l) {
     check('permission: 14 en ' . trim(substr($l, 0, 60)), str_contains($l, 'permission: 14'));
 }
 
+// Cada columna `data` de tablaAnticipos debe venir en las filas del endpoint (vigentes Y canceladas), si no DataTables lanza "unknown parameter"
+$ctrl = $read('_assets/controllers/income.php');
+preg_match("/initTabla\('#tablaAnticipos', \[(.*?)\], 'Anticipos debito'/s", $js, $mt);
+preg_match_all("/data: '(\w+)'/", $mt[1] ?? '', $cols);
+preg_match("/function conciliation_debit_anticipos\(\).*?usort\(/s", $ctrl, $fn);
+foreach ($cols[1] as $col) {
+    check("anticipos: el endpoint trae la columna '$col' en vigentes y canceladas", substr_count($fn[0] ?? '', "'$col'") >= 2);
+}
+
 finish();

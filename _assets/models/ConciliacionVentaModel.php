@@ -42,6 +42,7 @@ class ConciliacionVentaModel extends Model {
     public function venta_por_cliente(int $from, int $until, int $empresa): array {
         $emp = self::EMP_FILTER;
         $codval = self::CODVAL_CREDITO;
+        $banc = ClientesModel::pagoBancarioCond('t');
         $query = "
             SET NOCOUNT ON;
             DECLARE @d int = ?, @h int = ?, @emp int = ?;
@@ -55,6 +56,7 @@ class ConciliacionVentaModel extends Model {
               LEFT JOIN SG12.dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
              WHERE t.fchtrn BETWEEN @d AND @h
                AND t.codcli > 0
+               AND NOT {$banc}
                AND {$emp}
             OPTION (RECOMPILE);
 
@@ -125,6 +127,7 @@ class ConciliacionVentaModel extends Model {
     public function consumos_por_cliente(int $from, int $until, int $empresa): array {
         $emp = self::EMP_FILTER;
         $codval = self::CODVAL_CREDITO;
+        $banc = ClientesModel::pagoBancarioCond('t1');
         $query = "
             SET NOCOUNT ON;
             DECLARE @d int = ?, @h int = ?, @emp int = ?;
@@ -147,6 +150,7 @@ class ConciliacionVentaModel extends Model {
               LEFT JOIN SG12.dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
              WHERE t1.fchtrn BETWEEN @d AND @h
                AND t1.codcli > 0
+               AND NOT {$banc}
                AND {$emp}
                AND (t2.tipval = 3 OR EXISTS (SELECT 1 FROM #vx vx WHERE vx.codgas = t1.codgas AND vx.nrotrn = t1.nrotrn))
             OPTION (RECOMPILE);
@@ -200,6 +204,7 @@ class ConciliacionVentaModel extends Model {
     /** Despachos de un cliente en el rango con su factura y el estado de ésta (modal del desglose). */
     public function despachos_cliente(int $from, int $until, int $empresa, int $codcli): array {
         $emp = self::EMP_FILTER;
+        $banc = ClientesModel::pagoBancarioCond('t');
         $query = "
             SET NOCOUNT ON;
             DECLARE @d int = ?, @h int = ?, @emp int = ?, @cli int = ?;
@@ -209,6 +214,7 @@ class ConciliacionVentaModel extends Model {
                    ISNULL(t.nrofac, 0) AS nrofac, gf.abr AS estacion_factura,
                    CONVERT(varchar(10), DATEADD(day, c.fch - 1, '19000101'), 23) AS fecha_factura,
                    c.satuid,
+                   CASE WHEN {$banc} THEN 1 ELSE 0 END AS pago_bancario,
                    CASE WHEN c.nro IS NULL THEN NULL
                         WHEN CAST(c.txtref AS varchar(20)) LIKE '@N:CANCELAD%' THEN 1 ELSE 0 END AS cancelada
               FROM SG12.dbo.Despachos t WITH (NOLOCK)
@@ -235,6 +241,7 @@ class ConciliacionVentaModel extends Model {
     public function despachos_vs_cortes(int $from, int $until, int $empresa, int $codcli): array {
         $emp = self::EMP_FILTER;
         $codval = self::CODVAL_CREDITO;
+        $banc = ClientesModel::pagoBancarioCond('t');
         $query = "
             SET NOCOUNT ON;
             DECLARE @d int = ?, @h int = ?, @emp int = ?, @cli int = ?;
@@ -277,6 +284,7 @@ class ConciliacionVentaModel extends Model {
                    CONVERT(varchar(10), DATEADD(day, COALESCE(t.fchtrn, v.fch) - 1, '19000101'), 23) AS fecha,
                    t.hratrn, p.den AS producto,
                    t.can AS litros, t.mto AS monto_despacho, t.codcli AS cli_despacho, t.nrotur AS turno_despacho,
+                   CASE WHEN {$banc} THEN 1 ELSE 0 END AS pago_bancario,
                    v.nrotur AS turno, v.n AS n_vales, v.mto AS monto_vale
               FROM #k k
               LEFT JOIN SG12.dbo.Despachos t WITH (NOLOCK) ON t.codgas = k.codgas AND t.nrotrn IN (k.nrotrn, -k.nrotrn)
@@ -301,12 +309,14 @@ class ConciliacionVentaModel extends Model {
     public function cortes_con_diferencia(int $from, int $until, int $empresa): array {
         $emp = self::EMP_FILTER;
         $codval = self::CODVAL_CREDITO;
+        $banc = ClientesModel::pagoBancarioCond('t');
         $query = "
             SET NOCOUNT ON;
             DECLARE @d int = ?, @h int = ?, @emp int = ?;
             DROP TABLE IF EXISTS #d, #v, #o, #x;
 
-            SELECT t.codgas, t.nrotrn, ABS(t.nrotrn) AS dkey, t.codcli, t.fchtrn, t.hratrn, t.fchcor, t.nrotur, t.codprd, t.mto
+            SELECT t.codgas, t.nrotrn, ABS(t.nrotrn) AS dkey, t.codcli, t.fchtrn, t.hratrn, t.fchcor, t.nrotur, t.codprd, t.mto,
+                   CASE WHEN {$banc} THEN 1 ELSE 0 END AS banc
               INTO #d
               FROM SG12.dbo.Despachos t WITH (NOLOCK)
               JOIN SG12.dbo.Clientes c WITH (NOLOCK) ON c.cod = t.codcli AND c.tipval = 3
@@ -357,7 +367,7 @@ class ConciliacionVentaModel extends Model {
                    d.mto AS mto_d, o.mto AS mto_o, v.mto AS mto_v,
                    CASE WHEN d.nrotrn IS NULL THEN 0 ELSE 1 END AS en_rango_d,
                    CASE WHEN v.nrotrn IS NULL THEN 0 WHEN v.fch BETWEEN @d AND @h THEN 1 ELSE 0 END AS en_rango_v,
-                   v.n AS n_vales, v.manual
+                   v.n AS n_vales, v.manual, ISNULL(d.banc, 0) AS pago_bancario
               INTO #x
               FROM #d d
               FULL JOIN #v v ON v.codgas = d.codgas AND v.nrotrn = d.dkey
@@ -370,7 +380,7 @@ class ConciliacionVentaModel extends Model {
                    CASE WHEN x.fch_vale IS NULL THEN NULL
                         ELSE CONVERT(varchar(10), DATEADD(day, x.fch_vale - 1, '19000101'), 23) END AS fecha_vale, x.turno_vale,
                    CONVERT(varchar(10), DATEADD(day, x.fch_despacho - 1, '19000101'), 23) AS fecha_despacho, x.hra,
-                   p.den AS producto, x.mto_d, x.mto_o, x.mto_v, x.en_rango_d, x.en_rango_v, x.n_vales, x.manual
+                   p.den AS producto, x.mto_d, x.mto_o, x.mto_v, x.en_rango_d, x.en_rango_v, x.n_vales, x.manual, x.pago_bancario
               FROM #x x
               LEFT JOIN SG12.dbo.Gasolineras g WITH (NOLOCK) ON g.cod = x.codgas
               LEFT JOIN SG12.dbo.Clientes c WITH (NOLOCK) ON c.cod = x.codcli

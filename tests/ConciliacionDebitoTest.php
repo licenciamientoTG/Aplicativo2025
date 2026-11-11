@@ -110,6 +110,10 @@ check('venta: cliente 1 facturas = 4 (sin la cancelada)', $por[1]['facturas'] ==
 check('venta: cliente 1 Facturado', $por[1]['estatus'] === 'Facturado' && $por[1]['diferencia'] === 0.0);
 check('venta: cliente 2 solo cancelada: monto 0, cancelada 300', $por[2]['monto'] === 0.0 && $por[2]['cancelada'] === 300.0 && $por[2]['facturado_mes'] === 0.0);
 check('venta: bonificación = No se factura', $por[3]['clase'] === 'Bonificación' && $por[3]['estatus'] === 'No se factura');
+// clientes con todo en cero (p. ej. solo una factura cancelada de $0) no se listan
+$facsCero = ConciliacionDebito::clasificarFacturas([fac('2026-09-30', '@N:CANCELAD', 0, 9, 1)], '2026-09');
+$consCero = [['codcli' => 8, 'Cliente' => 'OCHO', 'Despachos' => 0, 'Litros' => '0', 'Monto' => '0', 'MontoCortes' => '0', 'Categoria' => '']];
+check('venta: cliente con todo en cero no se lista', ConciliacionDebito::ventaPorCliente($consCero, $facsCero) === []);
 
 // clasificarMovimiento
 $propias = ['0601500947', '1155446527', '123'];
@@ -161,6 +165,7 @@ $ant = [
     ['Factura' => 1, 'Total' => 3500.0, 'cobro_aplicado' => 3500.0, 'estatus' => 'Con cobro'],
     ['Factura' => 2, 'Total' => 3500.0, 'cobro_aplicado' => 0.0, 'estatus' => 'Sin cobro'],
     ['Factura' => 3, 'Total' => 10000.0, 'cobro_aplicado' => 0.0, 'estatus' => 'Sin cobro'],
+    ['Factura' => 4, 'Total' => 1000.0, 'cobro_aplicado' => 0.0, 'estatus' => 'Cobro en otro mes'],
 ];
 $cfp = [
     ['cobro' => 10, 'nro_factura' => 1, 'importe' => 3500.0, 'existe_en_anticipos' => 'Sí'],
@@ -168,9 +173,10 @@ $cfp = [
     ['cobro' => 12, 'nro_factura' => null, 'importe' => 10000.0, 'existe_en_anticipos' => 'Sin factura en referencia'],
 ];
 $p = ConciliacionDebito::partidasAnticipos($ant, $cfp, 2, 21868.0);
-check('partidas: anticipos 17,000 y diferencia 4,868', $p['anticipos'] === 17000.0 && $p['diferencia'] === 4868.0);
+check('partidas: anticipos 18,000 y diferencia 3,868', $p['anticipos'] === 18000.0 && $p['diferencia'] === 3868.0);
 check('partidas: otro mes 8,368 (1 cobro)', $p['otro_mes']['importe'] === 8368.0 && $p['otro_mes']['n'] === 1);
 check('partidas: sin factura 10,000 y sin cobro −13,500', $p['sin_factura']['importe'] === 10000.0 && $p['anticipos_sin_cobro']['importe'] === -13500.0 && $p['anticipos_sin_cobro']['n'] === 2);
+check('partidas: cobrado en otro mes −1,000 (1 anticipo) aparte del sin cobro', $p['anticipos_cobrados_otro_mes']['importe'] === -1000.0 && $p['anticipos_cobrados_otro_mes']['n'] === 1);
 check('partidas: sin explicar 0 y canceladas 2', $p['sin_explicar'] === 0.0 && $p['canceladas'] === 2);
 
 // estatusCruce: estatus extra de los cobros prepago
