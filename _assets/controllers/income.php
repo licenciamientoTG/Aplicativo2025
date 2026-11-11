@@ -8045,15 +8045,11 @@ public function stamped_invoices_detail(): void
             // from the selected company catalog to preserve tenant boundaries.
             $stations=EfcConciliacionModel::stationIds($company);
             $data=[];
-            $groupsPeriod=(new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)))->modify('+1 month');
-            $groupsYear=(int)$groupsPeriod->format('Y');
-            $groupsMonth=(int)$groupsPeriod->format('n');
             foreach($stations as $stationId) {
                 $key=(string)$stationId;
                 $data[$key]=[
                     'rates'=>[],
                     'transits'=>['origin'=>[],'incoming'=>[],'next_month'=>(new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)))->modify('+1 month')->format('Y-m')],
-                    'groups'=>[],
                     'work'=>['papers'=>[],'links'=>[]],
                     'errors'=>[],
                 ];
@@ -8062,7 +8058,6 @@ public function stamped_invoices_detail(): void
                 $loads=[
                     'rates'=>fn()=>$this->efcAnaliticos->exchangeRatesForTurns($stationId,$year,$month),
                     'transits'=>fn()=>$this->efcConciliacion->activeTransits($stationId,$year,$month,$company),
-                    'groups'=>fn()=>$this->efcConciliacion->summaryTransitGroups($stationId,$groupsYear,$groupsMonth,$data[$key]['transits']['origin']??[]),
                     'work'=>fn()=>$this->efcAnaliticos->summaryWorkspace($stationId,$year,$month,$company),
                 ];
                 foreach($loads as $dataset=>$load) {
@@ -8075,7 +8070,6 @@ public function stamped_invoices_detail(): void
                                 'papers'=>array_map(static fn($paper)=>[
                                     'id'=>$paper['id']??null,
                                     'real_usd'=>$paper['real_usd']??0,
-                                    'real_mn'=>$paper['real_mn']??null,
                                 ],$result['papers']??[]),
                                 'links'=>array_map(static fn($link)=>[
                                     'papeleta_id'=>$link['papeleta_id']??null,
@@ -8104,24 +8098,11 @@ public function stamped_invoices_detail(): void
                                     'amount'=>$transit['amount']??0,
                                 ],$result['origin']??[]),
                                 'incoming'=>array_map(static fn($transit)=>[
-                                    'date'=>$transit['date']??null,
-                                    'turn'=>$transit['turn']??null,
                                     'currency'=>$transit['currency']??null,
                                     'status'=>$transit['status']??null,
                                     'amount'=>$transit['amount']??0,
                                 ],$result['incoming']??[]),
                             ];
-                        } elseif($dataset==='groups') {
-                            $data[$key][$dataset]=array_map(static fn($group)=>[
-                                'cg'=>array_map(static fn($item)=>[
-                                    'id'=>$item['id']??null,
-                                    'currency'=>$item['currency']??null,
-                                    'transit'=>$item['transit']??false,
-                                ],$group['cg']??[]),
-                                'bank'=>array_map(static fn($item)=>[
-                                    'amount'=>$item['amount']??0,
-                                ],$group['bank']??[]),
-                            ],$result);
                         } else {
                             $data[$key][$dataset]=$result;
                         }
