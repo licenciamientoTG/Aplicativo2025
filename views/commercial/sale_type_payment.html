@@ -428,8 +428,12 @@ tr.group:hover {
                     </div>
                     <div class="col-2 ">
                         <label class="col-form-label-sm" for="">Estacion </label>
-                        <select class="form-control form-control-sm" name="estation5" id="estation5" required>
-                            <option value="0">Todas</option>
+                        {# Múltiple con buscador; sin nada seleccionado = Todas #}
+                        <select class="selectpicker" name="estation5" id="estation5" multiple
+                                data-live-search="true" data-live-search-normalize="true" data-actions-box="true"
+                                data-select-all-text="Todas" data-deselect-all-text="Ninguna"
+                                data-selected-text-format="count > 2" data-count-selected-text="{0} estaciones"
+                                data-size="10" data-width="100%" data-style="btn-light btn-sm border" title="Todas">
                             {% for estation in estations %}
                             <option value="{{ estation.codigo }}">{{ estation.estacion_nombre }}</option>
                             {% endfor %}
@@ -437,6 +441,9 @@ tr.group:hover {
                     </div>
                     <div class="col-2 " >
                         <button id="seach_mounth_estation" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                    <div class="col-2 ">
+                        <button id="excel_mounth_estation" class="btn btn-sm btn-success" style="width: 100%; margin-top: 15px;" disabled title="Descarga Ingresos, Despachos, Comparativa y Detalle, una hoja por pestaña"><i class="fas fa-file-excel"></i> Excel (todas las pestañas)</button>
                     </div>
                 </div>
             </div>

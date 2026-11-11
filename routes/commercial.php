@@ -30,6 +30,7 @@ return [
         route('company-conceptos-detalle/', [Commercial::class, 'company_conceptos_detalle'], name: 'commercial.company_conceptos_detalle', methods: ['POST'], alias: ['commercial/company_conceptos_detalle']),
         route('mounth-estation-table/', [Commercial::class, 'mounth_estation_table'], name: 'commercial.mounth_estation_table', methods: ['POST'], alias: ['commercial/mounth_estation_table']),
         route('mounth-estation-eventos/', [Commercial::class, 'mounth_estation_eventos'], name: 'commercial.mounth_estation_eventos', methods: ['POST'], alias: ['commercial/mounth_estation_eventos']),
+        route('estation-excel/', [Commercial::class, 'estation_excel'], name: 'commercial.estation_excel', methods: ['POST']),
         route('differences-info-modal/', [Commercial::class, 'differencesInfoModal'], name: 'commercial.differencesInfoModal', methods: ['POST'], alias: ['commercial/differencesInfoModal']),
         route('sale-month-turn-table/', [Commercial::class, 'sale_month_turn_table'], name: 'commercial.sale_month_turn_table', methods: ['POST'], alias: ['commercial/sale_month_turn_table']),
         route('sale-month-turn-base-table/', [Commercial::class, 'sale_month_turn_base_table'], name: 'commercial.sale_month_turn_base_table', methods: ['POST'], alias: ['commercial/sale_month_turn_base_table']),

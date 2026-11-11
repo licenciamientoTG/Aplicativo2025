@@ -3059,9 +3059,13 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             $('#mounth_estation_table tfoot').empty(); // Limpia el pie de tabla si lo usas
         }
         $(ESTATION_CONTAINERS.join(',')).empty().addClass('loading');
+        estationExport = null;
+        $('#excel_mounth_estation').prop('disabled', true);
         var fromDate = document.getElementById('from5').value;
         var untilDate = document.getElementById('until5').value;
-        var estation = document.getElementById('estation5').value;
+        // Select múltiple: códigos separados por coma; sin selección (o todas marcadas) = '0' = Todas
+        var estacionesSel = $('#estation5').val() || [];
+        var estation = (estacionesSel.length === 0 || estacionesSel.length === $('#estation5 option').length) ? '0' : estacionesSel.join(',');
 
         var dynamicColumns = getMounthCompanyColumns(fromDate, untilDate,'mounth_estation_table');
         updateTableHeaders(fromDate, untilDate,'mounth_estation_table');
@@ -3179,6 +3183,124 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
     }
 
     const ESTATION_CONTAINERS = ['#comparativeEstationContainer', '#despachosEstationContainer', '#ingresosVsDespachosContainer'];
+    const ORDEN_MEDIOS_COMPARATIVA = ['CREDITO', 'DEBITO', 'CONSUMO PROPIO DEBITO', 'CONSUMO PROPIO CREDITO', 'EFECTIVO', 'TARJETAS CREDITO', 'TARJETAS DEBITO', 'TARJETAS SIN CLASIFICAR', 'VALERAS', 'OTRO'];
+
+    // ── Excel del tab Venta por Estación Mensual: una hoja por sub-tab, con lo mismo que hay en pantalla ──
+    // Se arma aquí (los datos ya están cargados) y Commercial::estation_excel solo le da formato.
+    let estationExport = null; // datos del último "Generar Reporte"
+    const xCell = (v, f, extra) => Object.assign({ v: v, f: f }, extra || {});
+    const xColor = v => Math.abs(v) < 0.005 ? null : (v > 0 ? '008000' : 'C00000');
+    const xSuma = (grupo, nombres, campo) => nombres.reduce((a, n) => a + (((grupo && grupo.MediosPago[n]) || {})[campo] || 0), 0);
+
+    // Renglones con TARJETAS / VALERAS / CONSUMO PROPIO agrupados: 'group' + sus 'child' (en Excel quedan contraídos)
+    function xRowsAgrupados(medios, celdas) {
+        const rows = [];
+        agruparMedios(medios).forEach(it => {
+            if (!it.hijos) { rows.push({ t: 'row', c: [it.medio].concat(celdas([it.medio])) }); return; }
+            rows.push({ t: 'group', c: [it.medio].concat(celdas(it.hijos)) });
+            it.hijos.forEach(h => rows.push({ t: 'child', c: [h.replace(it.medio + ' - ', '').replace(it.medio + ' ', '')].concat(celdas([h])) }));
+        });
+        return rows;
+    }
+
+    // Hojas Ingresos y Despachos: por estación, Año anterior / Año actual / Diferencia en columnas
+    function xSheetAnual(name, nota, cur, prev, conEventos) {
+        const rows = [{ t: 'note', c: [nota] }, { t: 'blank', c: [] }];
+        const head = conEventos
+            ? ['Medio de pago', 'Año anterior', 'Transacc. ant.', '% ant.', 'Año actual', 'Transacc. act.', '% act.', 'Diferencia', 'Dif. transacc.', 'Dif. %']
+            : ['Medio de pago', 'Año anterior', '% ant.', 'Año actual', '% act.', 'Diferencia', 'Dif. %'];
+        [...new Set([...Object.keys(cur), ...Object.keys(prev)])].sort().forEach(est => {
+            const a = prev[est], b = cur[est];
+            const ta = a ? a.TotalSum : 0, tb = b ? b.TotalSum : 0;
+            const medios = [...new Set([...Object.keys(a ? a.MediosPago : {}), ...Object.keys(b ? b.MediosPago : {})])];
+            const celdas = nombres => {
+                const va = xSuma(a, nombres, 'TotalSum'), vb = xSuma(b, nombres, 'TotalSum');
+                const pa = ta ? va / ta : 0, pb = tb ? vb / tb : 0;
+                const col = { color: xColor(vb - va) };
+                if (!conEventos) return [xCell(va, 'money'), xCell(pa, 'pct'), xCell(vb, 'money'), xCell(pb, 'pct'), xCell(vb - va, 'money', col), xCell(pb - pa, 'pct', col)];
+                const ea = xSuma(a, nombres, 'Eventos'), eb = xSuma(b, nombres, 'Eventos');
+                return [xCell(va, 'money'), xCell(ea, 'int'), xCell(pa, 'pct'), xCell(vb, 'money'), xCell(eb, 'int'), xCell(pb, 'pct'),
+                        xCell(vb - va, 'money', col), xCell(eb - ea, 'int'), xCell(pb - pa, 'pct', col)];
+            };
+            rows.push({ t: 'title', c: [est] }, { t: 'head', c: head });
+            xRowsAgrupados(medios, celdas).forEach(r => rows.push(r));
+            rows.push({ t: 'total', c: ['Total'].concat(celdas(medios)) }, { t: 'blank', c: [] });
+        });
+        return { name: name, rows: rows };
+    }
+
+    // Hoja Comparativa: Ingresos vs Despachos del periodo, igual que renderIngresosVsDespachos
+    function xSheetComparativa(nota, ing, desp) {
+        const rubro = m => medioPadre(m) === 'VALERAS' ? 'VALERAS' : m;
+        const pos = m => { const i = ORDEN_MEDIOS_COMPARATIVA.indexOf(rubro(m)); return i < 0 ? ORDEN_MEDIOS_COMPARATIVA.length : i; };
+        const rows = [{ t: 'note', c: [nota] }, { t: 'blank', c: [] }];
+        [...new Set([...Object.keys(ing), ...Object.keys(desp)])].sort().forEach(est => {
+            const I = ing[est] || { TotalSum: 0, MediosPago: {} };
+            const D = desp[est] || { TotalSum: 0, EventosSum: 0, MediosPago: {} };
+            const medios = [...new Set([...Object.keys(I.MediosPago), ...Object.keys(D.MediosPago)])].sort((x, y) => pos(x) - pos(y));
+            const porRubro = {};
+            medios.forEach(m => { porRubro[rubro(m)] = (porRubro[rubro(m)] || 0) + xSuma(D, [m], 'TotalSum') - xSuma(I, [m], 'TotalSum'); });
+            const sumAbs = Object.values(porRubro).reduce((s, d) => s + Math.abs(d), 0);
+            const difTotal = D.TotalSum - I.TotalSum;
+            const celdas = nombres => {
+                const vI = xSuma(I, nombres, 'TotalSum'), vD = xSuma(D, nombres, 'TotalSum');
+                const col = { color: xColor(vD - vI) };
+                return [xCell(vI, 'money'), xCell(vD, 'money'), xCell(xSuma(D, nombres, 'Eventos'), 'int'),
+                        xCell(vD - vI, 'money', col), xCell(vI ? (vD - vI) / vI : null, 'pct', col)];
+            };
+            rows.push({ t: 'title', c: [est] });
+            rows.push({ t: 'note', c: ['Ingresos', xCell(I.TotalSum, 'money'), 'Despachos', xCell(D.TotalSum, 'money'), 'Diferencia', xCell(difTotal, 'money', { color: xColor(difTotal) })] });
+            rows.push({ t: 'note', c: ['En medio distinto', xCell(I.TotalSum ? sumAbs / 2 / I.TotalSum : 0, 'pct'), 'Transacciones', xCell(D.EventosSum || 0, 'int')] });
+            rows.push({ t: 'head', c: ['Medio de pago', 'Ingresos', 'Despachos', 'Transacc.', 'Diferencia', 'Dif. %'] });
+            xRowsAgrupados(medios, celdas).forEach(r => rows.push(r));
+            rows.push({ t: 'total', c: ['Total'].concat(celdas(medios)) }, { t: 'blank', c: [] });
+        });
+        return { name: 'Comparativa', rows: rows };
+    }
+
+    // Hoja Detalle: la tabla tal cual (estación, concepto, medio de pago y meses)
+    function xSheetDetalle(data, fromDate, untilDate) {
+        const cols = getMounthCompanyColumns(fromDate, untilDate, 'mounth_estation_table');
+        const rows = [{ t: 'head', c: cols.map(c => c.title) }];
+        data.forEach(r => rows.push({ t: 'row', c: cols.map((c, i) => i < 3 ? String(r[c.data] == null ? '' : r[c.data]).trim() : xCell(parseFloat(r[c.data]) || 0, 'money')) }));
+        return { name: 'Detalle', rows: rows };
+    }
+
+    async function exportEstationExcel() {
+        const x = estationExport;
+        if (!x) { alertify.error('Primero genera el reporte.'); return; }
+        const periodo = `${x.fromDate} a ${x.untilDate}`;
+        const sheets = [
+            xSheetAnual('Ingresos', `Venta por estación — Ingresos (corte) — ${periodo}, contra el mismo periodo del año anterior`, x.ingresosActual, x.ingresosPrev, false),
+            xSheetAnual('Despachos', `Venta por estación — Despachos — ${periodo}, contra el mismo periodo del año anterior`, x.despachosActual, x.despachosPrev, true),
+            xSheetComparativa(`Venta por estación — Despachos vs Ingresos — ${periodo}`, x.ingresosActual, x.despachosActual),
+            xSheetDetalle(x.detalle, x.fromDate, x.untilDate)
+        ];
+        const $btn = $('#excel_mounth_estation').prop('disabled', true);
+        try {
+            const res = await fetch(routeUrl('commercial.estation_excel'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ sheets: sheets })
+            });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const url = URL.createObjectURL(await res.blob());
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `venta_por_estacion_${x.fromDate}_a_${x.untilDate}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.error(e);
+            alertify.error('No se pudo generar el Excel.');
+        } finally {
+            $btn.prop('disabled', false);
+        }
+    }
+    $(document).on('click', '#excel_mounth_estation', exportEstationExcel);
 
     // Llena los sub-tabs Ingresos / Despachos / Comparativa del tab Venta por Estación Mensual.
     // currentData = filas de Ingresos del periodo (las mismas de la tabla Detalle).
@@ -3208,9 +3330,15 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             const ingresosActual = groupAndSumEstation(currentData);
             const despachosActual = groupDespachosEstation(currentEventos);
 
-            renderGroupCards(ingresosActual, groupAndSumEstation(previousData), 'comparativeEstationContainer');
-            renderGroupCards(despachosActual, groupDespachosEstation(previousEventos), 'despachosEstationContainer');
+            const ingresosPrev = groupAndSumEstation(previousData);
+            const despachosPrev = groupDespachosEstation(previousEventos);
+
+            renderGroupCards(ingresosActual, ingresosPrev, 'comparativeEstationContainer');
+            renderGroupCards(despachosActual, despachosPrev, 'despachosEstationContainer');
             renderIngresosVsDespachos(ingresosActual, despachosActual, 'ingresosVsDespachosContainer');
+
+            estationExport = { fromDate, untilDate, ingresosActual, ingresosPrev, despachosActual, despachosPrev, detalle: currentData };
+            $('#excel_mounth_estation').prop('disabled', false);
         } catch (error) {
             console.error("Error al obtener los datos de las cards por estación:", error);
         } finally {
@@ -3226,7 +3354,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         const money = v => Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(v);
         const pct = (dif, base) => base !== 0 ? `${((dif / base) * 100).toFixed(2)}%` : '—';
         const color = v => Math.abs(v) < 0.005 ? 'gray' : (v > 0 ? 'green' : 'red');
-        const orden = ['CREDITO', 'DEBITO', 'CONSUMO PROPIO DEBITO', 'CONSUMO PROPIO CREDITO', 'EFECTIVO', 'TARJETAS CREDITO', 'TARJETAS DEBITO', 'TARJETAS SIN CLASIFICAR', 'VALERAS', 'OTRO'];
+        const orden = ORDEN_MEDIOS_COMPARATIVA;
         const rubro = medio => medioPadre(medio) === 'VALERAS' ? 'VALERAS' : medio; // las marcas de valera cuentan como un solo rubro
         const posicion = medio => orden.includes(rubro(medio)) ? orden.indexOf(rubro(medio)) : orden.length;
 

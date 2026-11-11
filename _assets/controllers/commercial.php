@@ -277,6 +277,110 @@ class Commercial{
         echo json_encode(array("data" => $rows));
     }
 
+    /**
+     * Excel del tab Venta por Estación Mensual. Recibe en JSON (cuerpo del POST) las hojas ya armadas por
+     * commercial.js con los mismos datos que están en pantalla, una por sub-tab; aquí solo se les da formato.
+     */
+    function estation_excel(){
+        $payload = json_decode(file_get_contents('php://input'), true);
+        $sheets = is_array($payload['sheets'] ?? null) ? $payload['sheets'] : [];
+        if (!$sheets) {
+            http_response_code(400);
+            echo 'Sin datos para exportar.';
+            return;
+        }
+        ini_set('memory_limit', '512M');
+        set_time_limit(120);
+        $book = $this->buildCardsWorkbook($sheets);
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="venta_por_estacion.xlsx"');
+        header('Cache-Control: max-age=0');
+        (new Xlsx($book))->save('php://output');
+        exit;
+    }
+
+    /**
+     * Arma el libro a partir de hojas genéricas: [{name, rows: [{t, c}]}].
+     *   t = title (nombre de la estación) | head (encabezado) | row | group (renglón agrupado: TARJETAS, VALERAS,
+     *       CONSUMO PROPIO) | child (desglose del group anterior: queda contraído, se abre con el [+] de Excel) |
+     *       total | note | blank
+     *   c = celdas: valor simple o {v, f: money|int|pct, color: 'RRGGBB'}
+     */
+    public function buildCardsWorkbook(array $sheets) : Spreadsheet {
+        $formats = ['money' => '"$"#,##0.00', 'int' => '#,##0', 'pct' => '0.00%'];
+        $colName = fn(int $i) => \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($i);
+        $book = new Spreadsheet();
+        $book->removeSheetByIndex(0);
+        $usados = [];
+        foreach (array_slice($sheets, 0, 10) as $n => $def) {
+            $name = trim(mb_substr(preg_replace('/[\\\\\/\?\*\[\]:]/u', ' ', (string)($def['name'] ?? '')), 0, 31));
+            if ($name === '' || isset($usados[mb_strtolower($name)])) $name = 'Hoja ' . ($n + 1);
+            $usados[mb_strtolower($name)] = true;
+            $sheet = $book->createSheet();
+            $sheet->setTitle($name);
+            $sheet->setShowSummaryBelow(false); // el [+] queda en el renglón agrupado, arriba de su desglose
+            $r = 0;
+            $maxCol = 1;
+            foreach ((array)($def['rows'] ?? []) as $row) {
+                $r++;
+                $type = (string)($row['t'] ?? 'row');
+                $cells = array_values((array)($row['c'] ?? []));
+                $maxCol = max($maxCol, count($cells));
+                foreach ($cells as $i => $cell) {
+                    $coord = $colName($i + 1) . $r;
+                    $v = is_array($cell) ? ($cell['v'] ?? null) : $cell;
+                    if ($v === null || $v === '') continue;
+                    if (is_int($v) || is_float($v)) {
+                        $sheet->setCellValue($coord, $v);
+                    } else {
+                        // siempre como texto: un nombre que empiece con "=" no debe volverse fórmula
+                        $sheet->setCellValueExplicit($coord, (string)$v, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                    }
+                    if (is_array($cell)) {
+                        if (isset($formats[$cell['f'] ?? ''])) $sheet->getStyle($coord)->getNumberFormat()->setFormatCode($formats[$cell['f']]);
+                        if (!empty($cell['color']) && preg_match('/^[0-9A-Fa-f]{6}$/', (string)$cell['color'])) {
+                            $sheet->getStyle($coord)->getFont()->getColor()->setRGB($cell['color']);
+                        }
+                    }
+                }
+                if (!$cells) continue;
+                $range = 'A' . $r . ':' . $colName(count($cells)) . $r;
+                switch ($type) {
+                    case 'title':
+                        $sheet->getStyle('A' . $r)->getFont()->setBold(true)->setSize(13);
+                        break;
+                    case 'head':
+                        $sheet->getStyle($range)->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
+                        $sheet->getStyle($range)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('48A1C7');
+                        $sheet->getStyle($range)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                        break;
+                    case 'group':
+                        $sheet->getStyle('A' . $r)->getFont()->setBold(true);
+                        $sheet->getRowDimension($r)->setCollapsed(true);
+                        break;
+                    case 'child':
+                        $sheet->getRowDimension($r)->setOutlineLevel(1)->setVisible(false);
+                        $sheet->getStyle('A' . $r)->getAlignment()->setIndent(2);
+                        $sheet->getStyle('A' . $r)->getFont()->getColor()->setRGB('666666');
+                        break;
+                    case 'total':
+                        $sheet->getStyle($range)->getFont()->setBold(true);
+                        $sheet->getStyle($range)->getBorders()->getTop()->setBorderStyle(Border::BORDER_THIN);
+                        break;
+                    case 'note':
+                        $sheet->getStyle($range)->getFont()->setItalic(true);
+                        break;
+                }
+            }
+            for ($c = 1; $c <= $maxCol; $c++) {
+                $sheet->getColumnDimension($colName($c))->setAutoSize(true);
+            }
+        }
+        $book->setActiveSheetIndex(0);
+        return $book;
+    }
+
     function sales_type_payment_totals_table(){
         $dinamicColumns = $_POST['dinamicColumns'];
         $rows = $this->ventas->getSalesTypePaymentTotal($_POST['fromDate'], $_POST['untilDate'],$_POST['zona']);

@@ -1304,6 +1304,16 @@ class VentasModel extends Model
         return $this->sql->select($query, array_merge($params_i, $params_d));
     }
 
+    /**
+     * Filtro de estaciones del tab Venta por Estación Mensual: recibe '0' (todas), un código o varios
+     * separados por coma ('5,31') y devuelve la lista de enteros para un IN (...), o '' si son todas.
+     */
+    private function estacionesCsv($estation) : string
+    {
+        $ids = array_filter(array_map('intval', explode(',', (string)$estation)), fn($id) => $id > 0);
+        return implode(',', array_unique($ids));
+    }
+
     function getMounthEstationPayment($from, $until, $estation, $total)
     {
         $fromstring = date('Y-m-d', strtotime($from));
@@ -1337,9 +1347,9 @@ class VentasModel extends Model
 
         $estation_string = '';
         $ratio_filter = '';
-        if ($estation != '0') {
-            $estation_string = "and i.codgas = " . (int)$estation . " ";
-            $ratio_filter = "AND d.codgas = " . (int)$estation;
+        if ($ids = $this->estacionesCsv($estation)) {
+            $estation_string = "and i.codgas IN ({$ids}) ";
+            $ratio_filter = "AND d.codgas IN ({$ids})";
         }
         $cp = self::CONSUMO_PROPIO_CODVAL;
         $cpc = self::CONSUMO_PROPIO_CODVAL_CREDITO;
@@ -1462,8 +1472,8 @@ class VentasModel extends Model
         }, $months));
 
         $estation_string = '';
-        if ($estation != '0') {
-            $estation_string = "and t1.codgas = '{$estation}' ";
+        if ($ids = $this->estacionesCsv($estation)) {
+            $estation_string = "and t1.codgas IN ({$ids}) ";
         }
 
         $query = "
