@@ -26,25 +26,34 @@ from datetime import datetime, timedelta
 from playwright.sync_api import sync_playwright
 import smtplib
 import ssl
+import argparse
+import csv
+import io
+from decimal import Decimal, InvalidOperation
 from email.message import EmailMessage
 
-# --- CONFIGURACION CORREO ---
-SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 465  # SMTPS
+# --- CONFIGURACION CORREO (SMTP RELAY) ---
+SMTP_HOST = "smtp-relay.gmail.com"
+SMTP_PORT = 587  # SMTP con STARTTLS
 SMTP_USER = "no-reply@totalgas.com"
-SMTP_PASS = "sysdhepknmlkigbs"
-ALERT_RECIPIENT = "daniel.ramirez@totalgas.com, sergio.guerra@totalgas.com"
+ALERT_RECIPIENT = "daniel.ramirez@totalgas.com, sergio.guerra@totalgas.com, auxiliar.ingresos4@totalgas.com"
 
 # --- RESULTADOS GLOBALES ---
 global_results = {
-    'BANORTE': {
+    'BANKAOOL': {
         'status': 'Iniciado',
         'registros_insertados': 0,
         'archivos_procesados': [],
         'mensaje': ''
     },
+    'BANORTE': {
+        'status': 'No ejecutado',
+        'registros_insertados': 0,
+        'archivos_procesados': [],
+        'mensaje': ''
+    },
     'SANTANDER': {
-        'status': 'Iniciado',
+        'status': 'No ejecutado',
         'registros_insertados': 0,
         'archivos_procesados': [],
         'mensaje': ''
@@ -538,6 +547,15 @@ def subir_a_db(file_path, tipo_banco, razon_social=None):
                 # Esto también puede mover la fecha si la transacción fue cerca de medianoche
                 f_trans, hora = ajustar_tz_juarez(f_trans, hora)
 
+            # Banorte puede entregar ventas válidas sin Número de Control ni Referencia
+            # (por ejemplo, operaciones MDS). Generamos una huella estable para no
+            # descartarlas y evitar duplicados en futuros reprocesos.
+            if tipo_banco == 'BANORTE' and not id_ext and monto > 0:
+                id_ext = (
+                    f"SIN_CONTROL|{afil}|{f_trans or ''}|{hora}|{monto:.2f}|"
+                    f"{auth}|{term}"
+                )
+
             # EVITAR REGISTROS FANTASMA O NEGATIVOS
             if not id_ext or monto <= 0:
                 continue
@@ -659,14 +677,18 @@ def get_last_date_by_razon(banco, razon):
         print(f"   [!] Error consultando última fecha ({razon}): {e}")
         return datetime.now() - timedelta(days=30)
     
-def ejecutar_banorte(browser):
+def ejecutar_banorte(browser, fecha_objetivo=None):
     print("\n" + "="*50 + "\n>>> 1. INICIANDO PROCESO BANORTE (BUCLE DE RECUPERACIÓN)\n" + "="*50)
     RAZON_SOCIAL_BANORTE = "BANORTE_GENERAL"
-    USUARIO, PASSWORD = "israel.ibarra@totalgas.com", "TotGAS26@$"
+    USUARIO, PASSWORD = "israel.ibarra@totalgas.com", "ING#7&2026"
     
     # 1. Definir rango de fechas
     fecha_limite = datetime.now() - timedelta(days=1)
     fecha_inicio = get_last_banorte_date() + timedelta(days=1)
+    if fecha_objetivo:
+        fecha_inicio = fecha_objetivo
+        fecha_limite = fecha_objetivo
+        print(f"   [REPROCESO PUNTUAL] Fecha solicitada: {fecha_objetivo.strftime('%Y-%m-%d')}")
     
     # NUEVO: Tracking de dias procesados en esta sesion para no repetir
     dias_procesados_hoy = set()
@@ -743,7 +765,7 @@ def ejecutar_banorte(browser):
                 "SELECT id, fecha_reporte, numero_intentos FROM bancos_reportes_pendientes WHERE banco = 'BANORTE' AND estado IN ('PENDIENTE', 'FALLIDO_MAX_INTENTOS') AND razon_social = ?",
                 (RAZON_SOCIAL_BANORTE,)
             )
-            pendientes = cursor_pend_check.fetchall()
+            pendientes = [] if fecha_objetivo else cursor_pend_check.fetchall()
             conn_pend.close()
 
             if pendientes:
@@ -873,7 +895,7 @@ def ejecutar_banorte(browser):
     finally:
         context.close()
 
-def ejecutar_getnet(browser):
+def ejecutar_getnet(browser, fechas_objetivo=None, solo_estacion=None):
 
     print("\n" + "="*50 + "\n>>> 2. INICIANDO PROCESO GETNET (BUCLE DE RECUPERACIÓN)\n" + "="*50)
 
@@ -895,12 +917,20 @@ def ejecutar_getnet(browser):
     # 1. Definir fecha limite global
     fecha_limite = datetime.now() - timedelta(days=3)
     
+    if solo_estacion:
+        CREDENCIALES = [cred for cred in CREDENCIALES if cred["razon"] == solo_estacion]
+
     for cred in CREDENCIALES:
         estacion = cred["razon"]; usuario = cred["usuario"]; password = cred["pass"]
         print(f"\nGetnet: {estacion}..."); 
 
         # 2. Fecha inicio especifica por estacion
         fecha_inicio = get_last_date_by_razon('SANTANDER', estacion) + timedelta(days=1)
+        fecha_fin_estacion = fecha_limite
+        if fechas_objetivo and (solo_estacion is None or estacion == solo_estacion):
+            fechas_objetivo = sorted(fechas_objetivo)
+            fecha_inicio = fechas_objetivo[0]
+            fecha_fin_estacion = fechas_objetivo[-1]
         
         # Tracking de dias procesados por estacion
         dias_procesados_estacion = set()
@@ -1014,7 +1044,7 @@ def ejecutar_getnet(browser):
                     "SELECT id, fecha_reporte, numero_intentos FROM bancos_reportes_pendientes WHERE banco = 'SANTANDER' AND estado IN ('PENDIENTE', 'FALLIDO_MAX_INTENTOS') AND razon_social = ?",
                     (estacion,)
                 )
-                pendientes = cursor_pend_check.fetchall()
+                pendientes = [] if fechas_objetivo else cursor_pend_check.fetchall()
                 conn_pend.close()
 
                 if pendientes:
@@ -1093,7 +1123,7 @@ def ejecutar_getnet(browser):
 
             # --- BUCLE POR DÍA (Dentro de la sesión) ---
             current_date = fecha_inicio
-            while current_date <= fecha_limite:
+            while current_date <= fecha_fin_estacion:
                 fecha_consulta_str = current_date.strftime("%Y-%m-%d")
                 if fecha_consulta_str in dias_procesados_estacion:
                     current_date += timedelta(days=1)
@@ -1187,6 +1217,261 @@ def ejecutar_getnet(browser):
     if global_results['SANTANDER']['status'] == 'Iniciado':
         global_results['SANTANDER']['status'] = 'Completado'
 
+def normalizar_encabezado_bankaool(valor):
+    texto = str(valor or '').strip().lstrip('\ufeff').lower()
+    texto = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
+    return re.sub(r'[^a-z0-9]+', '', texto)
+
+
+def parsear_fecha_hora_bankaool(valor):
+    """Parsea las fechas del CSV sin descartar el formato/hora del reporte."""
+    if valor is None or str(valor).strip() == '':
+        raise ValueError('fecha vacía')
+    texto = str(valor).strip()
+    formatos = (
+        '%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M',
+        '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M',
+        '%Y-%m-%dT%H:%M:%S%z', '%Y-%m-%dT%H:%M:%S',
+        '%Y-%m-%dT%H:%M:%SZ', '%m/%d/%Y %H:%M:%S', '%m/%d/%Y %H:%M',
+    )
+    for formato in formatos:
+        try:
+            return datetime.strptime(texto, formato)
+        except ValueError:
+            pass
+    try:
+        return pd.to_datetime(texto, dayfirst=True, errors='raise').to_pydatetime()
+    except Exception as exc:
+        raise ValueError('formato de fecha no reconocido') from exc
+
+
+def procesar_bankaool_csv(file_path):
+    """Valida, deduplica y persiste transacciones aprobadas de Bankaool."""
+    nombre = os.path.basename(file_path)
+    conn = None
+    try:
+        aliases = {
+            'id': 'ID_Externo', 'numeroafiliacion': 'Afiliacion',
+            'fechatransaccion': 'FechaHora', 'importe': 'Monto',
+            'autorizacion': 'Codigo_Autorizacion', 'terminal': 'Terminal',
+            'referencia': 'Referencia', 'estatus': 'Estatus',
+        }
+        extension = os.path.splitext(file_path)[1].lower()
+        filas = []
+        if extension == '.xlsx':
+            df = pd.read_excel(file_path, dtype=str, keep_default_na=False)
+            encabezados = list(df.columns)
+            filas = [row.to_dict() for _, row in df.iterrows()]
+            print(f"   Encabezados XLSX Bankaool ({nombre}): {encabezados}")
+        elif extension == '.csv':
+            # Algunas exportaciones CSV incluyen filas informativas y usan
+            # codificación ANSI. Detectar la tabla por sus encabezados evita
+            # depender de que el archivo comience directamente con ella.
+            with open(file_path, 'rb') as source:
+                contenido = source.read()
+            try:
+                texto_csv = contenido.decode('utf-8-sig')
+            except UnicodeDecodeError:
+                texto_csv = contenido.decode('latin-1')
+            encabezados = None
+            filas_csv = None
+            fila_encabezados = None
+            separador = None
+            for candidato_sep in (',', ';', '\t', '|'):
+                try:
+                    filas_candidatas = list(csv.reader(io.StringIO(texto_csv), delimiter=candidato_sep))
+                except csv.Error:
+                    continue
+                for indice_fila, fila in enumerate(filas_candidatas):
+                    claves = {normalizar_encabezado_bankaool(celda) for celda in fila}
+                    if set(aliases).issubset(claves):
+                        filas_csv = filas_candidatas
+                        encabezados = fila
+                        fila_encabezados = indice_fila
+                        separador = candidato_sep
+                        break
+                if filas_csv is not None:
+                    break
+            if filas_csv is None:
+                raise ValueError('No se encontró una fila de encabezados Bankaool con todas las columnas requeridas.')
+            print(f"   Encabezados CSV Bankaool ({nombre}), separador {separador!r}: {encabezados}")
+            for indice_fila, fila in enumerate(filas_csv[fila_encabezados + 1:], start=fila_encabezados + 2):
+                if not any(str(value).strip() for value in fila):
+                    continue
+                if len(fila) > len(encabezados) and any(str(value).strip() for value in fila[len(encabezados):]):
+                    raise ValueError(f'La fila {indice_fila} tiene más campos que los encabezados; se rechazó para evitar desalinear datos.')
+                fila = fila[:len(encabezados)] + [''] * max(0, len(encabezados) - len(fila))
+                filas.append(dict(zip(encabezados, fila)))
+        else:
+            raise ValueError(f'Formato {extension or "sin extensión"} no compatible; se requiere CSV o XLSX.')
+
+        indices = {aliases[key]: header for header in encabezados
+                   if (key := normalizar_encabezado_bankaool(header)) in aliases}
+        faltantes = [campo for campo in aliases.values() if campo not in indices]
+        if faltantes:
+            raise ValueError('Faltan columnas requeridas en reporte Bankaool: ' + ', '.join(faltantes))
+
+        aprobadas = []
+        no_aprobadas = 0
+        for numero_fila, row in enumerate(filas, start=2):
+            if not any(str(value).strip() for value in row.values()):
+                continue
+            afiliacion_raw = str(row.get(indices['Afiliacion'], '')).strip()
+            afiliacion = afiliacion_raw.lstrip('0')
+            if afiliacion_raw and afiliacion != '9990624':
+                raise ValueError(f'La fila {numero_fila} contiene una afiliación distinta de 9990624; se rechazó el archivo completo.')
+            if str(row[indices['Estatus']]).strip().casefold() != 'aprobada':
+                no_aprobadas += 1
+                continue
+            id_ext = str(row[indices['ID_Externo']]).strip()
+            fecha_raw = str(row[indices['FechaHora']]).strip()
+            importe_raw = str(row[indices['Monto']]).strip()
+            if not id_ext or not afiliacion_raw or not fecha_raw or not importe_raw:
+                raise ValueError(f'La fila aprobada {numero_fila} no contiene ID, afiliación, fecha o importe.')
+            try:
+                fecha_hora = parsear_fecha_hora_bankaool(fecha_raw)
+            except ValueError as exc:
+                raise ValueError(f'Fecha inválida en fila aprobada {numero_fila}: {fecha_raw!r}.') from exc
+            try:
+                monto = Decimal(importe_raw.replace('$', '').replace(',', '').replace(' ', ''))
+            except InvalidOperation as exc:
+                raise ValueError(f'Importe inválido en fila aprobada {numero_fila}: {importe_raw!r}.') from exc
+            if not monto.is_finite():
+                raise ValueError(f'Importe inválido en fila aprobada {numero_fila}: {importe_raw!r}.')
+            aprobadas.append({
+                'ID_Externo': id_ext, 'Afiliacion': afiliacion,
+                'Fecha_Transaccion': fecha_hora.strftime('%Y-%m-%d'),
+                'Hora': fecha_hora.strftime('%H:%M:%S'), 'Monto': float(monto),
+                'Codigo_Autorizacion': str(row[indices['Codigo_Autorizacion']]).strip(),
+                'Terminal': str(row[indices['Terminal']]).strip(),
+                'Referencia': str(row[indices['Referencia']]).strip(),
+            })
+
+        uploads_root = r'C:\inetpub\wwwroot\TG_PHP\_assets\uploads'
+        subpath = os.path.join('BANKAOOL', datetime.now().strftime('%Y'), datetime.now().strftime('%m'))
+        archive_dir = os.path.join(uploads_root, subpath)
+        os.makedirs(archive_dir, exist_ok=True)
+        archived_name = f"{datetime.now().strftime('%H%M%S')}_{nombre}"
+        archived_path = os.path.join(archive_dir, archived_name)
+        shutil.copy2(file_path, archived_path)
+        db_file_path = os.path.join(subpath, archived_name).replace('\\', '/')
+
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute('SELECT ID_Externo, Afiliacion, Fecha_Transaccion, Hora, Monto, Codigo_Autorizacion, Terminal, Referencia FROM banco_bankaool')
+        ids, fingerprints = set(), set()
+        for existing in cursor.fetchall():
+            af = str(existing[1] or '').strip()
+            ids.add((af, str(existing[0] or '').strip()))
+            fdate = existing[2].strftime('%Y-%m-%d') if hasattr(existing[2], 'strftime') else str(existing[2] or '')[:10]
+            fingerprints.add((af, fdate, limpiar_hora(existing[3]), f"{float(existing[4] or 0):.2f}", str(existing[5] or '').strip(), str(existing[6] or '').strip(), str(existing[7] or '').strip()))
+        columnas = ['ID_Externo', 'Afiliacion', 'Fecha_Transaccion', 'Hora', 'Monto', 'Codigo_Autorizacion', 'Terminal', 'Referencia', 'Fecha_Deposito', 'Nombre_Archivo']
+        sql = f"INSERT INTO banco_bankaool ({', '.join(columnas)}) VALUES ({', '.join(['?'] * len(columnas))})"
+        inserts, duplicados = [], 0
+        for item in aprobadas:
+            id_key = (item['Afiliacion'], item['ID_Externo'])
+            fingerprint = (item['Afiliacion'], item['Fecha_Transaccion'], item['Hora'], f"{item['Monto']:.2f}", item['Codigo_Autorizacion'], item['Terminal'], item['Referencia'])
+            if id_key in ids or fingerprint in fingerprints:
+                duplicados += 1
+                continue
+            ids.add(id_key)
+            fingerprints.add(fingerprint)
+            inserts.append(tuple(item[col] for col in columnas[:8]) + (None, db_file_path))
+        conn.autocommit = False
+        try:
+            if inserts:
+                cursor.executemany(sql, inserts)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        inserted = len(inserts)
+        global_results['BANKAOOL']['registros_insertados'] += inserted
+        msg = f"Validado: {inserted} insertados, {duplicados} duplicados y {no_aprobadas} no aprobadas omitidas."
+        print(f"   {msg} Archivo archivado como {db_file_path}")
+        return True, inserted, msg
+    except Exception as exc:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        return False, 0, f"{nombre}: {exc}"
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def ejecutar_bankaool_login(browser):
+    """Abre Bankaool y realiza el primer paso de autenticación para validarlo."""
+    print("\n>>> INICIANDO PRUEBA DE ACCESO BANKAOOL")
+    usuario = "sergio.guerra@totalgas.com"
+    password = "Sgue@rr1"
+    context = browser.new_context(
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        locale="es-MX",
+        viewport={"width": 1366, "height": 768},
+    )
+    page = context.new_page()
+    try:
+        page.goto("https://bankaool.pharospayments.com/", wait_until="domcontentloaded", timeout=90000)
+        email_input = page.locator('input[type="email"], input[placeholder*="email" i]').first
+        password_input = page.locator('input[type="password"]').first
+        email_input.wait_for(state="visible", timeout=30000)
+        email_input.fill(usuario)
+        password_input.fill(password)
+
+        submit = page.locator('button[type="submit"], input[type="submit"]').first
+        if submit.count():
+            submit.click()
+        else:
+            page.get_by_role("button", name=re.compile("iniciar sesi[oó]n", re.I)).click()
+
+        # La página de transacciones marca el login exitoso y contiene los filtros indicados.
+        campo_desde = page.locator('input[type="date"]#date_from')
+        campo_hasta = page.locator('input[type="date"]#date_to')
+        campo_desde.wait_for(state="visible", timeout=60000)
+        campo_hasta.wait_for(state="visible", timeout=30000)
+
+        # Tres días calendario completos anteriores a hoy; el rango incluye fines de semana.
+        fecha_hasta = datetime.now().date() - timedelta(days=1)
+        fecha_desde = fecha_hasta - timedelta(days=2)
+        desde_iso = fecha_desde.strftime("%Y-%m-%d")
+        hasta_iso = fecha_hasta.strftime("%Y-%m-%d")
+        print(f"   Consultando Bankaool del {desde_iso} al {hasta_iso}...")
+
+        # Cada cambio envía automáticamente el formulario; rellenar el segundo campo
+        # después de que termine la navegación provocada por el primero.
+        with page.expect_navigation(wait_until="domcontentloaded", timeout=30000):
+            campo_desde.fill(desde_iso)
+        with page.expect_navigation(wait_until="domcontentloaded", timeout=30000):
+            campo_hasta.fill(hasta_iso)
+
+        with page.expect_download(timeout=60000) as download_info:
+            page.get_by_role("link", name=re.compile("Descargar Transacciones", re.I)).click()
+        download = download_info.value
+        extension = os.path.splitext(download.suggested_filename or '')[1].lower()
+        if extension not in ('.csv', '.xlsx'):
+            raise ValueError(f"La descarga reportó un formato no compatible ({extension or 'sin extensión'}); se requiere CSV o XLSX.")
+        nombre_archivo = f"Bankaool_Transacciones_{desde_iso}_a_{hasta_iso}{extension}"
+        download.save_as(nombre_archivo)
+        print(f"   Descarga guardada: {os.path.abspath(nombre_archivo)}")
+        global_results['BANKAOOL']['archivos_procesados'].append(nombre_archivo)
+        success, inserted, message = procesar_bankaool_csv(nombre_archivo)
+        global_results['BANKAOOL']['status'] = 'Completado' if success else 'Error'
+        global_results['BANKAOOL']['mensaje'] = message
+        if not success:
+            print(f"   Error procesando Bankaool: {message}")
+    except Exception as e:
+        global_results['BANKAOOL']['status'] = 'Error'
+        global_results['BANKAOOL']['mensaje'] = f"Error de descarga o sesión Bankaool: {e}"
+        print(f"   Error al iniciar sesión o descargar Bankaool: {e}")
+    finally:
+        context.close()
+
 def send_email_report():
     print("\n>>> Enviando reporte por correo...")
     
@@ -1264,14 +1549,70 @@ def send_email_report():
         msg.add_alternative(html_body, subtype="html")
 
         context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=context) as server:
-            server.login(SMTP_USER, SMTP_PASS)
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.ehlo()
+            server.starttls(context=context)
+            server.ehlo()
             server.send_message(msg)
         print(">>> Correo enviado exitosamente.")
     except Exception as e:
         print(f">>> Error enviando correo: {e}")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--banorte-fecha",
+        help="Consulta únicamente Banorte para una fecha YYYY-MM-DD."
+    )
+    parser.add_argument(
+        "--solo-banorte",
+        action="store_true",
+        help="No ejecutar el proceso de Santander."
+    )
+    parser.add_argument(
+        "--clara-fechas",
+        nargs="+",
+        metavar="YYYY-MM-DD",
+        help="Descarga únicamente estas fechas para Clara en Santander."
+    )
+    parser.add_argument(
+        "--santander-fechas",
+        nargs="+",
+        metavar="YYYY-MM-DD",
+        help="Descarga únicamente estas fechas para todas las estaciones Santander."
+    )
+    parser.add_argument(
+        "--santander-estacion",
+        help="Limita --santander-fechas a una estación Santander por nombre exacto."
+    )
+    parser.add_argument(
+        "--bankaool-login",
+        action="store_true",
+        help="Prueba el inicio de sesión de Bankaool y deja la ventana abierta hasta presionar Enter."
+    )
+    args = parser.parse_args()
+
+    fecha_banorte = None
+    if args.banorte_fecha:
+        try:
+            fecha_banorte = datetime.strptime(args.banorte_fecha, "%Y-%m-%d")
+        except ValueError:
+            raise SystemExit("La fecha de Banorte debe tener formato YYYY-MM-DD.")
+
+    fechas_clara = None
+    if args.clara_fechas:
+        try:
+            fechas_clara = [datetime.strptime(fecha, "%Y-%m-%d") for fecha in args.clara_fechas]
+        except ValueError:
+            raise SystemExit("Las fechas de Clara deben tener formato YYYY-MM-DD.")
+
+    fechas_santander = None
+    if args.santander_fechas:
+        try:
+            fechas_santander = [datetime.strptime(fecha, "%Y-%m-%d") for fecha in args.santander_fechas]
+        except ValueError:
+            raise SystemExit("Las fechas de Santander deben tener formato YYYY-MM-DD.")
+
     with sync_playwright() as p:
         # User agent consistente para launch y context
         UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
@@ -1288,8 +1629,18 @@ if __name__ == "__main__":
                 "--window-size=1366,768"
             ]
         )
-        ejecutar_banorte(browser);
-        ejecutar_getnet(browser); 
+        # Modo temporal de pruebas: ejecutar exclusivamente el acceso a Bankaool.
+        ejecutar_bankaool_login(browser)
+
+        # Flujo anterior desactivado durante las pruebas de Bankaool:
+        # if fechas_clara:
+        #     ejecutar_getnet(browser, fechas_clara, solo_estacion="CLARA")
+        # elif fechas_santander:
+        #     ejecutar_getnet(browser, fechas_santander, solo_estacion=args.santander_estacion)
+        # else:
+        #     ejecutar_banorte(browser, fecha_banorte)
+        #     if not args.solo_banorte:
+        #         ejecutar_getnet(browser)
         browser.close()
-    
+
     send_email_report()

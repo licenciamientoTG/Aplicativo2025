@@ -810,7 +810,7 @@
                 <div class="mb-3"><div class="text-muted small font-weight-bold text-uppercase mb-1">Día y movimientos de origen</div><div class="font-weight-bold" id="dif-tes-concepto"></div><div class="text-muted small" id="dif-tes-fecha-origen"></div></div>
                 <div class="row mb-3">
                     <div class="col-6"><div class="text-muted small font-weight-bold text-uppercase mb-1">Pendiente en origen</div><div class="font-numeric h5 text-dark" id="dif-tes-disponible"></div><small class="text-muted">Importe del depósito aún no diferido y pendiente de conciliar.</small></div>
-                    <div class="col-6"><div class="text-muted small font-weight-bold text-uppercase mb-1">Fecha destino</div><input type="date" id="dif-tes-fecha-dest" class="form-control form-control-sm" min="2026-10-01" max="2026-10-31" onchange="actualizarModoDiferidoTES()"></div>
+                    <div class="col-6"><div class="text-muted small font-weight-bold text-uppercase mb-1">Fecha destino</div><input type="date" id="dif-tes-fecha-dest" class="form-control form-control-sm" onchange="actualizarModoDiferidoTES()"></div>
                 </div>
                 <div class="mb-3"><label class="text-muted small font-weight-bold text-uppercase mb-1">Monto a diferir</label><input type="number" id="dif-tes-monto" class="form-control" step="0.01" min="0.01" oninput="actualizarDisponibleDiferidoTES()"></div>
                 <div class="mb-3 p-2 rounded" style="background:#d1fae5;"><div class="text-muted small font-weight-bold text-uppercase mb-1">Saldo que queda en origen</div><div class="font-numeric h5 text-success mb-0" id="dif-tes-restante"></div></div>
@@ -1879,8 +1879,21 @@ async function fetchDiferidosCG(estid, eid, afil, year, month) {
 }
 
 function tesDiferidosHabilitado() {
-    return !!(currentRule && String(currentRule.afiliacion).trim() === '9990624'
-        && Number(widgetState.year) === 2026 && String(widgetState.month).padStart(2, '0') === '10');
+    return !!(esPilotoVillaAhumadaBankaool() && String($('#estacionSelect').val()) === '31'
+        && currentRule && String(currentRule.afiliacion).trim() === '9990624');
+}
+
+function rangoMesSeleccionadoTES() {
+    const year = Number(widgetState.year);
+    const month = Number(widgetState.month);
+    const mes = `${year}-${String(month).padStart(2, '0')}`;
+    const ultimoDia = new Date(year, month, 0).getDate();
+    return { mes, min: `${mes}-01`, max: `${mes}-${String(ultimoDia).padStart(2, '0')}` };
+}
+
+function fechaValidaEnMesTES(fecha) {
+    const { mes, min, max } = rangoMesSeleccionadoTES();
+    return /^\d{4}-\d{2}-\d{2}$/.test(fecha) && fecha >= min && fecha <= max && fecha.startsWith(`${mes}-`);
 }
 
 function tesDiferidosActivos(ref) {
@@ -2488,7 +2501,8 @@ function renderTes() {
     const fakesTesVisibles = (diferidosTES || []).filter(d => !['CANCELADO', 'CANCELADA', 'ANULADO', 'ANULADA'].includes(String(d.estado || '').toUpperCase()));
     const diferidosPorFecha = new Map();
     if (tesDiferidosHabilitado()) {
-        fakesTesVisibles.filter(d => String(d.fecha_destino || '').startsWith('2026-10-')).forEach(d => {
+        const { mes } = rangoMesSeleccionadoTES();
+        fakesTesVisibles.filter(d => String(d.fecha_destino || '').startsWith(`${mes}-`)).forEach(d => {
             const fecha = String(d.fecha_destino).substring(0, 10);
             if (!diferidosPorFecha.has(fecha)) diferidosPorFecha.set(fecha, []);
             diferidosPorFecha.get(fecha).push(d);
@@ -2500,7 +2514,7 @@ function renderTes() {
         return;
     }
 
-    // In the October 2026 TES pilot each date is an expandable container.
+    // In the TES pilot each date is an expandable container.
     // Original deposits remain grouped into one child row per day, while each
     // deferred amount remains its own independently selectable child.
     // The ordinary renderer below remains intact for every other affiliation.
@@ -4530,7 +4544,8 @@ function abrirModalDiferidoTES(fecha, button) {
     const disponible = componentes.reduce((sum, comp) => sum + tesMontoDisponible(comp), 0);
     _difTesState = { fecha, componentes, disponible };
     // Use the selected origin day as the date picker's initial view instead of today.
-    $('#dif-tes-fecha-dest').val(fecha).attr('min', '2026-10-01').attr('max', '2026-10-31');
+    const rango = rangoMesSeleccionadoTES();
+    $('#dif-tes-fecha-dest').val(fecha).attr('min', rango.min).attr('max', rango.max);
     $('#dif-tes-desc').val('');
     $('#dif-tes-monto').val('');
     $('#dif-tes-concepto').text(`${componentes.length} movimientos TES`);
@@ -4556,13 +4571,13 @@ function actualizarDisponibleDiferidoTES() {
 async function confirmarCrearDiferidoTES() {
     const monto = Math.round((parseFloat($('#dif-tes-monto').val()) || 0) * 100) / 100;
     const fechaDestino = $('#dif-tes-fecha-dest').val();
-    if (!tesDiferidosHabilitado() || !fechaDestino || !/^2026-10-(0[1-9]|[12]\d|3[01])$/.test(fechaDestino)) { alert('Selecciona una fecha de octubre de 2026.'); return; }
+    if (!tesDiferidosHabilitado() || !fechaValidaEnMesTES(fechaDestino)) { alert('Selecciona una fecha dentro del mes seleccionado.'); return; }
     if (!(monto > 0) || monto > _difTesState.disponible + 0.005) { alert('El monto debe ser mayor a cero y no superar el disponible.'); return; }
     body_loading(true);
     try {
         const response = await fetch(URLS_V3.crear_diferido_tes, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
             estacion_id: parseInt($('#estacionSelect').val()), entidad_id: currentRule.entidad_id, afiliacion: currentRule.afiliacion,
-            tes_refs: _difTesState.componentes.map(comp => comp.ref), fecha_origen: _difTesState.fecha, fecha_destino: fechaDestino, mes:'2026-10',
+            tes_refs: _difTesState.componentes.map(comp => comp.ref), fecha_origen: _difTesState.fecha, fecha_destino: fechaDestino, mes:rangoMesSeleccionadoTES().mes,
             monto_diferido: monto, concepto: `${_difTesState.componentes.length} movimientos TES`, descripcion: $('#dif-tes-desc').val().trim()
         }) });
         const json = await response.json();
@@ -4578,7 +4593,8 @@ function abrirModalMoverDiferidoTES(id, fechaActual) {
     _movGrupoIds = [];
     $('#mov-dif-id').val(`tes:${id}`);
     $('#mov-dif-info').text(`${registro.concepto || registro.tes_ref || 'Depósito TES'} · Origen ${registro.fecha_origen} · ${fmt.format(registro.monto_diferido)}`);
-    $('#mov-dif-fecha').attr('min', '2026-10-01').attr('max', '2026-10-31').val(fechaActual);
+    const rango = rangoMesSeleccionadoTES();
+    $('#mov-dif-fecha').attr('min', rango.min).attr('max', rango.max).val(fechaActual);
     $('#modalMoverDiferido').modal('show');
 }
 
@@ -4756,7 +4772,7 @@ async function confirmarMoverDiferido() {
     if (!nuevaFecha) { alert('Selecciona una fecha.'); return; }
     const idInput = String($('#mov-dif-id').val() || '');
     if (idInput.startsWith('tes:')) {
-        if (!/^2026-10-(0[1-9]|[12]\d|3[01])$/.test(nuevaFecha)) { alert('Selecciona una fecha de octubre de 2026.'); return; }
+        if (!tesDiferidosHabilitado() || !fechaValidaEnMesTES(nuevaFecha)) { alert('Selecciona una fecha dentro del mes seleccionado.'); return; }
         const idTes = parseInt(idInput.slice(4), 10);
         const actual = (diferidosTES || []).find(d => parseInt(d.id, 10) === idTes);
         if (actual && String(actual.fecha_destino || '').substring(0, 10) === nuevaFecha) { alert('Selecciona una fecha destino diferente.'); return; }
