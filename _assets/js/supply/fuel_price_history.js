@@ -100,7 +100,7 @@
 		if (from > to) return "El mes «Desde» debe ser anterior o igual al mes «Hasta».";
 		const [fy, fm] = from.split("-").map(Number);
 		const [ty, tm] = to.split("-").map(Number);
-		if ((ty - fy) * 12 + (tm - fm) + 1 > 24) return "El periodo puede abarcar como máximo 24 meses.";
+		if ((ty - fy) * 12 + (tm - fm) + 1 > 48) return "El periodo puede abarcar como máximo 48 meses.";
 		return null;
 	}
 

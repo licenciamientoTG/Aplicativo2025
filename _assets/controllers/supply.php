@@ -382,8 +382,8 @@ class Supply
             return;
         }
         $months = ((int) $end->format('Y') - (int) $start->format('Y')) * 12 + (int) $end->format('n') - (int) $start->format('n') + 1;
-        if ($months > 24) {
-            $fail('El periodo puede abarcar como máximo 24 meses.');
+        if ($months > 48) {
+            $fail('El periodo puede abarcar como máximo 48 meses.');
             return;
         }
 
