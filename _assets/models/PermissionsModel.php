@@ -34,4 +34,10 @@ class PermissionsModel extends Model{
         $query = 'INSERT INTO [TG].[dbo].[tg_permissions] ([action],[department],[description],[status],[updated_at],[created_at]) VALUES (?,?,?,?,GETDATE(),GETDATE());';
         return (bool)$this->sql->insert($query, [$action, $department, $description, $status]);
     }
+
+    public function get_active_permission_id(string $action, string $department, string $description): int|false {
+        $query = 'SELECT TOP 1 id FROM [TG].[dbo].[tg_permissions] WHERE [action] = ? AND [department] = ? AND [description] = ? AND [status] = 1 ORDER BY id';
+        $rows = $this->sql->select($query, [$action, $department, $description]);
+        return $rows ? (int)$rows[0]['id'] : false;
+    }
 }

@@ -219,21 +219,26 @@
 {% block content %}
 
 <ul class="nav fp-tabs" id="fpTabs" role="tablist">
+    {% if canViewCurrent %}
     <li class="nav-item" role="presentation">
         <button class="nav-link active" id="fp-tab-actuales" data-bs-toggle="tab" data-bs-target="#fp-actuales" type="button" role="tab" aria-controls="fp-actuales" aria-selected="true">
             <i class="fa-solid fa-gas-pump"></i> Precios actuales
         </button>
     </li>
+    {% endif %}
+    {% if canViewHistory %}
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="fp-tab-historico" data-bs-toggle="tab" data-bs-target="#fp-historico" type="button" role="tab" aria-controls="fp-historico" aria-selected="false">
+        <button class="nav-link{% if not canViewCurrent %} active{% endif %}" id="fp-tab-historico" data-bs-toggle="tab" data-bs-target="#fp-historico" type="button" role="tab" aria-controls="fp-historico" aria-selected="{{ not canViewCurrent ? 'true' : 'false' }}">
             <i class="fa-solid fa-chart-line"></i> Histórico
         </button>
     </li>
+    {% endif %}
 </ul>
 
 <div class="tab-content">
 
     {# ═════════════════════ Pestaña 1: precios actuales ═════════════════════ #}
+    {% if canViewCurrent %}
     <div class="tab-pane fade show active" id="fp-actuales" role="tabpanel" aria-labelledby="fp-tab-actuales" tabindex="0">
 
         <div class="card">
@@ -377,9 +382,11 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
     {# ═════════════════════ Pestaña 2: histórico ═════════════════════ #}
-    <div class="tab-pane fade" id="fp-historico" role="tabpanel" aria-labelledby="fp-tab-historico" tabindex="0">
+    {% if canViewHistory %}
+    <div class="tab-pane fade{% if not canViewCurrent %} show active{% endif %}" id="fp-historico" role="tabpanel" aria-labelledby="fp-tab-historico" tabindex="0">
 
         <div class="card">
             <div class="card-body">
@@ -492,6 +499,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 </div>
 
 <div class="modal fade" id="revisarModal" tabindex="-1" aria-labelledby="revisarModalLabel" aria-hidden="true">
