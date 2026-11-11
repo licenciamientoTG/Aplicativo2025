@@ -221,7 +221,7 @@
 		$("#fp-h-products button").attr("aria-pressed", "false");
 		$(this).attr("aria-pressed", "true");
 		renderFamily();
-		if (table) table.column(5).search(`^${state.family}$`, true, false).draw();
+		if (table) table.column(6).search(`^${state.family}$`, true, false).draw();
 	});
 
 	function renderFamily() {
@@ -416,20 +416,23 @@
 					{
 						extend: "excel",
 						title: "Histórico de precios de combustibles",
-						exportOptions: { columns: [0, 1, 2, 3, 4], modifier: { search: "none" }, orthogonal: "export" },
+						exportOptions: { columns: [0, 1, 2, 3, 4, 5], modifier: { search: "none" }, orthogonal: "export" },
 					},
 				],
 				columns: [
 					{ data: "estacion", render: (d, t) => (t === "display" ? esc(d) : d) },
 					{ data: "producto", render: (d, t) => (t === "display" ? esc(d) : d) },
 					{
-						data: "ts",
+						data: "fecha",
 						render: (d, t, r) => {
-							if (t === "sort" || t === "type") return d;
-							const text = `${r.fecha} ${r.hora}`;
-							if (t === "export") return text + (r.inicial ? " (vigente al inicio)" : "") + (r.programado ? " (programado)" : "");
-							return `<span class="fp-num">${fmtDay(r.fecha)} · ${r.hora}</span>${r.inicial ? '<span class="fp-tag fp-tag-start">Vigente al inicio</span>' : ""}${r.programado ? '<span class="fp-tag fp-tag-future">Programado</span>' : ""}`;
+							if (t === "sort" || t === "type") return r.ts;
+							if (t !== "display") return d;
+							return `<span class="fp-num">${d}</span>${r.inicial ? '<span class="fp-tag fp-tag-start">Vigente al inicio</span>' : ""}${r.programado ? '<span class="fp-tag fp-tag-future">Programado</span>' : ""}`;
 						},
+					},
+					{
+						data: "hora",
+						render: (d, t, r) => (t === "sort" || t === "type" ? r.ts : t === "display" ? `<span class="fp-num">${d}</span>` : d),
 					},
 					{ data: "precio", className: "text-end", render: (d, t) => (t === "display" ? `<span class="fp-num">${money.format(d)}</span>` : d) },
 					{
@@ -437,7 +440,7 @@
 						className: "text-end",
 						render: (d, t, r) => {
 							if (t === "sort" || t === "type") return d ?? 0;
-							if (t === "export") return d === null ? "" : d;
+							if (t === "export") return r.inicial ? "Vigente al inicio" : d === null ? "" : d;
 							return r.inicial ? '<span class="fp-flat">—</span>' : deltaHtml(d);
 						},
 					},
@@ -449,7 +452,7 @@
 			});
 		}
 		table.clear().rows.add(state.data.rows);
-		table.column(5).search(`^${state.family}$`, true, false);
+		table.column(6).search(`^${state.family}$`, true, false);
 		table.draw();
 	}
 
