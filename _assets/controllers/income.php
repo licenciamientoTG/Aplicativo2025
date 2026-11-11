@@ -8062,8 +8062,8 @@ public function stamped_invoices_detail(): void
                 $loads=[
                     'rates'=>fn()=>$this->efcAnaliticos->exchangeRatesForTurns($stationId,$year,$month),
                     'transits'=>fn()=>$this->efcConciliacion->activeTransits($stationId,$year,$month,$company),
-                    'groups'=>fn()=>$this->efcConciliacion->activeGroups($stationId,$groupsYear,$groupsMonth),
-                    'work'=>fn()=>$this->efcAnaliticos->workspace($stationId,$year,$month,$company),
+                    'groups'=>fn()=>$this->efcConciliacion->summaryTransitGroups($stationId,$groupsYear,$groupsMonth,$data[$key]['transits']['origin']??[]),
+                    'work'=>fn()=>$this->efcAnaliticos->summaryWorkspace($stationId,$year,$month,$company),
                 ];
                 foreach($loads as $dataset=>$load) {
                     try {
@@ -8075,6 +8075,7 @@ public function stamped_invoices_detail(): void
                                 'papers'=>array_map(static fn($paper)=>[
                                     'id'=>$paper['id']??null,
                                     'real_usd'=>$paper['real_usd']??0,
+                                    'real_mn'=>$paper['real_mn']??null,
                                 ],$result['papers']??[]),
                                 'links'=>array_map(static fn($link)=>[
                                     'papeleta_id'=>$link['papeleta_id']??null,

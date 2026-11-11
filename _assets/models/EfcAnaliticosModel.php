@@ -128,6 +128,69 @@ class EfcAnaliticosModel {
         return ['papers'=>$items,'links'=>$linkRows,'_timings_ms'=>$timings];
     }
 
+    /** Minimal paper/link data used by the monthly cash summary. */
+    public function summaryWorkspace(int $stationId, int $year, int $month, string $company='DIAZ GAS'): array {
+        if ($stationId < 1 || $year < 2020 || $year > 9998 || $month < 1 || $month > 12) {
+            throw new RuntimeException('Estación o periodo inválidos.');
+        }
+        $company=strtoupper(trim($company));
+        if (!in_array($company,['DIAZ GAS','FORANEAS','GASOMEX'],true)
+            || EfcConciliacionModel::stationCompany($stationId)!==$company) {
+            throw new RuntimeException('Estación fuera de la empresa seleccionada.');
+        }
+        $monthStart=sprintf('%04d-%02d-01',$year,$month);
+        $monthEnd=(new DateTimeImmutable($monthStart))->modify('+1 month')->format('Y-m-d');
+        $period=sprintf('%04d-%02d',$year,$month);
+        if($company==='GASOMEX') {
+            $dateRange='V.fecha_cg>=DATEADD(day,-2,DATEFROMPARTS(?, ?, 1)) AND V.fecha_cg<DATEADD(day,2,EOMONTH(DATEFROMPARTS(?, ?, 1)))';
+            $dateParams=[$year,$month,$year,$month];
+        } else {
+            $dateRange='V.fecha_cg>=? AND V.fecha_cg<?';
+            $dateParams=[$monthStart,$monthEnd];
+        }
+        $sql="WITH EffectivePapers AS (
+                SELECT P.id,P.effective_real_usd,P.effective_real_mn
+                FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P
+                JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id AND I.estado='IMPORTADA'
+            )
+            SELECT V.papeleta_id,V.papeleta_secundaria_id,
+                   CONVERT(VARCHAR(10),V.fecha_cg,23) AS fecha_cg,V.turno,V.concepto,
+                   V.tipo_cambio_usd AS exchange_rate,
+                P1.id AS paper_id,P1.effective_real_usd AS paper_real_usd,P1.effective_real_mn AS paper_real_mn,
+                P2.id AS second_paper_id,P2.effective_real_usd AS second_paper_real_usd,P2.effective_real_mn AS second_paper_real_mn
+            FROM dbo.efc_conc_analiticos_vinculos V
+            LEFT JOIN EffectivePapers P1 ON P1.id=V.papeleta_id
+            LEFT JOIN EffectivePapers P2 ON P2.id=V.papeleta_secundaria_id
+            WHERE V.estacion_id=? AND V.activo=1
+              AND (($dateRange) OR EXISTS(
+                    SELECT 1 FROM dbo.efc_conc_transitos T
+                    WHERE T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg
+                      AND T.turno=V.turno AND T.concepto=V.concepto
+                      AND T.mes_destino=? AND T.estado IN ('PENDIENTE','CONCILIADO')
+              ))";
+        $params=array_merge([$stationId],$dateParams,[$period]);
+        $stmt=$this->db->prepare($sql);
+        $stmt->execute($params);
+        $papers=[];$links=[];
+        while($row=$stmt->fetch(PDO::FETCH_ASSOC)) {
+            $links[]=[
+                'papeleta_id'=>$row['papeleta_id']===null?null:(int)$row['papeleta_id'],
+                'papeleta_secundaria_id'=>$row['papeleta_secundaria_id']===null?null:(int)$row['papeleta_secundaria_id'],
+                'fecha_cg'=>$row['fecha_cg'],'turno'=>$row['turno'],'concepto'=>$row['concepto'],
+                'exchange_rate'=>$row['exchange_rate']===null?null:(float)$row['exchange_rate'],
+            ];
+            if($row['paper_id']!==null) $papers[(int)$row['paper_id']]=[
+                'id'=>(int)$row['paper_id'],'real_usd'=>(float)($row['paper_real_usd']??0),
+                'real_mn'=>$row['paper_real_mn']===null?null:(float)$row['paper_real_mn'],
+            ];
+            if($row['second_paper_id']!==null) $papers[(int)$row['second_paper_id']]=[
+                'id'=>(int)$row['second_paper_id'],'real_usd'=>(float)($row['second_paper_real_usd']??0),
+                'real_mn'=>$row['second_paper_real_mn']===null?null:(float)$row['second_paper_real_mn'],
+            ];
+        }
+        return ['papers'=>array_values($papers),'links'=>$links];
+    }
+
     /**
      * Consola independiente de papeletas. La fecha efectiva es una capa propia
      * de TG: fecha_reportada y el Excel original nunca se actualizan.

@@ -18,11 +18,10 @@
   <div class="urovo-workspace">
     <aside class="urovo-side">
       <h3>Filtrar inventario</h3>
-      <label for="urovoSearch">Número de serie o modelo</label><input id="urovoSearch" class="form-control" type="search" placeholder="Buscar equipo…">
       <label for="urovoStatus">Estado</label><select id="urovoStatus" class="form-control"><option value="">Todos los estados</option><option value="estacion">En estación</option><option value="almacen">En almacén</option><option value="reparacion">En reparación</option><option value="perdida">Extraviado</option><option value="baja_definitiva">Baja definitiva</option><option value="sin_serie">Sin número de serie</option></select>
     </aside>
     <div class="urovo-main">
-  <div class="urovo-table-heading"><div><h3>Terminales registradas</h3><p id="urovoResultCount">Cargando inventario…</p></div><button type="button" class="btn btn-link" id="urovoRefresh"><i class="fas fa-sync-alt"></i> Actualizar</button></div>
+  <div class="urovo-table-heading"><div><h3>Terminales registradas</h3><p id="urovoResultCount">Cargando inventario…</p></div><div class="urovo-table-actions"><label class="urovo-search-box" for="urovoSearch"><i class="fas fa-search" aria-hidden="true"></i><input id="urovoSearch" class="form-control" type="search" placeholder="Serie, modelo, IP o IMEI" aria-label="Buscar terminales registradas"></label><button type="button" class="btn btn-link" id="urovoRefresh"><i class="fas fa-sync-alt"></i> Actualizar</button></div></div>
       <div class="urovo-table-wrap"><table class="table urovo-table"><thead><tr><th>Serie / modelo</th><th>Ubicación</th><th>Condición</th><th>Último movimiento</th><th><span class="sr-only">Acciones</span></th></tr></thead><tbody id="urovoRows"><tr><td colspan="5" class="urovo-empty">Cargando…</td></tr></tbody></table></div><nav class="urovo-pagination" aria-label="Paginación de terminales"><button type="button" class="btn btn-sm btn-outline-primary" id="urovoPagePrev" aria-label="Página anterior">Anterior</button><span id="urovoPageLabel" aria-live="polite"></span><button type="button" class="btn btn-sm btn-outline-primary" id="urovoPageNext" aria-label="Página siguiente">Siguiente</button></nav>
     </div>
   </div>

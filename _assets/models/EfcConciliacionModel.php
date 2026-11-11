@@ -1014,6 +1014,58 @@ class EfcConciliacionModel {
         return array_values($groups);
     }
 
+    /** Only the bank totals for active groups that reconcile outgoing monthly MN transits. */
+    public function summaryTransitGroups(int $stationId, int $year, int $month, array $originTransits): array {
+        if($stationId<1 || $year<2020 || $year>9998 || $month<1 || $month>12) throw new RuntimeException('Estación o periodo inválidos.');
+        $keys=[];
+        foreach($originTransits as $transit) {
+            if(!is_array($transit)
+                || !in_array(strtoupper((string)($transit['currency']??'')),['MN','MORRALLA'],true)
+                || !in_array(strtoupper((string)($transit['status']??'')),['PENDIENTE','CONCILIADO'],true)) continue;
+            $id=(int)($transit['id']??0);
+            $sourceKey=trim((string)($transit['source_key']??''));
+            if($sourceKey!=='') $keys[$sourceKey]=$sourceKey;
+            if($id>0) $keys['TR:'.$id]='TR:'.$id;
+        }
+        if(!$keys) return [];
+        $periodStart=sprintf('%04d-%02d-01',$year,$month);
+        $periodEnd=(new DateTimeImmutable($periodStart))->modify('+1 month')->format('Y-m-d');
+        $period=sprintf('%04d-%02d',$year,$month);
+        $groups=[];
+        // Keep key batches well below SQL Server's 2,100-parameter limit.
+        foreach(array_chunk(array_values($keys),400) as $keyBatch) {
+            $marks=implode(',',array_fill(0,count($keyBatch),'?'));
+            $stmt=$this->db->prepare("SELECT G.id AS group_id,C.clave_externa,C.concepto,ISNULL(B.bank_amount,0) AS bank_amount
+                FROM dbo.efc_conc_partidas C
+                JOIN dbo.efc_conc_grupos G ON G.id=C.grupo_id AND G.estacion_id=?
+                    AND G.estado='ACTIVA' AND G.tipo<>'RECLASIFICADA'
+                OUTER APPLY (
+                    SELECT SUM(PB.importe) AS bank_amount FROM dbo.efc_conc_partidas PB
+                    WHERE PB.grupo_id=G.id AND PB.origen='BANCO' AND PB.activo=1
+                ) B
+                WHERE C.origen='CG' AND C.activo=1 AND C.clave_externa IN ($marks)
+                  AND ((G.fecha_operativa>=? AND G.fecha_operativa<?) OR EXISTS(
+                        SELECT 1 FROM dbo.efc_conc_partidas TC
+                        JOIN dbo.efc_conc_transitos T ON T.estacion_id=G.estacion_id
+                            AND (TC.clave_externa=T.clave_externa OR TC.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id))
+                        WHERE TC.grupo_id=G.id AND TC.origen='CG' AND TC.activo=1
+                          AND (T.mes_destino=? OR T.mes_origen=?)
+                  ))
+                ORDER BY G.id,C.id");
+            $stmt->execute(array_merge([$stationId],$keyBatch,[$periodStart,$periodEnd,$period,$period]));
+            while($row=$stmt->fetch(PDO::FETCH_ASSOC)) {
+                $id=(int)$row['group_id'];
+                if(!isset($groups[$id])) $groups[$id]=['cg'=>[],'bank'=>[['amount'=>(float)$row['bank_amount']]]];
+                $groups[$id]['cg'][]=[
+                    'id'=>(string)$row['clave_externa'],
+                    'currency'=>(string)$row['concepto'],
+                    'transit'=>str_starts_with((string)$row['clave_externa'],'TR:'),
+                ];
+            }
+        }
+        return array_values($groups);
+    }
+
     public function reclassify(array $data, int $userId): int {
         $station=(int)($data['station_id']??0); $date=(string)($data['date']??''); $turn=trim((string)($data['turn']??''));
         $original=round((float)($data['original_amount']??0),2); $mn=round((float)($data['mn_amount']??0),2); $morralla=round((float)($data['morralla_amount']??0),2);
