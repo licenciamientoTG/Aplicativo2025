@@ -313,9 +313,9 @@ class Supply
         if ($tomorrowSchedule = $this->preciosModel->getTomorrowSchedules()) {
             // Construir el mensaje final
             $mensajeFinal2 = "<p class=\"d-inline-flex gap-1\">
-                                  <a data-bs-toggle=\"collapse\" href=\"#collapseExample\" role=\"button\" aria-expanded=\"false\" aria-controls=\"collapseExample\">Notificación de actualización de precios de combustibles para el día de mañana <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"feather feather-arrow-down align-middle me-2\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"></line><polyline points=\"19 12 12 19 5 12\"></polyline></svg></a>
+                                  <a data-bs-toggle=\"collapse\" href=\"#collapseTomorrow\" role=\"button\" aria-expanded=\"false\" aria-controls=\"collapseTomorrow\">Notificación de actualización de precios de combustibles para el día de mañana <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"feather feather-arrow-down align-middle me-2\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"></line><polyline points=\"19 12 12 19 5 12\"></polyline></svg></a>
                                 </p>
-                                <div class=\"collapse\" id=\"collapseExample\">
+                                <div class=\"collapse\" id=\"collapseTomorrow\">
                                   <div class=\"card card-body\">";
             $transformedArray = [];
             foreach ($tomorrowSchedule as $key => $item) {
@@ -345,7 +345,129 @@ class Supply
             $mensajeFinal2 .= "</div></div>";
         }
 
-        echo $this->twig->render($this->route . 'fuel_prices.html', compact('stations', 'mensajeFinal', 'mensajeFinal2', 'prices'));
+        $history_stations = $this->preciosModel->get_history_stations();
+
+        echo $this->twig->render($this->route . 'fuel_prices.html', compact('stations', 'mensajeFinal', 'mensajeFinal2', 'prices', 'history_stations'));
+    }
+
+    /**
+     * Histórico de precios por estación(es) y rango de meses (POST: codgas[], from=YYYY-MM, to=YYYY-MM).
+     * Devuelve, por estación y producto, el precio vigente al iniciar el periodo
+     * seguido de cada cambio con su diferencia contra el precio anterior.
+     */
+    function fuel_price_history(): void
+    {
+        $codgas = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['codgas'] ?? [])))));
+        $fromMonth = $_POST['from'] ?? '';
+        $toMonth   = $_POST['to'] ?? '';
+
+        $fail = function (string $message) {
+            http_response_code(422);
+            json_output(['error' => $message]);
+        };
+
+        if (!$codgas) {
+            $fail('Selecciona al menos una estación.');
+            return;
+        }
+        if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $fromMonth) || !preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $toMonth)) {
+            $fail('El periodo no es válido.');
+            return;
+        }
+
+        $start = new DateTime($fromMonth . '-01');
+        $end   = (new DateTime($toMonth . '-01'))->modify('last day of this month');
+        if ($start > $end) {
+            $fail('El mes inicial debe ser anterior o igual al mes final.');
+            return;
+        }
+        $months = ((int) $end->format('Y') - (int) $start->format('Y')) * 12 + (int) $end->format('n') - (int) $start->format('n') + 1;
+        if ($months > 24) {
+            $fail('El periodo puede abarcar como máximo 24 meses.');
+            return;
+        }
+
+        $fromInt  = dateToInt($start->format('Y-m-d'));
+        $untilInt = dateToInt($end->format('Y-m-d'));
+
+        binnacle_register_prices($_SESSION['tg_user']['Id'], 'Consulta', 'Se consultó el histórico de precios: estaciones ' . implode(',', $codgas) . " de {$fromMonth} a {$toMonth}", $_SERVER['REMOTE_ADDR'], 'supply.php', 'fuel_price_history');
+
+        $names = [];
+        foreach ($this->preciosModel->get_history_stations() as $station) {
+            $names[(int) $station['Codigo']] = preg_replace('/^\s*\d+\s+/', '', (string) $station['Nombre']);
+        }
+
+        $families = [179 => 'regular', 192 => 'regular', 180 => 'premium', 193 => 'premium', 181 => 'diesel'];
+        $products = [
+            179 => 'T-Máxima Regular',
+            192 => 'Regular (< 91 octanos)',
+            180 => 'T-Super Premium',
+            193 => 'Premium (≥ 91 octanos)',
+            181 => 'Diesel Automotriz',
+        ];
+
+        // Agrupar por estación + familia: 179 y 192 son la misma "regular" en
+        // estaciones distintas, así la gráfica tiene una sola línea por estación.
+        $series = [];
+        foreach ($this->preciosModel->get_prices_before($codgas, $fromInt) as $row) {
+            $key = $row['codgas'] . '|' . $families[(int) $row['codprd']];
+            // Si una estación tuviera ambos códigos, gana el más reciente.
+            $ts = (int) $row['fch'] * 10000 + (int) $row['hra'];
+            if (!isset($series[$key]['initial']) || $ts > $series[$key]['initial']['ts']) {
+                $series[$key]['initial'] = $row + ['ts' => $ts];
+            }
+        }
+        foreach ($this->preciosModel->get_price_history($codgas, $fromInt, $untilInt) as $row) {
+            $key = $row['codgas'] . '|' . $families[(int) $row['codprd']];
+            $series[$key]['changes'][] = $row + ['ts' => (int) $row['fch'] * 10000 + (int) $row['hra']];
+        }
+
+        $nowTs = dateToInt(date('Y-m-d')) * 10000 + (int) date('Hi');
+        $rows = [];
+        foreach ($series as $key => $group) {
+            [$gas, $family] = explode('|', $key);
+            $gas = (int) $gas;
+            $previous = null;
+
+            $make = function (array $row, bool $initial) use (&$previous, $gas, $family, $names, $products, $nowTs) {
+                $hra = (int) $row['hra'];
+                $pre = round((float) $row['pre'], 2);
+                $out = [
+                    'codgas'     => $gas,
+                    'estacion'   => $names[$gas] ?? ('Estación ' . $gas),
+                    'familia'    => $family,
+                    'codprd'     => (int) $row['codprd'],
+                    'producto'   => $products[(int) $row['codprd']] ?? (string) $row['codprd'],
+                    'fecha'      => intToDate((int) $row['fch']),
+                    'hora'       => sprintf('%02d:%02d', intdiv($hra, 100), $hra % 100),
+                    'ts'         => $row['ts'],
+                    'precio'     => $pre,
+                    'anterior'   => $previous,
+                    'diferencia' => ($previous === null || $initial) ? null : round($pre - $previous, 2),
+                    'inicial'    => $initial,
+                    'programado' => $row['ts'] > $nowTs,
+                ];
+                $previous = $pre;
+                return $out;
+            };
+
+            if (isset($group['initial'])) {
+                $rows[] = $make($group['initial'], true);
+            }
+            if (isset($group['changes'])) {
+                usort($group['changes'], fn($a, $b) => $a['ts'] <=> $b['ts']);
+                foreach ($group['changes'] as $change) {
+                    $rows[] = $make($change, false);
+                }
+            }
+        }
+
+        json_output([
+            'desde'      => $start->format('Y-m-d'),
+            'hasta'      => $end->format('Y-m-d'),
+            'estaciones' => array_map(fn($c) => ['codgas' => $c, 'nombre' => $names[$c] ?? ('Estación ' . $c)], $codgas),
+            'rows'       => $rows,
+        ]);
     }
 
     function price_list() {
