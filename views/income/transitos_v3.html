@@ -183,10 +183,10 @@ function cargarBancosTransitos() {
 function cargarEstacionesTransitos() {
   const empresa = $('#transitCompany').val();
   const request = ++stationRequest;
-  $.getJSON('/income/get_estaciones_catalogo', { empresa, all: 1 }, function(res) {
+  $.getJSON('/income/get_transitos_v3_estaciones', { empresa }, function(res) {
     if (request !== stationRequest || empresa !== $('#transitCompany').val() || res.status !== 'success') return;
     const $station = $('#transitStation').empty().append($('<option>').val('').text('Todas las estaciones'));
-    (res.respuesta || []).forEach(row => $station.append($('<option>').val(row.Codigo).text(row.Nombre)));
+    (res.data || []).forEach(row => $station.append($('<option>').val(row.Codigo).text(row.Nombre)));
   });
 }
 

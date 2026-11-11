@@ -5076,21 +5076,14 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             
-            // Estaciones.Denominacion también es fuente de empresa: hay filas
-            // cuyo RFC no permite identificar DIAZ GAS.
+            // RFC se toma de Estaciones (fuente autoritativa), no de Tesoreria_afil.
             // El filtro se mantiene opcional para no romper los consumidores
             // históricos de este catálogo.
             $empresa = strtoupper(trim((string)($_GET['empresa'] ?? '')));
             $catalogoCompleto = ($_GET['all'] ?? '') === '1';
             $empresaWhere = '';
             if (in_array($empresa, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) {
-                if ($empresa === 'DIAZ GAS') {
-                    $empresaWhere = " AND (T1.RFC='DGA930823KD3' OR T1.Denominacion LIKE N'%DIAZ GAZ%' OR T1.Denominacion LIKE N'%DIAZ GAS%')";
-                } elseif ($empresa === 'FORANEAS') {
-                    $empresaWhere = " AND (T1.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR T1.RFC IS NULL) AND ISNULL(T1.Denominacion,N'') NOT LIKE N'%DIAZ GAZ%' AND ISNULL(T1.Denominacion,N'') NOT LIKE N'%DIAZ GAS%'";
-                } else {
-                    $empresaWhere = ' AND ' . EfcConciliacionModel::stationSqlCondition($empresa, 'T1');
-                }
+                $empresaWhere = ' AND ' . EfcConciliacionModel::stationSqlCondition($empresa, 'T1');
             }
             // Para la conciliación por empresa se requiere el catálogo completo,
             // incluso si la estación todavía no existe en Tesoreria_afil.
@@ -5099,25 +5092,17 @@ public function anomalies_client_tickets()
                 : "FROM Estaciones T1");
             $sql = "SELECT DISTINCT
                         T1.Codigo,
-                        T1.Denominacion,
-                        CASE
-                            WHEN T1.Denominacion = N'DIAZ GAS S.A. DE C.V. (Praxedis)' THEN N'Héctor Armandino Fierro Holguín'
-                            WHEN T1.Denominacion = N'DIAZ GAS S.A. DE C.V. (VILLA AHUMADA)' THEN N'Gasolinera Villa Ahumada'
-                            ELSE T1.Nombre
-                        END AS Nombre,
+                        T1.Nombre,
                         T1.Estacion AS Estacion,
                         ISNULL(T1.RFC, 'FORANEAS') as RFC,
-                        CASE WHEN T1.Denominacion LIKE N'%DIAZ GAZ%' OR T1.Denominacion LIKE N'%DIAZ GAS%' OR T1.RFC = 'DGA930823KD3' THEN 'DIAZ GAS'
+                        CASE WHEN T1.RFC = 'DGA930823KD3' THEN 'DIAZ GAS'
                              WHEN T1.RFC = 'DGM880621FU5' THEN 'GASOMEX'
                              ELSE 'FORANEAS' END AS Empresa
                     $from
                     WHERE T1.Codigo <> 0
-                    AND T1.Codigo NOT IN (199,333)
-                    AND T1.Nombre NOT LIKE N'%Colosio%'
                     AND T1.Nombre <> N'01 Malecón'
-                    AND ISNULL(T1.Denominacion,N'') NOT LIKE N'%Colosio%'
                     $empresaWhere
-                    ORDER BY Nombre";
+                    ORDER BY T1.Nombre";
 
             $stmt = $conn->query($sql);
             $result = [];
@@ -5128,35 +5113,29 @@ public function anomalies_client_tickets()
                     $rfc = 'FORANEAS';
                 }
                 $row['RFC'] = $rfc;
-                if (in_array($empresa, ['DIAZ GAS', 'FORANEAS', 'GASOMEX'], true)) $row['Empresa'] = $empresa;
+                if ($empresa !== '') $row['Empresa'] = $empresa;
                 $result[] = $row;
             }
 
-            $denominaciones = [];
-            foreach ($result as $row) {
-                $denominacion = trim((string)($row['Denominacion'] ?? ''));
-                $denominacionUpper = mb_strtoupper($denominacion, 'UTF-8');
-                if (str_starts_with($denominacionUpper, 'DIAZ GAS')) $denominacion = 'DIAZ GAS';
-                elseif (str_starts_with($denominacionUpper, 'DISTRIBUIDORA GASO')) $denominacion = 'DISTRIBUIDORA GASO';
-                elseif (str_starts_with($denominacionUpper, 'ESTACION CUSTODIA')) $denominacion = 'ESTACION CUSTODIA';
-                elseif (str_starts_with($denominacionUpper, 'GRUPO OPERADOR GASOLINERO TSA DEL CENTRO')) $denominacion = 'GRUPO OPERADOR GASOLINERO TSA DEL CENTRO';
-                if ($denominacion !== '') $denominaciones[$denominacion] = ['denominacion' => $denominacion];
+            // INYECCIÓN MANUAL COLOSIO (Si no viene de BD)
+            $foundColosio = false;
+            foreach($result as $r) {
+                if ((int)$r['Codigo'] === 333 || strtoupper(trim((string)$r['Nombre'])) === 'COLOSIO') $foundColosio = true;
             }
-            $denominaciones = array_values($denominaciones);
-            usort($denominaciones, static fn($a, $b) => strcasecmp($a['denominacion'], $b['denominacion']));
 
-            // Recalcular para normalizar también cualquier variante escrita
-            // como DIAZ GAZ/DIAZ GAS, conservando la estructura histórica.
-            foreach ($result as &$row) {
-                $denominacion = mb_strtoupper(trim((string)($row['Denominacion'] ?? '')), 'UTF-8');
-                if (str_contains($denominacion, 'DIAZ GAZ') || str_contains($denominacion, 'DIAZ GAS')) $row['Empresa'] = 'DIAZ GAS';
-                unset($row['Denominacion']);
+            if(!$foundColosio && ($empresa === '' || $empresa === 'FORANEAS')) {
+                $result[] = [
+                    'Codigo' => 333,
+                    'Nombre' => 'COLOSIO',
+                    'Estacion' => 333,
+                    'RFC'    => 'FORANEAS',
+                    'Empresa'=> 'FORANEAS'
+                ];
+                // Reordenar alfabéticamente
+                usort($result, function($a, $b) { return strcmp($a['Nombre'], $b['Nombre']); });
             }
-            unset($row);
             
-            echo json_encode(["status" => "success", "respuesta" => $result,
-                "denominaciones" => $denominaciones,
-                "denominaciones_disponibles" => $denominaciones]);
+            echo json_encode(["status" => "success", "respuesta" => $result]);
 
         } catch (PDOException $e) {
             echo json_encode(["status" => "error", "message" => $e->getMessage()]);
@@ -9262,6 +9241,40 @@ public function stamped_invoices_detail(): void
             $stmt->execute();
             echo json_encode(['status'=>'success','data'=>$stmt->fetchAll(PDO::FETCH_ASSOC)]);
         } catch (Exception $e) {
+            echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
+        }
+        exit;
+    }
+
+    // Station catalog scoped to the V3 transit report only. Keep the shared
+    // get_estaciones_catalogo endpoint unchanged for other screens.
+    public function get_transitos_v3_estaciones(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+        $empresa = strtoupper(trim((string)($_GET['empresa'] ?? '')));
+        try {
+            $conn = $this->v3_conn();
+            $where = "WHERE E.Codigo<>0 AND E.Codigo NOT IN (199,333)
+                AND ISNULL(E.Nombre,N'') NOT LIKE N'%Colosio%'
+                AND ISNULL(E.Denominacion,N'') NOT LIKE N'%Colosio%'";
+            if ($empresa === 'DIAZ GAS') {
+                $where .= " AND (E.RFC='DGA930823KD3' OR E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%')";
+            } elseif ($empresa === 'GASOMEX') {
+                $where .= " AND E.RFC='DGM880621FU5'";
+            } elseif ($empresa === 'FORANEAS') {
+                $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)
+                    AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAZ%'
+                    AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAS%'";
+            }
+            $stmt = $conn->query("SELECT E.Codigo,
+                CASE WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (Praxedis)' THEN N'Héctor Armandino Fierro Holguín'
+                     WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (VILLA AHUMADA)' THEN N'Gasolinera Villa Ahumada'
+                     ELSE E.Nombre END AS Nombre,
+                CASE WHEN E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%' OR E.RFC='DGA930823KD3' THEN 'DIAZ GAS'
+                     WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS Empresa
+                FROM Estaciones E $where ORDER BY Nombre");
+            echo json_encode(['status'=>'success','data'=>$stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        } catch (Throwable $e) {
             echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
         }
         exit;
