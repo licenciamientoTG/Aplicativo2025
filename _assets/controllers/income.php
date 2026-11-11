@@ -8050,6 +8050,7 @@ public function stamped_invoices_detail(): void
                 $data[$key]=[
                     'rates'=>[],
                     'transits'=>['origin'=>[],'incoming'=>[],'next_month'=>(new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)))->modify('+1 month')->format('Y-m')],
+                    'transit_deposits'=>['origin'=>[],'incoming'=>[]],
                     'work'=>['papers'=>[],'links'=>[]],
                     'errors'=>[],
                 ];
@@ -8098,6 +8099,8 @@ public function stamped_invoices_detail(): void
                                     'amount'=>$transit['amount']??0,
                                 ],$result['origin']??[]),
                                 'incoming'=>array_map(static fn($transit)=>[
+                                    'id'=>$transit['id']??null,
+                                    'source_key'=>$transit['source_key']??null,
                                     'currency'=>$transit['currency']??null,
                                     'status'=>$transit['status']??null,
                                     'amount'=>$transit['amount']??0,
@@ -8108,6 +8111,19 @@ public function stamped_invoices_detail(): void
                         }
                     }
                     catch(Throwable $e) { $data[$key]['errors'][$dataset]=$e->getMessage(); }
+                }
+                if(!isset($data[$key]['errors']['transits'])) {
+                    $nextTransitMonth=(new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)))->modify('+1 month');
+                    try {
+                        $data[$key]['transit_deposits']['origin']=$this->efcConciliacion->summaryTransitGroups(
+                            $stationId,(int)$nextTransitMonth->format('Y'),(int)$nextTransitMonth->format('n'),$data[$key]['transits']['origin']
+                        );
+                    } catch(Throwable $e) { $data[$key]['errors']['transit_deposits_origin']=$e->getMessage(); }
+                    try {
+                        $data[$key]['transit_deposits']['incoming']=$this->efcConciliacion->summaryTransitGroups(
+                            $stationId,$year,$month,$data[$key]['transits']['incoming']
+                        );
+                    } catch(Throwable $e) { $data[$key]['errors']['transit_deposits_incoming']=$e->getMessage(); }
                 }
             }
             echo json_encode(['status'=>'success','data'=>['stations'=>$data]],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);

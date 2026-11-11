@@ -1014,7 +1014,7 @@ class EfcConciliacionModel {
         return array_values($groups);
     }
 
-    /** Only the bank totals for active groups that reconcile outgoing monthly MN transits. */
+    /** Bank deposit totals for active reconciliations associated with MN transits. */
     public function summaryTransitGroups(int $stationId, int $year, int $month, array $originTransits): array {
         if($stationId<1 || $year<2020 || $year>9998 || $month<1 || $month>12) throw new RuntimeException('Estación o periodo inválidos.');
         $keys=[];
