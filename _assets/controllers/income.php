@@ -5076,14 +5076,21 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             
-            // RFC se toma de Estaciones (fuente autoritativa), no de Tesoreria_afil.
+            // Estaciones.Denominacion también es fuente de empresa: hay filas
+            // cuyo RFC no permite identificar DIAZ GAS.
             // El filtro se mantiene opcional para no romper los consumidores
             // históricos de este catálogo.
             $empresa = strtoupper(trim((string)($_GET['empresa'] ?? '')));
             $catalogoCompleto = ($_GET['all'] ?? '') === '1';
             $empresaWhere = '';
             if (in_array($empresa, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) {
-                $empresaWhere = ' AND ' . EfcConciliacionModel::stationSqlCondition($empresa, 'T1');
+                if ($empresa === 'DIAZ GAS') {
+                    $empresaWhere = " AND (T1.RFC='DGA930823KD3' OR T1.Denominacion LIKE N'%DIAZ GAZ%' OR T1.Denominacion LIKE N'%DIAZ GAS%')";
+                } elseif ($empresa === 'FORANEAS') {
+                    $empresaWhere = " AND (T1.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR T1.RFC IS NULL) AND ISNULL(T1.Denominacion,N'') NOT LIKE N'%DIAZ GAZ%' AND ISNULL(T1.Denominacion,N'') NOT LIKE N'%DIAZ GAS%'";
+                } else {
+                    $empresaWhere = ' AND ' . EfcConciliacionModel::stationSqlCondition($empresa, 'T1');
+                }
             }
             // Para la conciliación por empresa se requiere el catálogo completo,
             // incluso si la estación todavía no existe en Tesoreria_afil.
@@ -5092,15 +5099,23 @@ public function anomalies_client_tickets()
                 : "FROM Estaciones T1");
             $sql = "SELECT DISTINCT
                         T1.Codigo,
-                        T1.Nombre,
+                        T1.Denominacion,
+                        CASE
+                            WHEN T1.Denominacion = N'DIAZ GAS S.A. DE C.V. (Praxedis)' THEN N'Héctor Armandino Fierro Holguín'
+                            WHEN T1.Denominacion = N'DIAZ GAS S.A. DE C.V. (VILLA AHUMADA)' THEN N'Gasolinera Villa Ahumada'
+                            ELSE T1.Nombre
+                        END AS Nombre,
                         T1.Estacion AS Estacion,
                         ISNULL(T1.RFC, 'FORANEAS') as RFC,
-                        CASE WHEN T1.RFC = 'DGA930823KD3' THEN 'DIAZ GAS'
+                        CASE WHEN T1.Denominacion LIKE N'%DIAZ GAZ%' OR T1.Denominacion LIKE N'%DIAZ GAS%' OR T1.RFC = 'DGA930823KD3' THEN 'DIAZ GAS'
                              WHEN T1.RFC = 'DGM880621FU5' THEN 'GASOMEX'
                              ELSE 'FORANEAS' END AS Empresa
                     $from
                     WHERE T1.Codigo <> 0
+                    AND T1.Codigo NOT IN (199,333)
+                    AND T1.Nombre NOT LIKE N'%Colosio%'
                     AND T1.Nombre <> N'01 Malecón'
+                    AND ISNULL(T1.Denominacion,N'') NOT LIKE N'%Colosio%'
                     $empresaWhere
                     ORDER BY T1.Nombre";
 
@@ -5113,29 +5128,32 @@ public function anomalies_client_tickets()
                     $rfc = 'FORANEAS';
                 }
                 $row['RFC'] = $rfc;
-                if ($empresa !== '') $row['Empresa'] = $empresa;
+                if (in_array($empresa, ['DIAZ GAS', 'FORANEAS', 'GASOMEX'], true)) $row['Empresa'] = $empresa;
                 $result[] = $row;
             }
 
-            // INYECCIÓN MANUAL COLOSIO (Si no viene de BD)
-            $foundColosio = false;
-            foreach($result as $r) {
-                if ((int)$r['Codigo'] === 333 || strtoupper(trim((string)$r['Nombre'])) === 'COLOSIO') $foundColosio = true;
+            $denominaciones = [];
+            foreach ($result as $row) {
+                $denominacion = trim((string)($row['Denominacion'] ?? ''));
+                if ($denominacion === 'DIAZ GAS S.A. DE C.V. (Praxedis)') $denominacion = 'Héctor Armandino Fierro Holguín';
+                elseif ($denominacion === 'DIAZ GAS S.A. DE C.V. (VILLA AHUMADA)') $denominacion = 'Gasolinera Villa Ahumada';
+                if ($denominacion !== '') $denominaciones[$denominacion] = ['denominacion' => $denominacion];
             }
+            $denominaciones = array_values($denominaciones);
+            usort($denominaciones, static fn($a, $b) => strcasecmp($a['denominacion'], $b['denominacion']));
 
-            if(!$foundColosio && ($empresa === '' || $empresa === 'FORANEAS')) {
-                $result[] = [
-                    'Codigo' => 333,
-                    'Nombre' => 'COLOSIO',
-                    'Estacion' => 333,
-                    'RFC'    => 'FORANEAS',
-                    'Empresa'=> 'FORANEAS'
-                ];
-                // Reordenar alfabéticamente
-                usort($result, function($a, $b) { return strcmp($a['Nombre'], $b['Nombre']); });
+            // Recalcular para normalizar también cualquier variante escrita
+            // como DIAZ GAZ/DIAZ GAS, conservando la estructura histórica.
+            foreach ($result as &$row) {
+                $denominacion = mb_strtoupper(trim((string)($row['Denominacion'] ?? '')), 'UTF-8');
+                if (str_contains($denominacion, 'DIAZ GAZ') || str_contains($denominacion, 'DIAZ GAS')) $row['Empresa'] = 'DIAZ GAS';
+                unset($row['Denominacion']);
             }
+            unset($row);
             
-            echo json_encode(["status" => "success", "respuesta" => $result]);
+            echo json_encode(["status" => "success", "respuesta" => $result,
+                "denominaciones" => $denominaciones,
+                "denominaciones_disponibles" => $denominaciones]);
 
         } catch (PDOException $e) {
             echo json_encode(["status" => "error", "message" => $e->getMessage()]);
@@ -9226,13 +9244,13 @@ public function stamped_invoices_detail(): void
     public function get_dashboard_v3_bancos(): void {
         ob_clean();
         header('Content-Type: application/json');
-        $rs = trim($_GET['razon_social'] ?? '');
+        $rs = trim($_GET['empresa'] ?? $_GET['razon_social'] ?? '');
         try {
             $conn = $this->v3_conn();
             $where = "WHERE LEN(ISNULL(TA.afiliacion,'')) > 0";
-            if ($rs === 'DIAZ GAS') $where .= " AND E.RFC='DGA930823KD3'";
+            if ($rs === 'DIAZ GAS') $where .= " AND (E.RFC='DGA930823KD3' OR E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%')";
             elseif ($rs === 'GASOMEX') $where .= " AND E.RFC='DGM880621FU5'";
-            elseif ($rs === 'FORANEAS') $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)";
+            elseif ($rs === 'FORANEAS') $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL) AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAZ%' AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAS%'";
             $stmt = $conn->prepare("SELECT DISTINCT TE.Nombre AS nombre
                 FROM Tesoreria_afil TA
                 JOIN Estaciones E ON E.Codigo=TA.estacion_id
@@ -9254,9 +9272,10 @@ public function stamped_invoices_detail(): void
         header('Content-Type: application/json');
         $year = (int)($_GET['year'] ?? 0);
         $month = (int)($_GET['month'] ?? 0);
-        $rs = trim($_GET['razon_social'] ?? '');
+        $rs = trim($_GET['empresa'] ?? $_GET['razon_social'] ?? '');
         $banco = trim($_GET['banco'] ?? '');
         $estacion_id = (int)($_GET['estacion_id'] ?? 0);
+        $denominacion = trim((string)($_GET['denominacion'] ?? ''));
         if ($year < 2000 || $month < 1 || $month > 12) {
             echo json_encode(['status'=>'error','message'=>'Selecciona un período válido.']);
             exit;
@@ -9266,48 +9285,71 @@ public function stamped_invoices_detail(): void
         $next = (new DateTimeImmutable($period . '-01'))->modify('+1 month')->format('Y-m');
         try {
             $conn = $this->v3_conn();
+            $denominacionExpr = "CASE WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (Praxedis)' THEN N'Héctor Armandino Fierro Holguín' WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (VILLA AHUMADA)' THEN N'Gasolinera Villa Ahumada' ELSE ISNULL(E.Denominacion,N'') END";
+            $stationCompanyWhere = '';
+            if ($rs === 'DIAZ GAS') $stationCompanyWhere = " AND (E.RFC='DGA930823KD3' OR E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%')";
+            elseif ($rs === 'GASOMEX') $stationCompanyWhere = " AND E.RFC='DGM880621FU5'";
+            elseif ($rs === 'FORANEAS') $stationCompanyWhere = " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL) AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAZ%' AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAS%'";
+
+            $denomSql = "SELECT DISTINCT $denominacionExpr AS denominacion FROM Estaciones E
+                WHERE E.Codigo<>0 AND E.Codigo NOT IN (199,333) AND ISNULL(E.Nombre,N'') NOT LIKE N'%Colosio%'
+                  AND ISNULL(E.Denominacion,N'') NOT LIKE N'%Colosio%' $stationCompanyWhere";
+            $denomParams = [];
+            if ($estacion_id > 0) { $denomSql .= ' AND E.Codigo=?'; $denomParams[] = $estacion_id; }
+            $denomSql .= " AND $denominacionExpr<>N'' ORDER BY denominacion";
+            $denomStmt = $conn->prepare($denomSql);
+            $denomStmt->execute($denomParams);
+            $denominaciones = array_map(static fn($row) => ['denominacion' => $row['denominacion']], $denomStmt->fetchAll(PDO::FETCH_ASSOC));
+
             $scope = '';
             if ($banco !== '') $scope .= ' AND TE.Nombre=?';
             if ($estacion_id > 0) $scope .= ' AND T.estacion_id=?';
-            if ($rs === 'DIAZ GAS') $scope .= " AND E.RFC='DGA930823KD3'";
+            if ($denominacion !== '') $scope .= " AND $denominacionExpr=?";
+            if ($rs === 'DIAZ GAS') $scope .= " AND (E.RFC='DGA930823KD3' OR E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%')";
             elseif ($rs === 'GASOMEX') $scope .= " AND E.RFC='DGM880621FU5'";
-            elseif ($rs === 'FORANEAS') $scope .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)";
+            elseif ($rs === 'FORANEAS') $scope .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL) AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAZ%' AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAS%'";
 
             $sql = "SELECT T.id,'SALIENTE' AS sentido,
-                    CASE WHEN E.RFC='DGA930823KD3' THEN 'DIAZ GAS' WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
+                    CASE WHEN E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%' OR E.RFC='DGA930823KD3' THEN 'DIAZ GAS' WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
                     T.conciliacion_id_dest AS conciliacion,T.mes_origen,T.mes_destino,
                     T.concepto,T.descripcion,T.estado,ISNULL(T.monto_transito,0) AS monto_transito,
-                    T.afiliacion,ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) AS estacion,
+                    T.afiliacion,CASE WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (Praxedis)' THEN N'Héctor Armandino Fierro Holguín' WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (VILLA AHUMADA)' THEN N'Gasolinera Villa Ahumada' ELSE ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) END AS estacion,
+                    $denominacionExpr AS denominacion,
                     ISNULL(TE.Nombre,'Banco '+CAST(T.entidad_id AS VARCHAR)) AS banco
                 FROM CV3_Transito T
                 LEFT JOIN Estaciones E ON E.Codigo=T.estacion_id
                 LEFT JOIN Tesoreria_Entidad TE ON TE.id=T.entidad_id
-                WHERE T.estado<>'CANCELADO' AND T.mes_origen=? AND T.mes_destino=? $scope
+                    WHERE T.estado<>'CANCELADO' AND T.estacion_id NOT IN (199,333) AND T.mes_origen=? AND T.mes_destino=? AND ISNULL(E.Nombre,N'') NOT LIKE N'%Colosio%' AND ISNULL(E.Denominacion,N'') NOT LIKE N'%Colosio%' $scope
                 UNION ALL
                 SELECT T.id,'ENTRANTE' AS sentido,
-                    CASE WHEN E.RFC='DGA930823KD3' THEN 'DIAZ GAS' WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
+                    CASE WHEN E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%' OR E.RFC='DGA930823KD3' THEN 'DIAZ GAS' WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
                     T.conciliacion_id_dest AS conciliacion,T.mes_origen,T.mes_destino,
                     T.concepto,T.descripcion,T.estado,ISNULL(T.monto_transito,0) AS monto_transito,
-                    T.afiliacion,ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) AS estacion,
+                    T.afiliacion,CASE WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (Praxedis)' THEN N'Héctor Armandino Fierro Holguín' WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (VILLA AHUMADA)' THEN N'Gasolinera Villa Ahumada' ELSE ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) END AS estacion,
+                    $denominacionExpr AS denominacion,
                     ISNULL(TE.Nombre,'Banco '+CAST(T.entidad_id AS VARCHAR)) AS banco
                 FROM CV3_Transito T
                 LEFT JOIN Estaciones E ON E.Codigo=T.estacion_id
                 LEFT JOIN Tesoreria_Entidad TE ON TE.id=T.entidad_id
-                WHERE T.estado='CONCILIADO' AND T.conciliacion_id_dest IS NOT NULL
+                    WHERE T.estado='CONCILIADO' AND T.conciliacion_id_dest IS NOT NULL
+                      AND T.estacion_id NOT IN (199,333)
+                      AND ISNULL(E.Nombre,N'') NOT LIKE N'%Colosio%' AND ISNULL(E.Denominacion,N'') NOT LIKE N'%Colosio%'
                   AND T.mes_origen=? AND T.mes_destino=? $scope
                 ORDER BY sentido,estacion,banco,id";
             $stmt = $conn->prepare($sql);
             $queryParams = [$period,$next];
             if ($banco !== '') $queryParams[] = $banco;
             if ($estacion_id > 0) $queryParams[] = $estacion_id;
+            if ($denominacion !== '') $queryParams[] = $denominacion;
             $queryParams[] = $previous;
             $queryParams[] = $period;
             if ($banco !== '') $queryParams[] = $banco;
             if ($estacion_id > 0) $queryParams[] = $estacion_id;
+            if ($denominacion !== '') $queryParams[] = $denominacion;
             $stmt->execute($queryParams);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             foreach ($rows as &$row) $row['monto_transito'] = (float)$row['monto_transito'];
-            echo json_encode(['status'=>'success','data'=>$rows]);
+            echo json_encode(['status'=>'success','data'=>$rows,'denominaciones'=>$denominaciones,'denominaciones_disponibles'=>$denominaciones]);
         } catch (Exception $e) {
             echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
         }
@@ -9333,12 +9375,13 @@ public function stamped_invoices_detail(): void
         if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) $company = 'Todas';
         $bank = trim((string)($data['banco'] ?? '')) ?: 'Todos los bancos';
         $station = trim((string)($data['estacion'] ?? '')) ?: 'Todas las estaciones';
+        $denominacion = trim((string)($data['denominacion'] ?? '')) ?: 'Todas';
 
         try {
             $spreadsheet = new Spreadsheet();
             $sheet = $spreadsheet->getActiveSheet();
             $sheet->setTitle('Tránsitos');
-            $sheet->mergeCells('A1:I1');
+            $sheet->mergeCells('A1:J1');
             $sheet->setCellValue('A1', 'REPORTE DE TRÁNSITOS V3');
             $sheet->setCellValue('A2', 'Período');
             $sheet->setCellValue('B2', $period);
@@ -9350,12 +9393,14 @@ public function stamped_invoices_detail(): void
             $sheet->mergeCells('H2:I2');
             $sheet->setCellValueExplicit('H2', $station, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
 
-            $headers = ['SENTIDO','ESTACIÓN','EMPRESA','BANCO','AFILIACIÓN','MES ORIGEN','MES DESTINO','CONCILIACIÓN','MONTO'];
+            $sheet->setCellValue('A4', 'Razón social / Denominación');
+            $sheet->setCellValueExplicit('B4', $denominacion, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $headers = ['SENTIDO','ESTACIÓN','EMPRESA','RAZÓN SOCIAL / DENOMINACIÓN','BANCO','AFILIACIÓN','MES ORIGEN','MES DESTINO','CONCILIACIÓN','MONTO'];
             $sheet->fromArray($headers, null, 'A5');
             $outgoingTotal = 0.0;
             $incomingTotal = 0.0;
             $rowNumber = 6;
-            $textColumns = ['sentido','estacion','razon_social','banco','afiliacion','mes_origen','mes_destino','conciliacion'];
+            $textColumns = ['sentido','estacion','razon_social','denominacion','banco','afiliacion','mes_origen','mes_destino','conciliacion'];
             foreach ($rows as $item) {
                 if (!is_array($item)) continue;
                 foreach ($textColumns as $column) {
@@ -9365,7 +9410,7 @@ public function stamped_invoices_detail(): void
                 }
                 $amount = filter_var($item['monto_transito'] ?? 0, FILTER_VALIDATE_FLOAT);
                 if ($amount === false || !is_finite((float)$amount)) $amount = 0.0;
-                $sheet->setCellValue('I'.$rowNumber, (float)$amount);
+                $sheet->setCellValue('J'.$rowNumber, (float)$amount);
                 if (($item['sentido'] ?? '') === 'SALIENTE') $outgoingTotal += (float)$amount;
                 if (($item['sentido'] ?? '') === 'ENTRANTE') $incomingTotal += (float)$amount;
                 $rowNumber++;
@@ -9378,21 +9423,21 @@ public function stamped_invoices_detail(): void
             $sheet->setCellValue('D3', $incomingTotal);
             $sheet->setCellValue('E3', 'Filas exportadas');
             $sheet->setCellValue('F3', $rowNumber - 6);
-            $sheet->getStyle('A1:I1')->applyFromArray([
+            $sheet->getStyle('A1:J1')->applyFromArray([
                 'font'=>['bold'=>true,'size'=>14,'color'=>['argb'=>'FFFFFFFF']],
                 'fill'=>['fillType'=>\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,'startColor'=>['argb'=>'FF1E40AF']],
             ]);
             $sheet->getStyle('A2:H3')->getFont()->setBold(true);
-            $sheet->getStyle('A5:I5')->applyFromArray([
+            $sheet->getStyle('A5:J5')->applyFromArray([
                 'font'=>['bold'=>true,'color'=>['argb'=>'FFFFFFFF']],
                 'fill'=>['fillType'=>\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,'startColor'=>['argb'=>'FF334155']],
                 'alignment'=>['horizontal'=>\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
             ]);
             $sheet->getStyle('B3:D3')->getNumberFormat()->setFormatCode('$#,##0.00');
-            if ($lastRow >= 6) $sheet->getStyle('I6:I'.$lastRow)->getNumberFormat()->setFormatCode('$#,##0.00');
-            $sheet->setAutoFilter('A5:I'.$lastRow);
+            if ($lastRow >= 6) $sheet->getStyle('J6:J'.$lastRow)->getNumberFormat()->setFormatCode('$#,##0.00');
+            $sheet->setAutoFilter('A5:J'.$lastRow);
             $sheet->freezePane('A6');
-            foreach (range('A','I') as $column) $sheet->getColumnDimension($column)->setAutoSize(true);
+            foreach (range('A','J') as $column) $sheet->getColumnDimension($column)->setAutoSize(true);
 
             $filename = 'Transitos_V3_'.$period.'.xlsx';
             header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
