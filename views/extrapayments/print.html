@@ -76,7 +76,7 @@
         {% set l = solicitud.lines[0] %}
         <table style="margin-bottom:10px">
             <tr><th style="width:28%">Razón social</th><td>{{ l.empresa_nombre ?: '—' }}</td></tr>
-            <tr><th>Proveedor / Colaborador</th><td>{{ l.proveedor ?: '—' }}</td></tr>
+            <tr><th>Proveedor / Colaborador</th><td>{{ l.proveedor ?: '—' }}{% if l.cuenta_banco %}<div class="small text-muted">{{ l.cuenta_banco }} · Cta {{ l.cuenta_numero ?: '—' }}{% if l.cuenta_clabe %} · CLABE {{ l.cuenta_clabe }}{% endif %}{% if not l.cuenta_activa %} <span class="text-danger">(cuenta inactiva)</span>{% endif %}</div>{% endif %}</td></tr>
             <tr><th>Factura</th><td>{{ l.factura ?: '—' }}</td></tr>
             <tr><th>Fecha factura</th><td>{{ l.fecha_factura ? l.fecha_factura|date('d/m/Y') : '—' }}</td></tr>
             <tr><th>Centro de costos</th><td>{{ l.centro_costos ?: '—' }}</td></tr>

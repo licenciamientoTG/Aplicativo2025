@@ -77,7 +77,7 @@ class ExtraPaymentWorkflow
 
         foreach (array_values($lines) as $i => $line) {
             $n = $i + 1;
-            foreach (['empresa_cod' => 'la empresa', 'proveedor' => 'el proveedor', 'descripcion' => 'la descripción'] as $campo => $etiqueta) {
+            foreach (['empresa_cod' => 'la empresa', 'proveedor' => 'el proveedor (escriba al menos 3 letras y elíjalo de la lista)', 'descripcion' => 'la descripción'] as $campo => $etiqueta) {
                 if (trim((string)($line[$campo] ?? '')) === '') {
                     $errors[] = "Renglón $n: falta $etiqueta.";
                 }

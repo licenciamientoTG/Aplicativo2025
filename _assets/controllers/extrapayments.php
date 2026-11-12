@@ -24,6 +24,13 @@ class ExtraPayments
     private const LIM_COMENTARIO = 400;
     private const LIM_REFERENCIA = 80;
     private const MSG_CAMBIO_ESTADO = 'La solicitud ya cambió de estado, recargue la página.';
+    private const MSG_SISTEMAS = 'si se repite, avise a Sistemas (el detalle técnico quedó en logs/php_errors.log con la hora del intento).';
+
+    /**
+     * TEMPORAL (pruebas, 2026-11-11): en false el XML del renglón es opcional y no se valida
+     * monto = Total, RFC receptor = empresa ni UUID repetido. Volver a true cuando el usuario lo indique.
+     */
+    private const CFDI_VALIDAR = false;
 
     /** etapa => [permiso, estatus que se atiende, título]. */
     private const ETAPAS = [
@@ -374,11 +381,43 @@ class ExtraPayments
         $adjuntos = $solicitud ? $this->datos_adjuntos($solicitud) : [];
         if ($solicitud) {
             $solicitud['lines'] = $this->con_archivos_renglon($solicitud['lines'], $adjuntos['documentos']);
+            // Cuenta del proveedor ya elegida: el buscador la muestra seleccionada (si sigue disponible).
+            foreach ($solicitud['lines'] as &$l) {
+                $c = !empty($l['proveedor_cuenta_id']) ? $this->catalogModel->cuenta_proveedor((int) $l['proveedor_cuenta_id']) : null;
+                $l['proveedor_cuenta'] = $c ? ['id' => (int) $c['id'], 'text' => $c['texto'], 'pagadores' => $c['pagadores']] : null;
+                if (!$c) {
+                    $l['proveedor_cuenta_id'] = '';
+                }
+            }
+            unset($l);
         }
+        $cfdi_obligatorio = self::CFDI_VALIDAR;
         echo $this->twig->render($this->route . 'form.html', array_merge(
-            compact('solicitud', 'motivos', 'empresas', 'area', 'nombre'),
+            compact('solicitud', 'motivos', 'empresas', 'area', 'nombre', 'cfdi_obligatorio'),
             $adjuntos
         ));
+    }
+
+    /**
+     * Buscador del proveedor de un renglón (select2): cuentas que entraron por una alta
+     * aprobada. Mínimo 3 letras; devuelve hasta 20 con las razones sociales que pueden pagarles.
+     */
+    public function buscar_proveedores(): void
+    {
+        $this->guard([ExtraPaymentWorkflow::PERM_CREAR], true);
+        $q = $this->texto($_GET['q'] ?? '', 60);
+        if (mb_strlen($q) < 3) {
+            json_output(['results' => []]);
+        }
+        $out = array_map(fn($c) => [
+            'id'        => (int) $c['id'],
+            'text'      => $c['texto'],
+            'proveedor' => $c['proveedor'],
+            'banco'     => (string) $c['banco'],
+            'divisa'    => (string) $c['divisa'],
+            'pagadores' => $c['pagadores'],
+        ], $this->catalogModel->buscar_cuentas_proveedor($q));
+        json_output(['results' => $out]);
     }
 
     /** Detalle: encabezado, renglones, firmas y auditoría. */
@@ -569,7 +608,9 @@ class ExtraPayments
             $line = [
                 'empresa_cod'          => $empresa,
                 'centro_costos'        => $this->texto($raw['centro_costos'] ?? '', self::LIM_CENTRO),
-                'proveedor'            => $this->texto($raw['proveedor'] ?? '', self::LIM_PROVEEDOR),
+                // El proveedor se elige entre las cuentas de una alta aprobada; el nombre lo pone el servidor.
+                'proveedor_cuenta_id'  => (int) ($raw['proveedor_cuenta_id'] ?? 0),
+                'proveedor'            => '',
                 'factura'              => $this->texto($raw['factura'] ?? '', self::LIM_FACTURA),
                 'fecha_factura'        => $fechaFacturaOk ?? '',
                 'orden_compra'         => $this->texto($raw['orden_compra'] ?? '', self::LIM_OC),
@@ -583,6 +624,14 @@ class ExtraPayments
                 'cfdi_uuid'            => '',
                 '_k'                   => (string) $k,
             ];
+            $cuentaProv = $this->catalogModel->cuenta_proveedor($line['proveedor_cuenta_id']);
+            if ($cuentaProv) {
+                $line['proveedor'] = mb_substr($cuentaProv['proveedor'], 0, self::LIM_PROVEEDOR);
+            } elseif ($line['proveedor_cuenta_id'] > 0) {
+                $errors[] = "Renglón $n: la cuenta del proveedor ya no está disponible (inactiva o sin alta aprobada); elija otra.";
+                $line['proveedor_cuenta_id'] = 0;
+            }
+            // Sin cuenta elegida, ExtraPaymentWorkflow::validate_request avisa "falta el proveedor".
             if ($line['centro_costos'] === '') {
                 $errors[] = "Renglón $n: falta el centro de costos.";
             }
@@ -632,6 +681,15 @@ class ExtraPayments
             $header['departamento_id'] = $this->departamento_id_usuario($userId);
         }
 
+        // Sin las columnas de XML/PDF por renglón todo INSERT de renglones truena: avisar qué falta en vez de un error genérico.
+        $faltan = $this->requestsModel->columnas_cfdi_faltantes();
+        if ($faltan) {
+            $script = $faltan === ['proveedor_cuenta_id'] ? 'docs/sql/pagos_extraordinarios_proveedor_cuenta.sql'
+                : 'docs/sql/pagos_extraordinarios_cfdi_lineas.sql' . (in_array('proveedor_cuenta_id', $faltan, true) ? ' y docs/sql/pagos_extraordinarios_proveedor_cuenta.sql' : '');
+            json_output(['success' => false, 'message' => 'No se puede guardar todavía: a la tabla de renglones le faltan las columnas '
+                . implode(', ', $faltan) . '. Pida a Sistemas correr ' . $script . ' y vuelva a intentarlo. No se guardó nada.']);
+        }
+
         // XML (obligatorio para enviar) y PDF (opcional) de cada renglón: se revisan ANTES de guardar nada.
         $archivos = $this->revisar_cfdi_renglones($lines, $id, $borrador, $errors);
         if ($errors) {
@@ -644,7 +702,8 @@ class ExtraPayments
         if ($nueva) {
             $id = (int) $this->requestsModel->create($header, $lines, $userId, true);
             if ($id <= 0) {
-                json_output(['success' => false, 'message' => 'No se pudo guardar la solicitud. Intente de nuevo.']);
+                json_output(['success' => false, 'message' => 'No se guardó la solicitud: ' . ($this->requestsModel->ultimoError ?: 'error desconocido')
+                    . '. No se creó nada; ' . self::MSG_SISTEMAS]);
             }
         }
 
@@ -668,9 +727,11 @@ class ExtraPayments
                 }
                 if ($nueva) {
                     json_output(['success' => true, 'borrador' => true, 'warning' => true, 'id' => $id,
-                        'message' => 'Se guardó como borrador #' . $id . ', pero no se pudo terminar de enviar. Revise los archivos y envíe de nuevo.']);
+                        'message' => 'Se guardó como borrador #' . $id . ', pero no se pudo terminar de enviar: '
+                            . ($this->requestsModel->ultimoError ?: 'error desconocido') . '. Revise y envíe de nuevo.']);
                 }
-                json_output(['success' => false, 'message' => 'No se pudo guardar la solicitud: cambió de estatus o hubo un error. Recargue e intente de nuevo.']);
+                json_output(['success' => false, 'message' => 'No se guardaron los cambios: ' . ($this->requestsModel->ultimoError ?: 'error desconocido')
+                    . '. La solicitud quedó como estaba; ' . self::MSG_SISTEMAS]);
             }
         }
         // Los archivos sustituidos por uno nuevo dejan de verse en adjuntos.
@@ -766,19 +827,21 @@ class ExtraPayments
             }
 
             if ($rutaXml === null) {
-                if (!$borrador) {
+                if (!$borrador && self::CFDI_VALIDAR) {
                     $errors[] = "Renglón $n: falta el XML (CFDI) de la factura; es obligatorio para enviar.";
                 }
                 continue;
             }
             $cfdi = ExtraPaymentDocumentsModel::leer_cfdi($rutaXml);
             if ($cfdi === null) {
-                $errors[] = "Renglón $n: el XML no es un CFDI timbrado (no se encontró el UUID del timbre fiscal).";
-                continue;
+                if (self::CFDI_VALIDAR) {
+                    $errors[] = "Renglón $n: el XML no es un CFDI timbrado (no se encontró el UUID del timbre fiscal).";
+                }
+                continue; // Sin validar: el XML se guarda igual, sin UUID.
             }
             $line['cfdi_uuid'] = $cfdi['uuid'];
-            if ($borrador) {
-                continue; // El borrador guarda lo que haya; las reglas se aplican al enviar.
+            if ($borrador || !self::CFDI_VALIDAR) {
+                continue; // El borrador guarda lo que haya; las reglas se aplican al enviar (si están activas).
             }
 
             $total = round((float) $cfdi['total'], 2);

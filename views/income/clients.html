@@ -49,8 +49,11 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 {% block menutitle %}{% if modo|default('') == 'debito' %}Clientes Débito{% elseif modo|default('') == 'credito' %}Clientes Crédito{% else %}Clientes{% endif %}{% endblock %}
 {% block content %}
 {% set modo = modo|default('todos') %}
-{% set ver_debito = modo != 'credito' %}
-{% set ver_credito = modo != 'debito' %}
+{# 2026-11-11 STANDBY: /income/clients solo muestra "Estado de Cuenta Foto". Las pestañas débito y crédito
+   se viven en /income/clients-debit/ y /income/clients-credit/. Para volver a mostrarlas aquí regresar a:
+   ver_debito = modo != 'credito' / ver_credito = modo != 'debito' #}
+{% set ver_debito = modo == 'debito' %}
+{% set ver_credito = modo == 'credito' %}
 {% set ver_foto = modo == 'todos' %}
 
 <ul class="nav nav-tabs" id="myTab" role="tablist">
@@ -90,7 +93,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     {% endif %}
     {% if ver_foto %}
     <li class="nav-item" role="presentation">
-        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edo_debit_foto" type="button">Estado de Cuenta Foto</button>
+        <button class="nav-link {{ ver_debito or ver_credito ? '' : 'active' }}" data-bs-toggle="tab" data-bs-target="#edo_debit_foto" type="button">Estado de Cuenta Foto</button>
     </li>
     {% endif %}
 </ul>
@@ -165,7 +168,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                                 <select class="selectpicker" id="cliente_vehicles_debit" data-live-search="true" data-live-search-normalize="true" data-size="10" data-width="100%" title="Seleccionar cliente...">
                                     <option value="0">— Todos los clientes activos —</option>
                                     {% for c in clientes_debit %}
-                                    <option value="{{ c.cod }}" data-tokens="{{ c.cod }}">{{ c.den }}</option>
+                                    <option value="{{ c.cod }}">{{ c.cod }} · {{ c.den }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
@@ -405,7 +408,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         <select class="selectpicker" id="cliente_debit" data-live-search="true" data-live-search-normalize="true" data-size="10" data-width="100%" title="Seleccionar cliente...">
                             <option value="0" selected>Todos los clientes</option>
                             {% for c in clientes_debit %}
-                            <option value="{{ c.cod }}" data-tokens="{{ c.cod }}">{{ c.den }}</option>
+                            <option value="{{ c.cod }}">{{ c.cod }} · {{ c.den }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -518,7 +521,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         <select class="selectpicker" id="cliente_credit" data-live-search="true" data-live-search-normalize="true" data-size="10" data-width="100%" title="Seleccionar cliente...">
                             <option value="0" selected>Todos los clientes</option>
                             {% for c in clientes_credit %}
-                            <option value="{{ c.cod }}" data-tokens="{{ c.cod }}">{{ c.den }}</option>
+                            <option value="{{ c.cod }}">{{ c.cod }} · {{ c.den }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -628,7 +631,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         <select class="selectpicker" id="cliente_edo_credit" data-live-search="true" data-live-search-normalize="true" data-size="10" data-width="100%" title="Seleccionar cliente...">
                             <option value="0">— Todos los clientes (resumen) —</option>
                             {% for c in clientes_credit %}
-                            <option value="{{ c.cod }}" data-tokens="{{ c.cod }}">{{ c.den }}</option>
+                            <option value="{{ c.cod }}">{{ c.cod }} · {{ c.den }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -730,7 +733,8 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         <select class="selectpicker" id="cliente_edo_debit" data-live-search="true" data-live-search-normalize="true" data-size="10" data-width="100%" title="Seleccionar cliente...">
                             <option value="0">— Todos los clientes (resumen) —</option>
                             {% for c in clientes_debit %}
-                            <option value="{{ c.cod }}" data-tokens="{{ c.cod }}">{{ c.den }}</option>
+                            {# Código + nombre en el texto: el buscador encuentra por cualquiera de los dos #}
+                            <option value="{{ c.cod }}">{{ c.cod }} · {{ c.den }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -934,7 +938,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                                 <label class="col-form-label-sm">Cliente</label>
                                 <select class="selectpicker" id="cliente_anticipos_cli" data-live-search="true" data-live-search-normalize="true" data-size="10" data-width="100%" title="Seleccionar cliente...">
                                     {% for c in clientes_debit %}
-                                    <option value="{{ c.cod }}" data-tokens="{{ c.cod }}">{{ c.den }}</option>
+                                    <option value="{{ c.cod }}">{{ c.cod }} · {{ c.den }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
@@ -988,18 +992,24 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 
     {% if ver_foto %}
     {# ── TAB 7: ESTADO DE CUENTA FOTO ── #}
-    <div class="tab-pane" id="edo_debit_foto" role="tabpanel">
+    <div class="tab-pane {{ ver_debito or ver_credito ? '' : 'active' }}" id="edo_debit_foto" role="tabpanel">
         <div class="card">
             <div class="card-body">
                 <div class="row align-items-center">
                     <div class="col-auto">
+                        <label class="col-form-label-sm mb-0" for="debit_snapshot_dia">Día</label>
+                        <input type="date" class="form-control form-control-sm" id="debit_snapshot_dia"
+                               value="{{ 'now'|date_modify('-1 day')|date('Y-m-d') }}" max="{{ 'now'|date_modify('-1 day')|date('Y-m-d') }}">
+                    </div>
+                    <div class="col-auto align-self-end">
                         <button id="btn_debit_snapshot" class="btn btn-sm btn-primary">
                             <i class="fas fa-search"></i> Consultar Foto
                         </button>
                     </div>
-                    <div class="col-auto">
+                    <div class="col-auto align-self-end">
                         <span class="text-muted">
-                            Fecha de la foto: <strong id="debit_snapshot_fecha">—</strong>
+                            Cierre del día: <strong id="debit_snapshot_fecha">—</strong>
+                            · Última corrida: <strong id="debit_snapshot_ultima">—</strong>
                         </span>
                     </div>
                 </div>
@@ -1018,16 +1028,18 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                 <table id="debit_snapshot_table" class="table table-hover table-sm w-100">
                     <thead>
                         <tr>
-                            <th>Código</th><th>Cliente</th><th>Saldo Inicial</th>
-                            <th>Anticipos (día)</th><th>Consumos (día)</th>
-                            <th>Saldo Final</th><th>Saldo Sistema</th><th>Saldo Vehículos</th>
-                            <th>Fecha Foto</th>
+                            <th>Código</th><th>Cliente</th><th>Bolsa global</th>
+                            <th>Saldo ini. sistema</th><th>Saldo ini. calc. (desp.)</th><th>Ajuste retro. (desp.)</th>
+                            <th>Anticipos</th><th>Consumos despachos</th><th>Consumos cortes</th><th>Desfase</th>
+                            <th>Saldo fin calc. (desp.)</th><th>Saldo fin calc. (cortes)</th>
+                            <th>Saldo fin sistema</th><th>Saldo fin vehículos</th>
+                            <th>Saldo ini. calc. (cortes)</th><th>Ajuste retro. (cortes)</th><th>Vigente desde</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                     <tfoot>
                         <tr>
-                            <th></th><th>Total</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th>
+                            <th></th><th>Total</th>{% for i in 1..15 %}<th></th>{% endfor %}
                         </tr>
                     </tfoot>
                 </table>
@@ -1238,45 +1250,51 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body">
+                <p class="mb-2">
+                    Esta tabla es una <strong>foto guardada</strong>, no un cálculo en vivo. Cada día a las
+                    <strong>8:00 AM</strong> una tarea programada guarda el <strong>cierre del día anterior</strong>
+                    de cada cliente débito en <code>TG.dbo.debit_clients_cierre</code>. Es a esa hora porque el
+                    último corte del día (turno 22:00–24:00) se cierra a las 6:00 AM junto con el turno de la madrugada.
+                </p>
                 <p class="mb-3">
-                    Esta tabla es una <strong>foto guardada</strong>, no un cálculo en vivo: se genera una vez
-                    al día por una tarea programada (madrugada) y aquí solo se lee lo ya guardado en
-                    <code>TG.dbo.debit_clients_snapshot</code>. Se creó porque calcular esto en vivo para los
-                    ~4,000 clientes débito activos tarda 30-48 segundos.
+                    Solo se guarda un renglón cuando algo cambia. Si eliges un día en que el cliente no tuvo
+                    movimientos, se muestra su último renglón con los movimientos en $0. Una foto ya guardada no se
+                    vuelve a calcular: si después entra un movimiento con fecha atrasada, aparece como
+                    <strong>Ajuste retroactivo</strong> el día en que se detecta.
                 </p>
                 <table class="table table-sm table-bordered">
                     <thead>
-                        <tr><th style="width:22%">Columna</th><th>Origen</th></tr>
+                        <tr><th style="width:26%">Columna</th><th>Origen</th></tr>
                     </thead>
                     <tbody>
-                        <tr>
-                            <td><strong>Saldo Inicial</strong></td>
-                            <td>Anticipos menos consumos de <strong>todo el histórico</strong> del cliente antes
-                                del día de la foto.</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Anticipos (día) / Consumos (día)</strong></td>
-                            <td>Solo del día en que se generó la foto (no acumulado del mes o año), para que la
-                                foto no cambie en días sin movimiento.</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Saldo Final</strong></td>
-                            <td>Saldo Inicial + Anticipos (día) − Consumos (día).</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Saldo Sistema</strong></td>
-                            <td>Bolsa actual del cliente (<code>debsdo</code>) al momento de generar la foto.</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Saldo Vehículos</strong></td>
-                            <td>Suma del saldo individual de sus vehículos/tarjetas (<code>ClientesVehiculos.debsdo</code>)
-                                al momento de generar la foto.</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Fecha Foto</strong></td>
-                            <td>Día en que se calculó esta fila. Si un cliente no tuvo ningún cambio desde
-                                entonces, la fecha se mantiene aunque hayan pasado varios días.</td>
-                        </tr>
+                        <tr><td><strong>Bolsa global</strong></td>
+                            <td>Si el cliente maneja bolsa global en ControlGas (<code>Clientes.debglo</code>).</td></tr>
+                        <tr><td><strong>Saldo ini. sistema</strong></td>
+                            <td>Con cuánto arrancó el día en ControlGas: el <em>Saldo fin sistema</em> de la foto anterior.
+                                Vacío en la primera foto, porque ControlGas no guarda el saldo de días pasados.</td></tr>
+                        <tr><td><strong>Saldo ini. calc. (desp.) / (cortes)</strong></td>
+                            <td>Anticipos menos despachos (o menos vales de cortes) de <strong>toda la historia</strong> antes del día.</td></tr>
+                        <tr><td><strong>Ajuste retro. (desp.) / (cortes)</strong></td>
+                            <td>Saldo inicial calculado de hoy menos saldo final calculado de la foto anterior. Distinto de 0
+                                cuando entró algo con fecha atrasada (anticipo capturado tarde, cancelación, despacho reasignado).</td></tr>
+                        <tr><td><strong>Anticipos</strong></td>
+                            <td>Facturas de anticipo del día (con IVA, más de $1, sin combustible, sin canceladas).</td></tr>
+                        <tr><td><strong>Consumos despachos</strong></td>
+                            <td>Despachos del cliente con fecha del día (<code>Despachos</code>).</td></tr>
+                        <tr><td><strong>Consumos cortes</strong></td>
+                            <td>Vales débito de los cortes con fecha del día (<code>ValesR</code>, <code>codval</code> 127).</td></tr>
+                        <tr><td><strong>Desfase</strong></td>
+                            <td>Consumos despachos − Consumos cortes.</td></tr>
+                        <tr><td><strong>Saldo fin calc. (desp.) / (cortes)</strong></td>
+                            <td>Saldo inicial calculado + Anticipos − Consumos (despachos o cortes).</td></tr>
+                        <tr><td><strong>Saldo fin sistema</strong></td>
+                            <td>Bolsa del cliente (<code>debsdo</code>) al cierre del día: la lectura de las 8:00 AM más lo
+                                despachado de 00:00 a 08:00. Vacío en días recuperados (cuando la tarea no corrió).</td></tr>
+                        <tr><td><strong>Saldo fin vehículos</strong></td>
+                            <td>Suma del saldo de sus tarjetas (<code>ClientesVehiculos.debsdo</code>) al cierre del día,
+                                reconstruida igual que el saldo sistema.</td></tr>
+                        <tr><td><strong>Vigente desde</strong></td>
+                            <td>Día en que se abrió el renglón que se está mostrando.</td></tr>
                     </tbody>
                 </table>
             </div>

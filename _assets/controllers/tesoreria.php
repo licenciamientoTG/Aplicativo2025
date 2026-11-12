@@ -1416,7 +1416,26 @@ class Tesoreria
             return;
         }
         $proveedores = $this->proveedores->get_actives() ?: [];
-        echo $this->twig->render($this->route . 'bank_accounts.html', compact('proveedores'));
+        $empresas    = $this->cuentasModel->empresas();
+        echo $this->twig->render($this->route . 'bank_accounts.html', compact('proveedores', 'empresas'));
+    }
+
+    /**
+     * Guarda las razones sociales que pueden pagar a una cuenta de proveedor (solo Tipo Terceros).
+     * Devuelve un aviso si no se pudo (la cuenta ya se guardó); '' si todo bien o no aplica.
+     */
+    private function guardar_pagadores(int $cuentaId, string $tipo, $user_id) : string
+    {
+        if ($cuentaId <= 0 || $tipo !== 'Terceros') {
+            return '';
+        }
+        $cods = isset($_POST['pagadores']) && is_array($_POST['pagadores']) ? $_POST['pagadores'] : [];
+        try {
+            return $this->cuentasModel->set_pagadores($cuentaId, $cods, $user_id)
+                ? '' : ' (pero no se guardaron las razones sociales que pueden pagarle)';
+        } catch (Throwable $e) {
+            return ' (pero no se guardaron las razones sociales: falta correr docs/sql/cuentas_proveedor_razones_sociales.sql)';
+        }
     }
 
     /** JSON con todas las cuentas bancarias para el DataTable de administración. */
@@ -1428,6 +1447,16 @@ class Tesoreria
             return;
         }
         $cuentas = $this->cuentasModel->get_cuentas_admin();
+        // Razones sociales que pueden pagar a cada cuenta de proveedor (vacío si aún no corre el script)
+        try {
+            $pagadores = $this->cuentasModel->pagadores_por_cuenta();
+        } catch (Throwable $e) {
+            $pagadores = [];
+        }
+        foreach ($cuentas as &$c) {
+            $c['pagadores'] = $pagadores[(int) $c['Id']] ?? [];
+        }
+        unset($c);
         json_output(['data' => $cuentas]);
     }
 
@@ -1467,9 +1496,12 @@ class Tesoreria
             json_output(['success' => false, 'message' => 'Ya existe una cuenta con esa CLABE/Cuenta']);
             return;
         }
+        $aviso = $res === 1
+            ? $this->guardar_pagadores($this->cuentasModel->id_por_cuenta_local($cuenta_local), $data['Tipo'], $user_id)
+            : '';
         json_output([
             'success' => $res === 1,
-            'message' => $res === 1 ? 'Cuenta creada correctamente' : 'No se pudo crear la cuenta',
+            'message' => $res === 1 ? 'Cuenta creada correctamente' . $aviso : 'No se pudo crear la cuenta',
         ]);
     }
 
@@ -1516,10 +1548,11 @@ class Tesoreria
 
         $user_id = $_SESSION['tg_user']['Id'] ?? 0;
         $ok = $this->cuentasModel->update_admin($id, $data, $user_id);
+        $aviso = $ok ? $this->guardar_pagadores($id, $data['Tipo'], $user_id) : '';
 
         json_output([
             'success' => (bool)$ok,
-            'message' => $ok ? 'Cuenta actualizada correctamente' : 'No se pudo actualizar la cuenta',
+            'message' => $ok ? 'Cuenta actualizada correctamente' . $aviso : 'No se pudo actualizar la cuenta',
         ]);
     }
 

@@ -8,6 +8,7 @@ return [
         route('export/', [ExtraPayments::class, 'export'], name: 'extrapayments.export', methods: ['GET']),
         route('new/', [ExtraPayments::class, 'form'], name: 'extrapayments.new', methods: ['GET'], permission: 106),
         route('save/', [ExtraPayments::class, 'save'], name: 'extrapayments.save', methods: ['POST'], permission: 106),
+        route('proveedores/', [ExtraPayments::class, 'buscar_proveedores'], name: 'extrapayments.proveedores', methods: ['GET'], permission: 106),
         route('<int:id>/edit/', [ExtraPayments::class, 'form'], name: 'extrapayments.edit', methods: ['GET'], permission: 106),
         route('<int:id>/cancel/', [ExtraPayments::class, 'cancel'], name: 'extrapayments.cancel', methods: ['POST'], permission: 106),
         // Decisiones: el permiso (107/108/109) depende de la etapa o del

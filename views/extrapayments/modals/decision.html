@@ -16,7 +16,7 @@
             {% for l in solicitud.lines %}
                 <tr>
                     <td>{{ l.empresa_nombre ?: l.empresa_cod }}</td>
-                    <td>{{ l.proveedor }}</td>
+                    <td>{{ l.proveedor }}{% if l.cuenta_banco %}<div class="small text-muted">{{ l.cuenta_banco }} · Cta {{ l.cuenta_numero ?: '—' }}{% if l.cuenta_clabe %} · CLABE {{ l.cuenta_clabe }}{% endif %}{% if not l.cuenta_activa %} <span class="text-danger">(cuenta inactiva)</span>{% endif %}</div>{% endif %}</td>
                     <td>{{ l.descripcion }}{% if l.comentario_urgencia %}<br><small class="text-danger">Urgencia: {{ l.comentario_urgencia }}</small>{% endif %}</td>
                     <td>{{ l.fecha_pago_requerida|date('d/m/Y') }}</td>
                     <td class="text-end">${{ l.monto|number_format(2) }}</td>

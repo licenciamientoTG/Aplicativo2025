@@ -23,7 +23,7 @@ class BankAccountRequestsModel extends Model
 
     private const SELECT = 'SELECT r.*, e.den AS empresa, u.Nombre AS solicitante, d.Nombre AS decisor
         FROM [TG].[dbo].[bank_account_requests] r
-        LEFT JOIN [SG12].[dbo].[Empresas] e ON e.cod = r.empresa_cod
+        LEFT JOIN [TG].[dbo].[razones_sociales_pago] e ON e.cod = r.empresa_cod
         LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = r.user_id
         LEFT JOIN [TG].[dbo].[Usuario] d ON d.Id = r.decided_by';
 
@@ -98,6 +98,59 @@ class BankAccountRequestsModel extends Model
         return ['catalogo' => $cat, 'solicitudes' => $sol];
     }
 
+    /**
+     * Motivo por el que la cuenta NO se puede dar de alta, o null si está libre.
+     * Se revisan los DOS números capturados, cada uno contra los dos campos donde puede estar:
+     *  - CLABE: en CuentaLocal o Clave del catálogo (cualquier banco); en clabe o num_cuenta de otra alta.
+     *  - Cuenta / account number: igual, en cualquier banco (el mensaje dice de qué banco es la existente).
+     * Catálogo: activa o no. Altas: pendiente, aprobada o borrador (las rechazadas no cuentan).
+     */
+    public function cuenta_registrada(string $clabe, string $cuenta, string $banco, int $exceptRequestId = 0): ?string
+    {
+        $clabe  = trim($clabe);
+        $cuenta = trim($cuenta);
+        $revisar = [];
+        if ($clabe !== '') {
+            $revisar[] = ['La CLABE ' . $clabe, $clabe, null];
+        }
+        if ($cuenta !== '' && $cuenta !== $clabe) {
+            $revisar[] = ['La cuenta ' . $cuenta, $cuenta, null];
+        }
+        foreach ($revisar as [$que, $numero, $soloBanco]) {
+            $filtroBanco = $soloBanco !== null ? ' AND Banco = ?' : '';
+            $params = [$numero, $numero];
+            if ($soloBanco !== null) { $params[] = $soloBanco; }
+            $cat = $this->sql->select(
+                'SELECT TOP 1 Id, Descripcion, Banco, Activo FROM [TG].[dbo].[CatalogosCuentasBancarias]
+                  WHERE (CuentaLocal = ? OR Clave = ?)' . $filtroBanco . '
+                  ORDER BY Activo DESC, Id DESC;',
+                $params
+            );
+            if ($cat) {
+                $c = $cat[0];
+                return $que . ' ya está registrada en Cuentas bancarias (#' . $c['Id'] . ' ' . trim((string) $c['Descripcion'])
+                    . ($c['Banco'] ? ' · ' . trim((string) $c['Banco']) : '') . ', '
+                    . ((int) $c['Activo'] === 1 ? 'activa' : 'inactiva: pida a Tesorería que la reactive') . '). No se guardó la solicitud.';
+            }
+            $filtroBanco = $soloBanco !== null ? ' AND banco = ?' : '';
+            $params = [$exceptRequestId, self::ST_PENDIENTE, self::ST_APROBADA, self::ST_BORRADOR, $numero, $numero];
+            if ($soloBanco !== null) { $params[] = $soloBanco; }
+            $sol = $this->sql->select(
+                'SELECT TOP 1 id, proveedor, status FROM [TG].[dbo].[bank_account_requests]
+                  WHERE id <> ? AND status IN (?, ?, ?) AND (clabe = ? OR num_cuenta = ?)' . $filtroBanco . '
+                  ORDER BY id DESC;',
+                $params
+            );
+            if ($sol) {
+                $s = $sol[0];
+                $estatus = [self::ST_PENDIENTE => 'pendiente de Tesorería', self::ST_APROBADA => 'aprobada', self::ST_BORRADOR => 'en borrador'][(int) $s['status']] ?? '';
+                return $que . ' ya está en la solicitud de alta #' . $s['id'] . ' (' . $estatus . ')'
+                    . ($s['proveedor'] ? ' de ' . trim((string) $s['proveedor']) : '') . '. No se guardó la solicitud.';
+            }
+        }
+        return null;
+    }
+
     /** Inserta la solicitud (sin archivo todavía). Devuelve el id o 0. */
     public function create(array $d, int $userId, int $status = self::ST_PENDIENTE): int
     {
@@ -114,7 +167,61 @@ class BankAccountRequestsModel extends Model
                 $d['benef_direccion'] ?: null, $d['benef_ciudad'], $d['departamento'], $status,
             ]
         );
-        return (int) $id;
+        $id = (int) $id;
+        if ($id > 0) {
+            foreach ($d['pagadores'] ?? [] as $empCod) {
+                $this->sql->insert(
+                    'INSERT INTO [TG].[dbo].[bank_account_request_payers] (request_id, emp_cod) VALUES (?, ?);',
+                    [$id, (int) $empCod]
+                );
+            }
+        }
+        return $id;
+    }
+
+    /**
+     * Razones sociales que pueden pagar, por solicitud: [request_id => [['cod' => .., 'den' => ..], ...]].
+     */
+    public function pagadores_por_solicitud(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if (!$ids) {
+            return [];
+        }
+        $rows = $this->sql->select(
+            'SELECT p.request_id, p.emp_cod AS cod, e.den
+               FROM [TG].[dbo].[bank_account_request_payers] p
+               LEFT JOIN [TG].[dbo].[razones_sociales_pago] e ON e.cod = p.emp_cod
+              WHERE p.request_id IN (' . implode(',', $ids) . ')
+              ORDER BY e.den;',
+            []
+        ) ?: [];
+        $map = [];
+        foreach ($rows as $r) {
+            $map[(int) $r['request_id']][] = ['cod' => (int) $r['cod'], 'den' => (string) ($r['den'] ?? $r['cod'])];
+        }
+        return $map;
+    }
+
+    /**
+     * Mensaje de qué script falta correr para usar razones sociales por cuenta, o null si está todo.
+     */
+    public function esquema_faltante(): ?string
+    {
+        $r = $this->sql->select(
+            "SELECT COL_LENGTH('TG.dbo.CatalogosCuentasBancarias', 'Direccion') AS direccion,
+                    OBJECT_ID('TG.dbo.bank_account_payers') AS payers,
+                    OBJECT_ID('TG.dbo.bank_account_request_payers') AS req_payers;",
+            []
+        );
+        $r = $r ? $r[0] : [];
+        if (($r['direccion'] ?? null) === null) {
+            return 'al catálogo de cuentas le falta la columna Direccion: pida a Sistemas correr docs/sql/catalogo_cuentas_direccion.sql.';
+        }
+        if (($r['payers'] ?? null) === null || ($r['req_payers'] ?? null) === null) {
+            return 'faltan las tablas de razones sociales por cuenta: pida a Sistemas correr docs/sql/cuentas_proveedor_razones_sociales.sql.';
+        }
+        return null;
     }
 
 
@@ -188,8 +295,10 @@ class BankAccountRequestsModel extends Model
 
     /**
      * Aprueba: inserta la cuenta en CatalogosCuentasBancarias como 'Terceros' (cuenta en
-     * CuentaLocal, CLABE en Clave, emp_cod y Direccion) o, si ya existe, la liga a la fila
-     * existente (reactivándola y llenando solo Clave/emp_cod/Direccion vacíos). Todo en una
+     * CuentaLocal, CLABE en Clave y Direccion) o, si ya existe, la liga a la fila
+     * existente (reactivándola y llenando solo Clave/Direccion vacíos). emp_cod NO se toca: en el
+     * catálogo solo lo llevan las cuentas Propias. Las razones sociales que pueden pagar a la
+     * cuenta se agregan a bank_account_payers (sin quitar las que ya tenía). Todo en una
      * transacción; el UPDATE de estatus es condicional para que dos aprobaciones
      * simultáneas no dupliquen la cuenta.
      * Devuelve ['success', 'message', 'catalogo_id'?, 'ligada'?].
@@ -198,11 +307,10 @@ class BankAccountRequestsModel extends Model
     {
         $id = (int) $req['id'];
 
-        // Sin la columna Direccion el INSERT/UPDATE del catálogo truena: avisar qué falta en vez de un error genérico.
-        $col = $this->sql->select("SELECT COL_LENGTH('TG.dbo.CatalogosCuentasBancarias', 'Direccion') AS largo;", []);
-        if (!$col || $col[0]['largo'] === null) {
-            return ['success' => false, 'message' => 'No se aprobó la solicitud #' . $id . ': al catálogo de cuentas bancarias le falta la columna Direccion. '
-                . 'Pida a Sistemas correr el script docs/sql/catalogo_cuentas_direccion.sql y vuelva a intentarlo. La solicitud sigue pendiente.'];
+        // Sin las columnas/tablas nuevas el INSERT del catálogo truena: avisar qué script falta en vez de un error genérico.
+        $faltante = $this->esquema_faltante();
+        if ($faltante !== null) {
+            return ['success' => false, 'message' => 'No se aprobó la solicitud #' . $id . ': ' . $faltante . ' La solicitud sigue pendiente.'];
         }
 
         // Paso en curso, para decir en el mensaje dónde falló.
@@ -225,7 +333,6 @@ class BankAccountRequestsModel extends Model
             $cuenta    = trim((string) $req['num_cuenta']);
             $clabe     = trim((string) ($req['clabe'] ?? ''));
             $direccion = trim((string) ($req['benef_direccion'] ?? ''));
-            $empCod    = (int) $req['empresa_cod'] ?: null;
 
             // Ya existe si la CLABE está en CuentaLocal (cuentas viejas) o en Clave, o si la
             // misma cuenta ya está registrada en el mismo banco.
@@ -246,23 +353,22 @@ class BankAccountRequestsModel extends Model
                     'UPDATE [TG].[dbo].[CatalogosCuentasBancarias]
                      SET Activo = 1,
                          Clave     = COALESCE(NULLIF(Clave, \'\'), ?),
-                         emp_cod   = COALESCE(emp_cod, ?),
                          Direccion = COALESCE(NULLIF(Direccion, \'\'), ?),
                          FechaModificacion = GETDATE(), UsuarioModificacion = ?
                      WHERE Id = ?;',
-                    [$clabe ?: null, $empCod, $direccion ?: null, $userId, $catId]
+                    [$clabe ?: null, $direccion ?: null, $userId, $catId]
                 );
             } else {
                 $paso = 'agregar la cuenta al catálogo de cuentas bancarias';
                 $catId = (int) $this->sql->insert(
                     'INSERT INTO [TG].[dbo].[CatalogosCuentasBancarias]
                         (FechaAlta, CuentaLocal, Clave, Descripcion, TipoCuenta, Banco, Divisa,
-                         TitularCuenta, Tipo, emp_cod, Direccion, Activo, FechaRegistro, UsuarioRegistro, EntidadCuentaLocalABASwift)
-                     VALUES (CAST(GETDATE() AS DATE), ?, ?, ?, \'Otros Bancos Nacionales\', ?, ?, ?, \'Terceros\', ?, ?, 1, GETDATE(), ?, ?);',
+                         TitularCuenta, Tipo, Direccion, Activo, FechaRegistro, UsuarioRegistro, EntidadCuentaLocalABASwift)
+                     VALUES (CAST(GETDATE() AS DATE), ?, ?, ?, \'Otros Bancos Nacionales\', ?, ?, ?, \'Terceros\', ?, 1, GETDATE(), ?, ?);',
                     [
                         $cuenta, $clabe ?: null, $req['proveedor'], $req['banco'],
                         self::DIVISAS[$req['moneda']] ?? self::DIVISAS['PESOS'],
-                        $req['proveedor'], $empCod, $direccion ?: null, (string) $userId,
+                        $req['proveedor'], $direccion ?: null, (string) $userId,
                         trim((string) ($req['routing_number'] ?? '')) ?: null,  // ABA / routing number (cuentas USD)
                     ]
                 );
@@ -274,6 +380,19 @@ class BankAccountRequestsModel extends Model
 
             $paso = 'ligar la solicitud con la cuenta #' . $catId . ' del catálogo';
             $this->sql->update('UPDATE [TG].[dbo].[bank_account_requests] SET catalogo_cuenta_id = ? WHERE id = ?;', [$catId, $id]);
+
+            // Razones sociales que pueden pagarle: las de la solicitud se suman a las que ya tuviera la cuenta.
+            $paso = 'registrar las razones sociales que pueden pagar a la cuenta #' . $catId;
+            // insert(), no update(): update() ignora en silencio los queries sin la palabra "update".
+            $this->sql->insert(
+                'INSERT INTO [TG].[dbo].[bank_account_payers] (catalogo_cuenta_id, emp_cod, created_by)
+                 SELECT ?, p.emp_cod, ?
+                   FROM [TG].[dbo].[bank_account_request_payers] p
+                  WHERE p.request_id = ?
+                    AND NOT EXISTS (SELECT 1 FROM [TG].[dbo].[bank_account_payers] x
+                                     WHERE x.catalogo_cuenta_id = ? AND x.emp_cod = p.emp_cod);',
+                [$catId, $userId, $id, $catId]
+            );
             $paso = 'confirmar los cambios';
             $this->sql->commit();
             return ['success' => true, 'catalogo_id' => $catId, 'ligada' => $ligada,

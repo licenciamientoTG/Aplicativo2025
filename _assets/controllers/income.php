@@ -212,11 +212,12 @@ class Income{
 
     public function clients(){
         if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            // $gasolineras    = $this->clientesModel->get_gasolineras();
-            $clientes_debit = $this->clientesModel->get_debit_clients_list();
-            $clientes_credit = $this->clientesModel->get_credit_clients_list();
-            $empresas = $this->clientesModel->get_station_companies();
-            echo $this->twig->render($this->route . 'clients.html', compact('clientes_debit','clientes_credit','empresas'));
+            // STANDBY 2026-11-11: aquí solo se muestra "Estado de Cuenta Foto" (ver clients.html); las pestañas
+            // débito/crédito viven en clients_debit()/clients_credit(), así que no se cargan los catálogos.
+            // $clientes_debit = $this->clientesModel->get_debit_clients_list();
+            // $clientes_credit = $this->clientesModel->get_credit_clients_list();
+            // $empresas = $this->clientesModel->get_station_companies();
+            echo $this->twig->render($this->route . 'clients.html', ['modo' => 'todos', 'clientes_debit' => [], 'clientes_credit' => [], 'empresas' => []]);
         }
     }
 
@@ -1431,12 +1432,11 @@ public function balance_age()
             json_output(['success' => false, 'message' => 'No autorizado']);
             return;
         }
-        $fecha = $_POST['fecha'] ?? $_GET['fecha'] ?? date('Y-m-d');
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
-            json_output(['success' => false, 'message' => 'Fecha inválida']);
-            return;
-        }
-        $resumen = array_merge(['success' => true], $this->clientesModel->refresh_debit_snapshot($fecha));
+        // Foto v2: siempre el cierre de AYER (el cierre se reconstruye con la
+        // lectura de esta mañana); los días que falten los recupera procesar().
+        // La v1 (ClientesModel::refresh_debit_snapshot) ya no se llena.
+        // Spec: docs/superpowers/specs/2026-11-11-debit-clients-cierre-diario-design.md
+        $resumen = (new DebitClientsCierreModel)->procesar(date('Y-m-d', strtotime('-1 day')));
         if (PHP_SAPI === 'cli') {
             // Corrida por Task Scheduler: evita el warning "headers already
             // sent" de json_output() (ya hubo un echo previo) — mismo criterio
@@ -1453,15 +1453,19 @@ public function balance_age()
      */
     public function debit_snapshot_table(): void
     {
-        $rows = $this->clientesModel->get_debit_snapshot() ?: [];
-        $fechaFoto = null;
-        foreach ($rows as $r) {
-            $f = $r['fecha_desde'];
-            if ($fechaFoto === null || $f > $fechaFoto) {
-                $fechaFoto = $f;
-            }
+        // Foto v2 (TG.dbo.debit_clients_cierre): estado de cada cliente en el día pedido (default ayer)
+        $fecha = $_POST['fecha'] ?? date('Y-m-d', strtotime('-1 day'));
+        if (!is_string($fecha) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
+            json_output(['data' => [], 'fecha' => null, 'message' => 'Fecha inválida']);
+            return;
         }
-        json_output(['data' => $rows, 'fecha_foto' => $fechaFoto]);
+        $model  = new DebitClientsCierreModel;
+        $ultima = $model->ultimaCorridaOk();
+        $salida = ['data' => $model->fotoDelDia($fecha), 'fecha' => $fecha, 'ultima_corrida' => $ultima];
+        if (!$salida['data'] && !$model->diaProcesado($fecha)) {
+            $salida['message'] = "El cierre del $fecha no está procesado (última corrida: " . ($ultima ?? 'ninguna') . ').';
+        }
+        json_output($salida);
     }
 
     /**

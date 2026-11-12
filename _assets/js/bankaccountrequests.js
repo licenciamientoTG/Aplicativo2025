@@ -134,21 +134,18 @@
         }
         function info($el, texto, clase) { $el.text(texto).removeClass('ok mal').addClass(clase || ''); }
 
-        // Número con el que se busca duplicado en el catálogo: CLABE (MXN) o account number (USD)
-        function claveDuplicado() { return esUsd() ? $cuenta.val() : $clabe.val(); }
+        // Misma regla que bloquea al guardar: CLABE en cualquier banco, o cuenta en el mismo banco,
+        // ya registrada en Cuentas bancarias o en otra alta (pendiente, aprobada o borrador).
         function avisoDuplicado() {
-            var cuenta = claveDuplicado();
+            var usd = esUsd();
+            var datos = { cuenta: $cuenta.val(), clabe: usd ? '' : $clabe.val(), banco: $form.find('[name=banco]').val() || '' };
             clearTimeout(timer);
-            if (cuenta.length < 6) { $aviso.addClass('d-none'); return; }
+            if (datos.cuenta.length < 4 && datos.clabe.length < 18) { $aviso.addClass('d-none'); return; }
             timer = setTimeout(function () {
-                $.getJSON($form.data('check-url'), { cuenta: cuenta }).done(function (r) {
-                    var partes = [];
-                    (r.catalogo || []).forEach(function (c) {
-                        partes.push('Ya existe en el catálogo: ' + escHtml(c.descripcion) + (c.banco ? ' · ' + escHtml(c.banco) : '') + ' (' + (c.activo ? 'activa' : 'inactiva') + ')');
-                    });
-                    if (r.solicitudes > 0) { partes.push('Hay ' + r.solicitudes + ' solicitud(es) pendiente(s) con esta cuenta'); }
-                    if (partes.length) {
-                        $aviso.html('<i class="fas fa-exclamation-triangle"></i> ' + partes.join('<br>') + '<br><small>Puede continuar; Tesorería verá este aviso.</small>').removeClass('d-none');
+                $.getJSON($form.data('check-url'), datos).done(function (r) {
+                    if (r.mensaje) {
+                        $aviso.html('<i class="fas fa-ban"></i> ' + escHtml(r.mensaje) + '<br><small>No se podrá guardar esta solicitud.</small>')
+                              .removeClass('d-none alert-warning').addClass('alert-danger');
                     } else {
                         $aviso.addClass('d-none');
                     }
@@ -163,8 +160,10 @@
                 avisoDuplicado();
             } else {
                 info($info, n === 0 ? '' : (n >= 6 ? n + ' dígitos' : 'Mínimo 6 dígitos'), n === 0 ? '' : (n >= 6 ? 'ok' : 'mal'));
+                avisoDuplicado();
             }
         });
+        $form.find('[name=banco]').on('change', avisoDuplicado);
         $clabe.on('input', function () {
             var n = soloDigitos($(this)).length;
             info($('#ba_clabe_info'), n === 0 ? '' : (n === 18 ? 'CLABE de 18 dígitos' : n + ' de 18 dígitos'), n === 0 ? '' : (n === 18 ? 'ok' : 'mal'));
@@ -186,8 +185,18 @@
             $('#ba_enviar_txt').text(this.files && this.files.length ? 'Enviar a Tesorería' : 'Guardar');
         });
 
+        // Razones sociales que pueden pagar: casillas, al menos una
+        var $pagadores = $('#ba_pagadores');
+        $pagadores.on('change', 'input', function () { $pagadores.removeClass('is-invalid'); });
+
         $form.on('submit', function (e) {
             e.preventDefault();
+            if (!$pagadores.find('input:checked').length) {
+                $pagadores.addClass('is-invalid');
+                $('#ba_error').text('Seleccione al menos una razón social que pueda pagar a esta cuenta.').removeClass('d-none');
+                $pagadores[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
             var $btn = $('#ba_enviar').prop('disabled', true);
             var $err = $('#ba_error').addClass('d-none');
             $.ajax({

@@ -66,6 +66,7 @@
                         <th>Divisa</th>
                         <th class="text-center">Emp.</th>
                         <th class="text-center">Prov.</th>
+                        <th>Pueden pagar</th>
                         <th>Dirección</th>
                         <th>Solicitud</th>
                         <th class="text-center">Activo</th>
@@ -148,6 +149,16 @@
                             </datalist>
                             <small class="text-muted">Este código es el que el layout usa para elegir la cuenta del proveedor (prioridad sobre el match por nombre).</small>
                         </div>
+                        <div class="col-12" id="ed_pagadores_wrap">
+                            <label class="form-label form-label-sm">Razones sociales que pueden pagarle <small class="text-muted">(solo cuentas de proveedores / Terceros)</small></label>
+                            <div class="d-flex flex-wrap gap-1 border rounded p-2" style="max-height:9rem;overflow:auto;">
+                                {% for e in empresas %}
+                                <label class="form-check form-check-inline small mb-0 me-2" style="min-width:14rem;">
+                                    <input class="form-check-input ed-pagador" type="checkbox" name="pagadores[]" value="{{ e.cod }}"> {{ e.den }}
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </div>
                         <div class="col-12">
                             <label class="form-label form-label-sm">Dirección</label>
                             <input type="text" class="form-control form-control-sm" name="Direccion" id="ed_direccion" maxlength="300" placeholder="Calle, número, colonia, ciudad, estado, C.P., país">
@@ -195,7 +206,7 @@ function initBankAccountsTable() {
                 text: '<i class="fas fa-file-excel"></i> Excel',
                 className: 'btn btn-sm btn-success',
                 title: 'Cuentas Bancarias',
-                exportOptions: { columns: [0,1,2,3,4,5,6,7,8,9,10,11,12] }
+                exportOptions: { columns: [0,1,2,3,4,5,6,7,8,9,10,11,12,13] }
             },
             {
                 extend: 'colvis',
@@ -214,7 +225,7 @@ function initBankAccountsTable() {
             error: function() { alertify.error('Error al cargar las cuentas'); }
         },
         columns: [
-            { data: 'Id', className: 'text-center font-monospace' },
+            { data: 'Id', type: 'num', className: 'text-center font-monospace' },
             { data: 'Descripcion', defaultContent: '—' },
             { data: 'CuentaLocal', className: 'font-monospace', render: function(d){ return d || '—'; } },
             { data: 'Clave', className: 'font-monospace', defaultContent: '—', render: function(d){ return d ? $('<div>').text(d).html() : '—'; } },
@@ -224,6 +235,15 @@ function initBankAccountsTable() {
             { data: 'Divisa', defaultContent: '—', render: function(d){ return d || '—'; } },
             { data: 'emp_cod', className: 'text-center', defaultContent: '—', render: function(d){ return (d === null || d === '') ? '—' : d; } },
             { data: 'proveedor_cod', className: 'text-center', defaultContent: '—', render: function(d){ return (d === null || d === '') ? '—' : d; } },
+            {
+                data: 'pagadores', defaultContent: '—', orderable: false,
+                render: function(d, type, row) {
+                    if (row.Tipo === 'Propias') { return '—'; }
+                    var nombres = (d || []).map(function(p){ return p.den; });
+                    if (!nombres.length) { return type === 'display' ? '<span class="text-muted small">Sin definir</span>' : ''; }
+                    return type === 'display' ? '<span class="small">' + escHtml(nombres.join(', ')) + '</span>' : nombres.join(', ');
+                }
+            },
             { data: 'Direccion', defaultContent: '—', render: function(d){ return d ? escHtml(d) : '—'; } },
             {
                 data: 'solicitud_id', defaultContent: '—',
@@ -251,7 +271,7 @@ function initBankAccountsTable() {
                 }
             }
         ],
-        order: [[1, 'asc']],
+        order: [[0, 'desc']],
         pageLength: 50,
         initComplete: function () {
             var api = this.api();
@@ -303,6 +323,8 @@ function openNew() {
     $('#editAccountForm')[0].reset();
     $('#ed_id').val('');
     $('#ed_activo').val('1');
+    $('.ed-pagador').prop('checked', false);
+    togglePagadores();
     setCuentaHint();
     $('#editAccountTitle').html('<i class="fas fa-plus me-2"></i>Nueva Cuenta Bancaria');
     $('#editAccountModal').modal('show');
@@ -324,6 +346,9 @@ function openEdit(id) {
     $('#ed_emp_cod').val(row.emp_cod ?? '');
     $('#ed_proveedor_cod').val(row.proveedor_cod ?? '');
     $('#ed_direccion').val(row.Direccion || '');
+    var pagan = (row.pagadores || []).map(function(p){ return String(p.cod); });
+    $('.ed-pagador').each(function(){ this.checked = pagan.indexOf(this.value) !== -1; });
+    togglePagadores();
 
     setCuentaHint();
     $('#editAccountTitle').html('<i class="fas fa-edit me-2"></i>Editar Cuenta Bancaria');
@@ -331,6 +356,12 @@ function openEdit(id) {
 }
 
 $('#ed_cuentalocal').on('keyup', setCuentaHint);
+
+// Quién puede pagar solo aplica a cuentas de proveedores (Terceros); en Propias se usa emp_cod
+function togglePagadores() {
+    $('#ed_pagadores_wrap').toggle($('#ed_tipo').val() === 'Terceros');
+}
+$('#ed_tipo').on('change', togglePagadores);
 
 $('#editAccountForm').on('submit', function(e) {
     e.preventDefault();

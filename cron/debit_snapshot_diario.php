@@ -1,12 +1,14 @@
 <?php
 /**
- * Tarea programada: genera la foto diaria de TG.dbo.debit_clients_snapshot
- * para todos los clientes débito activos. Equivalente al backfill manual
- * corrido una vez el 2026-09-17, pero ejecutado cada día.
+ * Tarea programada: foto diaria v2 de clientes débito — cierre del DÍA DE
+ * AYER en TG.dbo.debit_clients_cierre (bitácora en debit_clients_cierre_runs).
+ * Recupera solos los días que no se procesaron (hasta 31).
+ * Spec: docs/superpowers/specs/2026-11-11-debit-clients-cierre-diario-design.md
  *
- * Configurar en Programador de Tareas de Windows a las 06:00 AM:
- *   Programa:   php
- *   Argumentos: C:\ruta\AplicativoPhp\cron\debit_snapshot_diario.php
+ * Tarea sya_debit_snapshot_diario en 192.168.0.3, diaria a las 08:00 AM
+ * (el último corte del día, turno 41, se cierra a las 06:00):
+ *   cmd.exe /d /c C:\php\php.exe cron\debit_snapshot_diario.php >> logs\debit_snapshot_diario.log 2>&1
+ *   Iniciar en: C:\inetpub\wwwroot\TG_PHP
  *
  * Nota: la ruta HTTP /income/debit_snapshot_refresh NO sirve para el cron
  * porque index.php exige sesión antes de despachar al controlador.

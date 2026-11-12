@@ -298,7 +298,7 @@ class CuentasBancariasModel extends Model {
                 WHERE r.catalogo_cuenta_id = c.Id AND r.status = 2
                 ORDER BY r.id DESC
             ) sol
-            ORDER BY c.Descripcion, c.Banco, c.CuentaLocal
+            ORDER BY c.Id DESC
         ";
         return $this->sql->select($query) ?: [];
     }
@@ -449,6 +449,59 @@ class CuentasBancariasModel extends Model {
         ";
         $rows = $this->sql->select($query, [$proveedor_cod, $proveedor_cod, $like, $like, $proveedor_cod]);
         return $rows ? $rows[0] : false;
+    }
+
+    /* ----------------------------------------------------------------- */
+    /* Razones sociales que pueden pagar a una cuenta de proveedor        */
+    /* (TG.dbo.bank_account_payers; script cuentas_proveedor_razones_sociales.sql) */
+    /* ----------------------------------------------------------------- */
+
+    /** Empresas propias (cod, den) para elegir quién puede pagar. */
+    public function empresas() : array {
+        return $this->sql->select('SELECT cod, den FROM [TG].[dbo].[razones_sociales_pago] WHERE activo = 1 ORDER BY den;', []) ?: [];
+    }
+
+    /** [catalogo_cuenta_id => [['cod' => .., 'den' => ..], ...]] de todas las cuentas. */
+    public function pagadores_por_cuenta() : array {
+        $rows = $this->sql->select(
+            'SELECT p.catalogo_cuenta_id, p.emp_cod AS cod, e.den
+               FROM [TG].[dbo].[bank_account_payers] p
+               LEFT JOIN [TG].[dbo].[razones_sociales_pago] e ON e.cod = p.emp_cod
+              ORDER BY e.den;',
+            []
+        ) ?: [];
+        $map = [];
+        foreach ($rows as $r) {
+            $map[(int) $r['catalogo_cuenta_id']][] = ['cod' => (int) $r['cod'], 'den' => (string) ($r['den'] ?? $r['cod'])];
+        }
+        return $map;
+    }
+
+    /** Reemplaza las razones sociales que pueden pagar a la cuenta por $empCods. */
+    public function set_pagadores(int $cuentaId, array $empCods, $usuario_id) : bool {
+        $empCods = array_values(array_unique(array_filter(array_map('intval', $empCods))));
+        $this->sql->beginTransaction();
+        try {
+            $this->sql->delete('DELETE FROM [TG].[dbo].[bank_account_payers] WHERE catalogo_cuenta_id = ?;', [$cuentaId]);
+            foreach ($empCods as $cod) {
+                $this->sql->insert(
+                    'INSERT INTO [TG].[dbo].[bank_account_payers] (catalogo_cuenta_id, emp_cod, created_by) VALUES (?, ?, ?);',
+                    [$cuentaId, $cod, (int) $usuario_id]
+                );
+            }
+            $this->sql->commit();
+            return true;
+        } catch (Throwable $e) {
+            $this->sql->rollBack();
+            error_log('CuentasBancariasModel::set_pagadores(#' . $cuentaId . '): ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /** Id de la cuenta por CuentaLocal exacta (para ubicar la recién creada en create_admin). */
+    public function id_por_cuenta_local(string $cuentaLocal) : int {
+        $r = $this->sql->select('SELECT TOP 1 Id FROM [TG].[dbo].[CatalogosCuentasBancarias] WHERE CuentaLocal = ? ORDER BY Id DESC;', [$cuentaLocal]);
+        return $r ? (int) $r[0]['Id'] : 0;
     }
 
     public function buscar_cuenta_tercero($search) {

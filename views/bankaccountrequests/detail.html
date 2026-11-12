@@ -71,7 +71,7 @@
 
     <div class="card border-0 shadow-sm mb-3"><div class="card-body">
         <div class="row g-3">
-            <div class="col-md-4 ba-dato"><label>Razón social</label><div>{{ solicitud.empresa }}</div></div>
+            <div class="col-md-4 ba-dato"><label>Pueden pagarle</label><div>{{ solicitud.pagadores|map(p => p.den)|join(', ') }}</div></div>
             <div class="col-md-4 ba-dato"><label>Proveedor</label><div class="fw-semibold">{{ solicitud.proveedor }}</div></div>
             <div class="col-md-4 ba-dato"><label>Departamento</label><div>{{ solicitud.departamento }}</div></div>
             <div class="col-md-4 ba-dato"><label>Banco</label><div>{{ solicitud.banco }} <span class="text-muted">({{ solicitud.clave_banco }})</span></div></div>

@@ -3,6 +3,7 @@
 {% block title %}{{ solicitud ? (solicitud.status == 5 ? 'Continuar borrador' : 'Corregir solicitud') : 'Nueva solicitud' }}{% endblock %}
 {% block menutitle %}Pago extraordinario{% endblock %}
 {% block mycss %}
+<link rel="stylesheet" href="{{ PLUGINS }}select2/css/select2.min.css">
 <style>
     .ep-form { font-size:.95rem; }
     /* Tarjetas de motivo: la seleccionada lleva borde azul y fondo suave */
@@ -39,6 +40,13 @@
     /* Campo llenado desde el CFDI */
     .ep-form .ep-cfdi { background-color:#f0fdf4; border-color:#86efac; }
     .ep-rfc { font-size:.75rem; color:#64748b; margin-top:.2rem; min-height:1rem; }
+    .ep-linea .select2-container { width:100% !important; }
+    .ep-linea .select2-container .select2-selection--single { height:calc(1.5em + .75rem + 2px); border-color:#ced4da; border-radius:.375rem; }
+    .ep-linea .select2-container .select2-selection--single .select2-selection__rendered { line-height:calc(1.5em + .75rem); padding-left:.75rem; }
+    .ep-linea .select2-container .select2-selection--single .select2-selection__arrow { height:calc(1.5em + .75rem); }
+    .ep-linea .ep-prov-select.ep-cfdi + .select2-container .select2-selection { border-color:#16a34a; background:#f0fdf4; }
+    .ep-prov-op small { color:#64748b; }
+    .ep-prov-aviso { font-size:.75rem; margin-top:.2rem; min-height:1rem; color:#b45309; }
     .ep-monto-check { font-size:.75rem; margin-top:.2rem; min-height:1rem; }
     .ep-monto-check.ok { color:#15803d; }
     .ep-monto-check.mal { color:#b91c1c; font-weight:600; }
@@ -71,7 +79,7 @@
 {% endblock %}
 {% block content %}
 <div class="ep-form">
-<form id="form_extra" enctype="multipart/form-data" data-doc-url="{{ url('extrapayments.doc_view', {doc_id: 0}) }}" data-save-url="{{ url('extrapayments.save') }}" data-detail-url="{{ url('extrapayments.detail', {id: 0}) }}" data-edit-url="{{ url('extrapayments.edit', {id: 0}) }}" autocomplete="off">
+<form id="form_extra" enctype="multipart/form-data" data-cfdi-obligatorio="{{ cfdi_obligatorio ? 1 : 0 }}" data-doc-url="{{ url('extrapayments.doc_view', {doc_id: 0}) }}" data-prov-url="{{ url('extrapayments.proveedores') }}" data-save-url="{{ url('extrapayments.save') }}" data-detail-url="{{ url('extrapayments.detail', {id: 0}) }}" data-edit-url="{{ url('extrapayments.edit', {id: 0}) }}" autocomplete="off">
     {% if solicitud %}<input type="hidden" name="id" value="{{ solicitud.id }}">{% endif %}
 
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 border-bottom pb-3 mb-3">
@@ -156,7 +164,7 @@
             <div class="ep-archivo" data-tipo="xml">
                 <i class="fas fa-file-code ep-archivo-ico"></i>
                 <div>
-                    <div class="ep-archivo-tit">XML de la factura (CFDI) <span class="ep-req" title="Obligatorio para enviar">*</span></div>
+                    <div class="ep-archivo-tit">XML de la factura (CFDI) {% if cfdi_obligatorio %}<span class="ep-req" title="Obligatorio para enviar">*</span>{% else %}<span class="text-muted fw-normal text-lowercase">(opcional por ahora)</span>{% endif %}</div>
                     <div class="ep-archivo-nombre text-muted">Sin archivo · llena proveedor, monto, factura y fecha</div>
                 </div>
                 <input type="hidden" name="lines[__I__][xml_document_id]" class="ep-doc-id">
@@ -177,7 +185,8 @@
         <div class="ep-seccion">Datos de la factura <span class="ep-seccion-nota">se llenan con el XML</span></div>
         <div class="row g-3">
             <div class="col-md-5"><label class="ep-lbl" for="ep__I___proveedor">Proveedor <span class="ep-req" title="Obligatorio">*</span></label>
-                <input type="text" id="ep__I___proveedor" name="lines[__I__][proveedor]" maxlength="200" class="form-control ep-prov-input"></div>
+                <select id="ep__I___proveedor" name="lines[__I__][proveedor_cuenta_id]" class="form-select ep-prov-select"></select>
+                <div class="ep-prov-aviso"></div></div>
             <div class="col-md-2"><label class="ep-lbl" for="ep__I___factura">Factura / folio</label>
                 <input type="text" id="ep__I___factura" name="lines[__I__][factura]" maxlength="60" class="form-control"></div>
             <div class="col-md-2"><label class="ep-lbl" for="ep__I___fecha_factura">Emisión</label>
@@ -215,5 +224,7 @@
     // Renglones existentes (edición tras rechazo). Flag 15 = JSON_HEX_TAG|AMP|APOS|QUOT: seguro dentro de <script>.
     window.EP_LINEAS = {{ (solicitud ? solicitud.lines : [])|json_encode(15)|raw }};
 </script>
+<script src="{{ PLUGINS }}select2/js/select2.full.min.js"></script>
+<script src="{{ PLUGINS }}select2/js/i18n/es.js"></script>
 <script src="{{ js_v('extrapayments.js') }}"></script>
 {% endblock %}

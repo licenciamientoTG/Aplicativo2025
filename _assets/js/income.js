@@ -3632,6 +3632,8 @@ function anticipos_debit_table(mode) {
 // ── Estado de Cuenta Foto (snapshot diario, tab aislado) ────────────────────
 
 function debit_snapshot_table() {
+    // Foto v2: cierre del día elegido por cliente (TG.dbo.debit_clients_cierre).
+    // Spec: docs/superpowers/specs/2026-11-11-debit-clients-cierre-diario-design.md
     if ($.fn.DataTable.isDataTable('#debit_snapshot_table')) {
         $('#debit_snapshot_table').DataTable().destroy();
         $('#debit_snapshot_table thead .filter').remove();
@@ -3652,7 +3654,16 @@ function debit_snapshot_table() {
     });
 
     var numFmt = $.fn.dataTable.render.number(',', '.', 2, '$');
-    var moneyCols = [2, 3, 4, 5, 6, 7];
+    // NULL (sin dato: primera foto o día recuperado) se muestra como "—", no como $0.00
+    var money = function (d, type) {
+        if (d === null || d === undefined || d === '') return type === 'display' ? '<span class="text-muted">—</span>' : '';
+        return type === 'display' ? numFmt.display(d) : d;
+    };
+    var m = function (key, visible) {
+        return { data: key, render: money, className: 'text-nowrap text-end', visible: visible !== false };
+    };
+    // Índices de las columnas de monto (las de abajo, a partir de la 3)
+    var moneyCols = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
     $('#debit_snapshot_table').DataTable({
         ordering: true,
@@ -3660,13 +3671,21 @@ function debit_snapshot_table() {
         dom: '<"top"Bf>rt<"bottom"lip>',
         paging: true,
         pageLength: 100,
-        buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
+        buttons: [
+            { extend: 'excel', className: 'btn btn-success', text: ' Excel', exportOptions: { columns: ':visible' } },
+            { extend: 'colvis', className: 'btn btn-secondary', text: 'Columnas' }
+        ],
         ajax: {
             method: 'POST',
             url: '/income/debit_snapshot_table',
+            data: { fecha: $('#debit_snapshot_dia').val() },
             timeout: 60000,
             dataSrc: function (json) {
-                $('#debit_snapshot_fecha').text(json.fecha_foto || '—');
+                $('#debit_snapshot_fecha').text(json.fecha || '—');
+                $('#debit_snapshot_ultima').text(json.ultima_corrida || '—');
+                if (json.message) {
+                    alertify.myAlert('<div class="text-center text-warning"><h5>' + json.message + '</h5></div>');
+                }
                 return json.data || [];
             },
             error: function () {
@@ -3677,14 +3696,23 @@ function debit_snapshot_table() {
         },
         columns: [
             { data: 'codcli' },
-            { data: 'cliente',        className: 'text-nowrap' },
-            { data: 'saldo_inicial',   render: numFmt, className: 'text-nowrap text-end' },
-            { data: 'anticipos_dia',   render: numFmt, className: 'text-nowrap text-end' },
-            { data: 'consumos_dia',    render: numFmt, className: 'text-nowrap text-end' },
-            { data: 'saldo_final',     render: numFmt, className: 'text-nowrap text-end' },
-            { data: 'saldo_sistema',   render: numFmt, className: 'text-nowrap text-end' },
-            { data: 'saldo_vehiculos', render: numFmt, className: 'text-nowrap text-end' },
-            { data: 'fecha_desde',     className: 'text-center' },
+            // El nombre viene de ControlGas (captura libre): se escapa para no inyectar HTML
+            { data: 'cliente', className: 'text-nowrap', render: $.fn.dataTable.render.text() },
+            { data: 'debglo', className: 'text-center', render: function (d) { return parseInt(d, 10) === 1 ? 'Sí' : 'No'; } },
+            m('saldo_ini_sistema'),
+            m('saldo_ini_calc_desp'),
+            m('ajuste_retro_desp'),
+            m('anticipos_dia'),
+            m('consumos_desp_dia'),
+            m('consumos_cortes_dia'),
+            m('desfase_dia'),
+            m('saldo_fin_calc_desp'),
+            m('saldo_fin_calc_cortes'),
+            m('saldo_fin_sistema'),
+            m('saldo_fin_vehiculos'),
+            m('saldo_ini_calc_cortes', false),
+            m('ajuste_retro_cortes', false),
+            { data: 'fecha_desde', className: 'text-center', visible: false },
         ],
         deferRender: true,
         initComplete: function () { $('.table-responsive').removeClass('loading'); },
@@ -3692,7 +3720,7 @@ function debit_snapshot_table() {
             var api = this.api();
             moneyCols.forEach(function (idx) {
                 var total = api.column(idx, { search: 'applied' }).data()
-                    .reduce(function (a, b) { return (parseFloat(a) || 0) + (parseFloat(b) || 0); }, 0);
+                    .reduce(function (a, b) { return a + (parseFloat(b) || 0); }, 0);
                 $(api.column(idx).footer()).html('$' + total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             });
         }

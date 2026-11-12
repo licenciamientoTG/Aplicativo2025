@@ -7,6 +7,11 @@
 <style>
     .ba-form .select2-container { width:100% !important; }
     .ba-form { font-size:1rem; }
+    .ba-pagadores { display:grid; grid-template-columns:repeat(auto-fill, minmax(15rem, 1fr)); gap:.25rem .75rem; border:1px solid #ced4da; border-radius:.375rem; padding:.5rem .75rem; max-height:14rem; overflow:auto; }
+    .ba-pagadores.is-invalid { border-color:#dc3545; }
+    .ba-pagador { display:flex; align-items:center; gap:.4rem; padding:.2rem .25rem; border-radius:.25rem; cursor:pointer; }
+    .ba-pagador:hover { background:#f1f5f9; }
+    .ba-pagador .form-check-input { float:none; margin:0; }
     .ba-form .select2-container .select2-selection--single { height:calc(1.5em + .75rem + 2px); border-color:#ced4da; border-radius:.375rem; }
     .ba-form .select2-container .select2-selection--single .select2-selection__rendered { line-height:calc(1.5em + .75rem); font-size:1rem; padding-left:.75rem; }
     .ba-form .select2-container .select2-selection--single .select2-selection__arrow { height:calc(1.5em + .75rem); }
@@ -50,11 +55,16 @@
     <div class="card border-0 shadow-sm mb-3"><div class="card-body">
         <h6 class="mb-3">Cuenta</h6>
         <div class="row g-3">
-            <div class="col-md-6 col-lg-2"><label>Razón social <span class="ba-req">*</span></label>
-                <select name="empresa_cod" class="form-select" required>
-                    <option value="">Seleccione...</option>
-                    {% for e in empresas %}<option value="{{ e.cod }}">{{ e.den }}</option>{% endfor %}
-                </select></div>
+            <div class="col-12"><label>Razones sociales que pueden pagarle <span class="ba-req">*</span></label>
+                <div class="ba-pagadores" id="ba_pagadores">
+                    {% for e in empresas %}
+                    <label class="form-check ba-pagador mb-0">
+                        <input class="form-check-input" type="checkbox" name="empresa_cods[]" value="{{ e.cod }}">
+                        <span class="form-check-label">{{ e.den }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                <div class="ba-cuenta-info">Es una cuenta del proveedor: cualquiera de las razones sociales elegidas podrá pagarle. Tesorería puede agregar más después.</div></div>
             <div class="col-md-6 col-lg-2"><label>Banco <span class="ba-req">*</span></label>
                 <select name="banco" class="form-select" required>
                     <option value="">Seleccione...</option>

@@ -9,6 +9,21 @@
  */
 class ExtraPaymentRequestsModel extends Model
 {
+    /** Motivo legible de la última falla de create()/update(), para mostrarlo al usuario. */
+    public string $ultimoError = '';
+
+    /** Columnas de XML/PDF por renglón que faltan en la BD (script docs/sql/pagos_extraordinarios_cfdi_lineas.sql). */
+    public function columnas_cfdi_faltantes() : array {
+        $faltan = [];
+        foreach (['xml_document_id', 'pdf_document_id', 'cfdi_uuid', 'proveedor_cuenta_id'] as $col) {
+            $r = $this->sql->select("SELECT COL_LENGTH('TG.dbo.extra_payment_lines', ?) AS largo;", [$col]);
+            if (!$r || $r[0]['largo'] === null) {
+                $faltan[] = $col;
+            }
+        }
+        return $faltan;
+    }
+
     /** Encabezados para listados (solicitante, motivo, total, estatus...). */
     private function list_base_query() : string {
         return '
@@ -34,7 +49,9 @@ class ExtraPaymentRequestsModel extends Model
         if (count($lines) === 0) {
             return false;
         }
+        $this->ultimoError = '';
         $total = ExtraPaymentWorkflow::total($lines);
+        $paso = 'validar el motivo';
 
         $this->sql->beginTransaction();
         try {
@@ -44,9 +61,11 @@ class ExtraPaymentRequestsModel extends Model
             );
             if (!$reason) {
                 $this->sql->rollBack();
+                $this->ultimoError = 'el motivo seleccionado ya no está activo; elija otro';
                 return false;
             }
 
+            $paso = 'registrar el encabezado de la solicitud';
             $id = $this->sql->insert('
                 INSERT INTO [TG].[dbo].[extra_payment_requests]
                     (fecha, user_id, departamento_id, tipo, reason_id, motivo_otros, total, status)
@@ -64,17 +83,21 @@ class ExtraPaymentRequestsModel extends Model
             $id = (int)$id;
             if ($id <= 0) {
                 $this->sql->rollBack();
+                $this->ultimoError = 'la base de datos no devolvió el folio de la solicitud nueva';
                 return false;
             }
 
+            $paso = 'guardar los renglones';
             $this->insert_lines($id, $lines);
+            $paso = 'registrar el historial';
             $this->audit($id, $userId, $draft ? 'CREATE_DRAFT' : 'CREATE', 'Total ' . number_format($total, 2, '.', ''));
 
             $this->sql->commit();
             return $id;
         } catch (Throwable $e) {
             $this->sql->rollBack();
-            error_log('ExtraPaymentRequestsModel::create: ' . $e->getMessage());
+            error_log('ExtraPaymentRequestsModel::create (al ' . $paso . '): ' . $e->getMessage());
+            $this->ultimoError = 'falló al ' . $paso;
             return false;
         }
     }
@@ -88,7 +111,9 @@ class ExtraPaymentRequestsModel extends Model
         if (count($lines) === 0) {
             return false;
         }
+        $this->ultimoError = '';
         $total = ExtraPaymentWorkflow::total($lines);
+        $paso = 'validar el motivo';
 
         $this->sql->beginTransaction();
         try {
@@ -98,8 +123,10 @@ class ExtraPaymentRequestsModel extends Model
             );
             if (!$reason) {
                 $this->sql->rollBack();
+                $this->ultimoError = 'el motivo seleccionado ya no está activo; elija otro';
                 return false;
             }
+            $paso = 'actualizar el encabezado de la solicitud';
             $prev = $this->sql->select('SELECT status FROM [TG].[dbo].[extra_payment_requests] WHERE id = ?', [$id]);
             $wasDraft = $prev && (int)$prev[0]['status'] === ExtraPaymentWorkflow::ST_BORRADOR;
 
@@ -122,30 +149,37 @@ class ExtraPaymentRequestsModel extends Model
             ]);
             if ($affected !== 1) {
                 $this->sql->rollBack();
+                $this->ultimoError = 'la solicitud ya cambió de estatus (alguien más la movió); recargue la página';
                 return false;
             }
+            $paso = 'reemplazar los renglones';
 
             // delete() devuelve true aunque borre 0 filas; false solo ante fallo.
             if ($this->sql->delete('DELETE FROM [TG].[dbo].[extra_payment_lines] WHERE request_id = ?', [$id]) === false) {
                 $this->sql->rollBack();
+                $this->ultimoError = 'no se pudieron borrar los renglones anteriores';
                 return false;
             }
             $this->insert_lines($id, $lines);
+            $paso = 'reiniciar las firmas previas';
             // updateSafe() devuelve false ante error; 0 filas es válido (sin aprobaciones).
             if ($this->sql->updateSafe(
                 'UPDATE [TG].[dbo].[extra_payment_approvals] SET is_active = 0 WHERE request_id = ? AND is_active = 1',
                 [$id]
             ) === false) {
                 $this->sql->rollBack();
+                $this->ultimoError = 'no se pudieron reiniciar las firmas previas';
                 return false;
             }
+            $paso = 'registrar el historial';
             $this->audit($id, $userId, $draft ? 'UPDATE_DRAFT' : ($wasDraft ? 'SUBMIT' : 'RESUBMIT'), 'Total ' . number_format($total, 2, '.', ''));
 
             $this->sql->commit();
             return true;
         } catch (Throwable $e) {
             $this->sql->rollBack();
-            error_log('ExtraPaymentRequestsModel::update: ' . $e->getMessage());
+            error_log('ExtraPaymentRequestsModel::update (al ' . $paso . '): ' . $e->getMessage());
+            $this->ultimoError = 'falló al ' . $paso;
             return false;
         }
     }
@@ -175,10 +209,11 @@ class ExtraPaymentRequestsModel extends Model
         $request['lines'] = $this->sql->select('
             SELECT l.*, e.den AS empresa_nombre
             FROM [TG].[dbo].[extra_payment_lines] l
-            LEFT JOIN [SG12].[dbo].[Empresas] e ON e.cod = l.empresa_cod
+            LEFT JOIN [TG].[dbo].[razones_sociales_pago] e ON e.cod = l.empresa_cod
             WHERE l.request_id = ?
             ORDER BY l.id ASC
         ', [$id]) ?: [];
+        $request['lines'] = $this->con_cuenta_proveedor($request['lines']);
 
         $request['approvals'] = $this->sql->select('
             SELECT a.*, u.Nombre AS aprobador
@@ -260,7 +295,7 @@ class ExtraPaymentRequestsModel extends Model
             FROM [TG].[dbo].[extra_payment_requests] r
             JOIN [TG].[dbo].[extra_payment_lines] l ON l.request_id = r.id
             LEFT JOIN [TG].[dbo].[extra_payment_reasons] rs ON rs.id = r.reason_id
-            LEFT JOIN [SG12].[dbo].[Empresas] e ON e.cod = l.empresa_cod
+            LEFT JOIN [TG].[dbo].[razones_sociales_pago] e ON e.cod = l.empresa_cod
             LEFT JOIN [TG].[dbo].[extra_payment_payments] p ON p.request_id = r.id
             WHERE r.id IN (' . implode(',', $ids) . ')' . $extra . '
             ORDER BY r.id DESC, l.id ASC', $params) ?: [];
@@ -459,14 +494,48 @@ class ExtraPaymentRequestsModel extends Model
         ]);
     }
 
+    /**
+     * Agrega a cada renglón la cuenta del proveedor (banco, cuenta, CLABE) si tiene
+     * proveedor_cuenta_id; sin la columna (script pendiente) devuelve los renglones igual.
+     */
+    private function con_cuenta_proveedor(array $lines) : array {
+        $ids = [];
+        foreach ($lines as $l) {
+            if (!empty($l['proveedor_cuenta_id'])) {
+                $ids[(int) $l['proveedor_cuenta_id']] = true;
+            }
+        }
+        $cuentas = [];
+        if ($ids) {
+            $ids = array_keys($ids);
+            $rows = $this->sql->select(
+                'SELECT Id, Banco, CuentaLocal, Clave, Divisa, Activo FROM [TG].[dbo].[CatalogosCuentasBancarias]
+                  WHERE Id IN (' . implode(',', array_fill(0, count($ids), '?')) . ');',
+                $ids
+            ) ?: [];
+            foreach ($rows as $r) {
+                $cuentas[(int) $r['Id']] = $r;
+            }
+        }
+        foreach ($lines as &$l) {
+            $c = $cuentas[(int) ($l['proveedor_cuenta_id'] ?? 0)] ?? null;
+            $l['cuenta_banco']  = $c ? trim((string) $c['Banco']) : '';
+            $l['cuenta_numero'] = $c ? trim((string) $c['CuentaLocal']) : '';
+            $l['cuenta_clabe']  = $c ? trim((string) $c['Clave']) : '';
+            $l['cuenta_activa'] = $c ? (int) $c['Activo'] === 1 : false;
+        }
+        unset($l);
+        return $lines;
+    }
+
     private function insert_lines(int $requestId, array $lines) : void {
         foreach ($lines as $line) {
             $this->sql->insert('
                 INSERT INTO [TG].[dbo].[extra_payment_lines]
                     (request_id, empresa_cod, centro_costos, proveedor, factura, fecha_factura,
                      orden_compra, descripcion, monto, fecha_pago_requerida, comentario_urgencia,
-                     xml_document_id, pdf_document_id, cfdi_uuid)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     xml_document_id, pdf_document_id, cfdi_uuid, proveedor_cuenta_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ', [
                 $requestId,
                 (int)$line['empresa_cod'],
@@ -482,6 +551,7 @@ class ExtraPaymentRequestsModel extends Model
                 !empty($line['xml_document_id']) ? (int)$line['xml_document_id'] : null,
                 !empty($line['pdf_document_id']) ? (int)$line['pdf_document_id'] : null,
                 $this->nullable($line['cfdi_uuid'] ?? null),
+                !empty($line['proveedor_cuenta_id']) ? (int)$line['proveedor_cuenta_id'] : null,
             ]);
         }
     }

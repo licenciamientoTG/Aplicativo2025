@@ -93,6 +93,22 @@ class BankAccountRequests
         exit;
     }
 
+    /** pagadores_por_solicitud() tolerando que el script aún no se haya corrido (entonces vacío). */
+    private function pagadores_seguro(array $ids): array
+    {
+        try {
+            return $this->model->pagadores_por_solicitud($ids);
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    /** Razones sociales de una solicitud; si no tiene en la tabla, su empresa_cod de siempre. */
+    private function pagadores_de(array $req, array $mapa): array
+    {
+        return $mapa[(int) $req['id']] ?? [['cod' => (int) $req['empresa_cod'], 'den' => (string) ($req['empresa'] ?? $req['empresa_cod'])]];
+    }
+
     private function texto($value, int $limite): string
     {
         if (!is_scalar($value)) {
@@ -110,9 +126,12 @@ class BankAccountRequests
     {
         $es_tesoreria = $this->es_tesoreria();
         $solicitudes  = $this->model->list_visible($this->user_id(), $es_tesoreria);
+        $pagadores    = $this->pagadores_seguro(array_column($solicitudes, 'id'));
         foreach ($solicitudes as &$s) {
             $s['es_propia'] = $this->es_propia($s);
-            $s['busqueda']  = mb_strtolower('#' . $s['id'] . ' ' . $s['proveedor'] . ' ' . $s['num_cuenta'] . ' ' . ($s['clabe'] ?? '') . ' ' . $s['banco'] . ' ' . $s['solicitante']);
+            $s['pagadores'] = $this->pagadores_de($s, $pagadores);
+            $s['busqueda']  = mb_strtolower('#' . $s['id'] . ' ' . $s['proveedor'] . ' ' . $s['num_cuenta'] . ' ' . ($s['clabe'] ?? '') . ' ' . $s['banco'] . ' ' . $s['solicitante']
+                . ' ' . implode(' ', array_column($s['pagadores'], 'den')));
         }
         unset($s);
         $estatus = self::ESTATUS;
@@ -140,6 +159,7 @@ class BankAccountRequests
             // Misma respuesta para inexistente y ajena: no revela ids.
             $this->fail(403, 'No tiene acceso a esta solicitud.', false);
         }
+        $solicitud['pagadores'] = $this->pagadores_de($solicitud, $this->pagadores_seguro([(int) $solicitud['id']]));
         $duplicados   = $this->model->duplicates(BankAccountRequestsModel::catalog_key($solicitud), (int) $solicitud['id']);
         $pendiente    = (int) $solicitud['status'] === BankAccountRequestsModel::ST_PENDIENTE;
         $puede_decidir = $pendiente && $this->es_tesoreria();
@@ -148,23 +168,15 @@ class BankAccountRequests
         echo $this->twig->render($this->route . 'detail.html', compact('solicitud', 'duplicados', 'puede_decidir', 'puede_subir', 'estatus'));
     }
 
-    /** JSON de aviso de duplicado mientras se captura la cuenta (no bloquea). */
+    /** JSON de aviso mientras se captura: la misma regla que bloquea al guardar. */
     public function check(): void
     {
-        $cuenta = $this->texto($_GET['cuenta'] ?? '', self::LIM_CUENTA);
-        if ($cuenta === '') {
-            json_output(['catalogo' => [], 'solicitudes' => []]);
-        }
-        $dup = $this->model->duplicates($cuenta);
-        // Solo lo necesario para el aviso; sin ids de solicitudes ajenas.
-        json_output([
-            'catalogo' => array_map(fn($c) => [
-                'descripcion' => (string) $c['Descripcion'],
-                'banco'       => (string) $c['Banco'],
-                'activo'      => (bool) $c['Activo'],
-            ], $dup['catalogo']),
-            'solicitudes' => count($dup['solicitudes']),
-        ]);
+        $limpia = fn($k) => preg_replace('/\D+/', '', $this->texto($_GET[$k] ?? '', 40));
+        $clabe  = $limpia('clabe');
+        $cuenta = $limpia('cuenta');
+        $banco  = $this->texto($_GET['banco'] ?? '', 100);
+        $msg = $this->model->cuenta_registrada($clabe, $cuenta, $banco);
+        json_output(['mensaje' => $msg !== null ? str_replace(' No se guardó la solicitud.', '', $msg) : null]);
     }
 
     /* ===================================================================== */
@@ -174,8 +186,17 @@ class BankAccountRequests
     /** Valida la captura. Devuelve [datos, error]. */
     private function validar(): array
     {
+        // Razones sociales que pueden pagar a esta cuenta (selección múltiple).
+        $pagadores = [];
+        foreach ((array) ($_POST['empresa_cods'] ?? []) as $cod) {
+            if (is_scalar($cod) && ctype_digit((string) $cod) && (int) $cod > 0) {
+                $pagadores[(int) $cod] = (int) $cod;
+            }
+        }
         $d = [
-            'empresa_cod'       => (int) ($_POST['empresa_cod'] ?? 0),
+            'pagadores'         => array_values($pagadores),
+            // La primera elegida queda como razón social de la solicitud (columna existente, NOT NULL).
+            'empresa_cod'       => $pagadores ? (int) reset($pagadores) : 0,
             'banco'             => $this->texto($_POST['banco'] ?? '', 100),
             'moneda'            => $this->texto($_POST['moneda'] ?? '', 10),
             'num_cuenta'        => preg_replace('/\s+/', '', $this->texto($_POST['num_cuenta'] ?? '', self::LIM_CUENTA)),
@@ -185,9 +206,14 @@ class BankAccountRequests
             'departamento'      => $this->texto($_POST['departamento'] ?? '', 40),
         ];
 
-        $empresas = array_column($this->catalogModel->empresas(), 'cod');
-        if ($d['empresa_cod'] <= 0 || !in_array($d['empresa_cod'], array_map('intval', $empresas), true)) {
-            return [$d, 'Seleccione la razón social.'];
+        $empresas = array_map('intval', array_column($this->catalogModel->empresas(), 'cod'));
+        if (!$d['pagadores']) {
+            return [$d, 'Seleccione al menos una razón social que pueda pagar a esta cuenta.'];
+        }
+        foreach ($d['pagadores'] as $cod) {
+            if (!in_array($cod, $empresas, true)) {
+                return [$d, 'Una de las razones sociales elegidas no existe; recargue la página.'];
+            }
         }
         $banco = $this->model->bank_by_name($d['banco']);
         if (!$banco) {
@@ -239,11 +265,19 @@ class BankAccountRequests
 
     public function save(): void
     {
+        $faltante = $this->model->esquema_faltante();
+        if ($faltante !== null) {
+            json_output(['success' => false, 'message' => 'No se puede guardar todavía: ' . $faltante . ' No se guardó nada.']);
+        }
         [$d, $error] = $this->validar();
         if ($error !== null) {
             json_output(['success' => false, 'message' => $error]);
         }
-        $hayArchivo = !empty($_FILES['caratula']) && is_array($_FILES['caratula'])
+        $repetida = $this->model->cuenta_registrada($d['clabe'], $d['num_cuenta'], $d['banco']);
+        if ($repetida !== null) {
+            json_output(['success' => false, 'message' => $repetida]);
+        }
+        $hayArchivo =!empty($_FILES['caratula']) && is_array($_FILES['caratula'])
             && ($_FILES['caratula']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
 
         // Sin carátula se guarda como borrador; con ella pasa directo a Tesorería.
@@ -288,6 +322,11 @@ class BankAccountRequests
         if (empty($_FILES['caratula']) || ($_FILES['caratula']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
             json_output(['success' => false, 'message' => 'Seleccione la carátula del estado de cuenta.']);
         }
+        // Mientras era borrador alguien pudo registrar la misma cuenta.
+        $repetida = $this->model->cuenta_registrada((string) $req['clabe'], (string) $req['num_cuenta'], (string) $req['banco'], (int) $req['id']);
+        if ($repetida !== null) {
+            json_output(['success' => false, 'message' => str_replace('No se guardó la solicitud.', 'No se envió a Tesorería.', $repetida)]);
+        }
         $err = $this->guardar_caratula((int) $req['id'], $_FILES['caratula']);
         if ($err !== null) {
             json_output(['success' => false, 'message' => $err]);
@@ -322,6 +361,7 @@ class BankAccountRequests
     public function decision_modal($id): void
     {
         $solicitud  = $this->solicitud_para_decidir((int) $id);
+        $solicitud['pagadores'] = $this->pagadores_de($solicitud, $this->pagadores_seguro([(int) $solicitud['id']]));
         $duplicados = $this->model->duplicates(BankAccountRequestsModel::catalog_key($solicitud), (int) $solicitud['id']);
         echo $this->twig->render($this->route . 'modals/decision.html', compact('solicitud', 'duplicados'));
     }

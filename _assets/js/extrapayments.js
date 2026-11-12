@@ -269,7 +269,7 @@
             $l.find('.ep-num').text(idx + 1);
             $l.find('.ep-linea-monto').text(!isNaN(v) && v > 0 ? formatoMonto(v) : '');
             // Encabezado: "1 · Proveedor · $monto"
-            var prov = $.trim($l.find('.ep-prov-input').val());
+            var prov = $l.find('.ep-prov-select').val() ? $.trim($l.find('.ep-prov-select option:selected').text()) : '';
             $l.find('.ep-linea-prov').text(prov || 'Sin proveedor todavía').toggleClass('vacio', !prov);
             revisarMonto($l);
         });
@@ -310,6 +310,63 @@
         });
     }
 
+    // ---------------- Proveedor: buscador de cuentas dadas de alta (alta de cuenta aprobada) ----------------
+    function iniciarProveedor($l, cuenta) {
+        var $sel = $l.find('.ep-prov-select');
+        $sel.append(new Option('', '', false, false));
+        if (cuenta && cuenta.id) {
+            $sel.append(new Option(cuenta.text, cuenta.id, true, true));
+            $sel.data('pagadores', cuenta.pagadores || []);
+        }
+        if (!$.fn.select2) { return; }
+        var es = {};
+        try { es = $.fn.select2.amd.require('select2/i18n/es'); } catch (err) { es = {}; }
+        $sel.select2({
+            width: '100%', allowClear: true, minimumInputLength: 3,
+            placeholder: 'Escriba al menos 3 letras: proveedor, cuenta o CLABE',
+            ajax: {
+                url: $form.data('prov-url'), dataType: 'json', delay: 300, cache: true,
+                data: function (p) { return { q: p.term }; },
+                processResults: function (d) { return { results: d.results || [] }; }
+            },
+            templateResult: function (o) {
+                if (o.loading || !o.proveedor) { return o.text; }
+                return $('<div class="ep-prov-op">').append(
+                    $('<div>').text(o.proveedor),
+                    $('<small>').text(o.text.substring(o.proveedor.length + 3) + (o.divisa ? ' · ' + o.divisa : ''))
+                );
+            },
+            language: $.extend({}, es, {
+                noResults: function () { return 'Sin cuentas: el proveedor debe tener una alta de cuenta aprobada'; }
+            })
+        });
+        $sel.on('select2:select', function (e) { $sel.data('pagadores', e.params.data.pagadores || []); });
+        $sel.on('select2:clear', function () { $sel.data('pagadores', []); });
+    }
+
+    // Aviso (no bloquea) si la empresa del renglón no está marcada como "puede pagar" en la cuenta
+    function revisarPagador($l) {
+        var $sel = $l.find('.ep-prov-select');
+        var $aviso = $l.find('.ep-prov-aviso').text('');
+        var emp = parseInt($l.find('.ep-empresa').val(), 10);
+        if (!$sel.val() || !emp) { return; }
+        var pag = ($sel.data('pagadores') || []).map(Number);
+        if (pag.indexOf(emp) === -1) {
+            $aviso.text('⚠ ' + $.trim($l.find('.ep-empresa option:selected').text()) + ' no está marcada como razón social que puede pagar a esta cuenta.');
+        }
+    }
+
+    // Abre el buscador ya buscando el nombre del emisor del XML (primeras dos palabras)
+    function buscarProveedor($l, nombre) {
+        var $sel = $l.find('.ep-prov-select');
+        if (!$.fn.select2 || $sel.val()) { return; }
+        var term = $.trim(String(nombre || '').replace(/[^\wÁÉÍÓÚÑÜáéíóúñü ]+/g, ' ')).split(/\s+/).slice(0, 2).join(' ');
+        if (term.length < 3) { return; }
+        $sel.select2('open');
+        var campo = document.querySelector('.select2-container--open .select2-search__field');
+        if (campo) { $(campo).val(term).trigger('input'); }
+    }
+
     function agregarLinea(datos, despuesDe) {
         var i = siguiente++;
         var $l = $(tpl.replace(/__I__/g, i));
@@ -335,7 +392,9 @@
                 marcarArchivo($l, tipo, $('<span>').append('Guardado: ', $a), true);
             }
         });
+        iniciarProveedor($l, datos && datos.proveedor_cuenta);
         mostrarRfc($l);
+        revisarPagador($l);
         actualizarTipo();
         return $l;
     }
@@ -371,8 +430,9 @@
     }
 
     $form.on('change', 'input[name="reason_id"]', function () { actualizarMotivo(); marcarOpciones(); });
-    $form.on('input', '.ep-monto, .ep-prov-input', recalcular);
-    $form.on('change', '.ep-empresa', function () { mostrarRfc($(this).closest('.ep-linea')); });
+    $form.on('input', '.ep-monto', recalcular);
+    $form.on('change', '.ep-prov-select', function () { var $l = $(this).closest('.ep-linea'); revisarPagador($l); recalcular(); });
+    $form.on('change', '.ep-empresa', function () { var $l = $(this).closest('.ep-linea'); mostrarRfc($l); revisarPagador($l); });
     // Si el usuario corrige a mano un dato que vino del CFDI, deja de marcarse en verde
     $form.on('input change', '.ep-cfdi', function () { $(this).removeClass('ep-cfdi'); });
     // Al corregir un renglón con error se quita la marca roja
@@ -397,6 +457,11 @@
         datos.factura = '';
         datos.xml_document_id = '';
         datos.pdf_document_id = '';
+        var $sel = $l.find('.ep-prov-select');
+        if ($sel.val()) {
+            datos.proveedor_cuenta = { id: $sel.val(), text: $sel.find('option:selected').text(), pagadores: $sel.data('pagadores') || [] };
+        }
+        delete datos.proveedor_cuenta_id;
         agregarLinea(datos, $l);
     });
 
@@ -442,14 +507,19 @@
         var lector = new FileReader();
         lector.onload = function () {
             var d = leerCfdi(String(lector.result));
-            if (!d || !d.monto) { descartar(input, $l, 'xml', 'No se pudo leer el CFDI: el archivo no es un comprobante válido.'); return; }
-            if (!d.uuid) { descartar(input, $l, 'xml', 'El XML no está timbrado (no trae UUID del timbre fiscal).'); return; }
+            var noEsCfdi = !d || !d.monto ? 'el archivo no es un comprobante válido' : (!d.uuid ? 'el XML no está timbrado (no trae UUID)' : '');
+            if (noEsCfdi) {
+                if ($form.data('cfdi-obligatorio') == 1) { descartar(input, $l, 'xml', 'No se pudo leer el CFDI: ' + noEsCfdi + '.'); return; }
+                // Pruebas (validación apagada): se adjunta igual, sin llenar campos
+                marcarArchivo($l, 'xml', archivo.name, true);
+                $l.find('.ep-xml-ok').removeClass('d-none').addClass('aviso').text('⚠ Se adjuntará sin leer: ' + noEsCfdi + '. Capture los datos a mano.');
+                return;
+            }
             // Los campos que llena el CFDI se marcan en verde
             var set = function (campo, valor) {
                 if (valor) { $l.find('[name$="[' + campo + ']"]').val(valor).addClass('ep-cfdi'); }
             };
             $l.data('cfdiTotal', Math.round(parseFloat(d.monto) * 100) / 100);
-            set('proveedor', d.proveedor.substring(0, 200));
             set('monto', d.monto);
             set('factura', d.factura.substring(0, 60));
             set('fecha_factura', d.fecha_factura);
@@ -464,15 +534,19 @@
                 }
                 $emp.val($opt.val()).addClass('ep-cfdi');
             } else {
-                avisoEmpresa = ' Ninguna empresa tiene el RFC receptor ' + d.rfc_receptor + ': no se podrá enviar con este XML.';
+                avisoEmpresa = ' Ninguna empresa tiene el RFC receptor ' + d.rfc_receptor
+                    + ($form.data('cfdi-obligatorio') == 1 ? ': no se podrá enviar con este XML.' : '; elija la empresa a mano.');
             }
             mostrarRfc($l);
+            revisarPagador($l);
             $l.removeClass('con-error');
             recalcular();
             marcarArchivo($l, 'xml', archivo.name + ' · UUID ' + d.uuid, true);
             $l.find('.ep-xml-ok').removeClass('d-none').toggleClass('aviso', !$opt.length || avisoEmpresa !== '')
                 .text((avisoEmpresa ? '⚠ ' : '✔ ') + 'CFDI leído: ' + (d.proveedor || 'proveedor sin nombre') + ' · ' + formatoMonto(parseFloat(d.monto))
-                    + ' · receptor ' + (d.rfc_receptor || '(sin RFC)') + '.' + avisoEmpresa);
+                    + ' · receptor ' + (d.rfc_receptor || '(sin RFC)') + '.' + avisoEmpresa
+                    + ($l.find('.ep-prov-select').val() ? '' : ' Elija la cuenta del proveedor en la lista.'));
+            buscarProveedor($l, d.proveedor);
         };
         lector.onerror = function () { descartar(input, $l, 'xml', 'No se pudo leer el archivo.'); };
         lector.readAsText(archivo);
@@ -517,8 +591,8 @@
     function guardar(esBorrador) {
         var $botones = $('#btn_guardar, #btn_borrador');
         $('#ep_error').addClass('d-none').empty();
-        // Para enviar, cada renglón necesita su XML (el servidor lo vuelve a exigir)
-        if (!esBorrador) {
+        // Para enviar, cada renglón necesita su XML (el servidor lo vuelve a exigir). Se puede apagar en pruebas.
+        if (!esBorrador && $form.data('cfdi-obligatorio') == 1) {
             var faltan = [];
             $lineas.find('.ep-linea').each(function (idx) {
                 if (!tieneArchivo($(this), 'xml')) {
