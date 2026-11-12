@@ -63,8 +63,8 @@ class InventarioUrovoModel extends Model {
             $totals[$type]['total_reparacion']=(int)($row['reparacion']??0);
         }
         foreach ($totals as $type=>&$total) {
-            $total['faltante_en_estacion']=$total['total_funcionando']-$total['total_objetivo'];
-            $total['faltante_total']=($total['total_funcionando']+$total['total_stock']+$total['total_reparacion'])-$total['total_objetivo'];
+            $total['faltante_en_estacion']=max(0,$total['total_objetivo']-$total['total_funcionando']);
+            $total['faltante_total']=max(0,$total['total_objetivo']-($total['total_funcionando']+$total['total_stock']+$total['total_reparacion']));
         }
         unset($total);
         return ['rows'=>$rows,'totals'=>$totals];
