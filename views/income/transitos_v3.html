@@ -4,111 +4,91 @@
 
 {% block content %}
 <style>
-  .transit-page {
-    --transit-ink:#17324d; --transit-action:#176b87; --transit-out:#9a5510;
-    --transit-paper:#f2f6f8; --transit-line:#d8e2e8; --transit-muted:#526777;
-    max-width:1540px; margin-inline:auto; color:var(--transit-ink); background:var(--transit-paper);
-  }
-  .transit-page .transit-card { background:#fff; border:1px solid var(--transit-line); border-radius:10px; box-shadow:0 2px 5px rgba(23,50,77,.045); }
-  .transit-page .transit-heading { color:var(--transit-ink); font-size:1.55rem; letter-spacing:-.025em; }
-  .transit-page .transit-subtitle { max-width:62ch; color:var(--transit-muted); font-size:.92rem; }
-  .transit-page .transit-filter-card { border-top:3px solid var(--transit-action); }
-  .transit-page .transit-filter { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); align-items:end; gap:12px; }
-  .transit-page .transit-filter > div { min-width:0; grid-column:span 2; }
-  .transit-page .transit-filter > div:nth-child(2) { grid-column:span 3; }
-  .transit-page .transit-filter > div:nth-child(4) { grid-column:span 2; }
-  .transit-page .transit-filter label { display:block; margin-bottom:6px; color:#3e596c; font-size:.76rem; font-weight:650; }
-  .transit-page .transit-filter .form-control { width:100%; min-width:0; height:44px; border:1px solid #bacbd5; border-radius:6px; color:var(--transit-ink); font-size:.92rem; }
-  .transit-page .transit-filter .form-control:focus { border-color:var(--transit-action); box-shadow:0 0 0 3px rgba(23,107,135,.17); }
-  .transit-page .transit-period-control { grid-column:span 2 !important; }
-  .transit-page .transit-search-control { grid-column:span 1; min-height:44px; margin:0; white-space:nowrap; }
-  .transit-page .transit-search-control:focus-visible,
-  .transit-page button:focus-visible,
-  .transit-page a:focus-visible { outline:3px solid #79b9cf; outline-offset:2px; }
-  .transit-page .btn-primary { background-color:var(--transit-action); border-color:var(--transit-action); }
-  .transit-page .transit-metric { position:relative; height:100%; min-height:124px; padding:17px 20px 16px; border-inline-start:4px solid; }
-  .transit-page .transit-metric.outgoing { border-color:var(--transit-out); }
-  .transit-page .transit-metric.incoming { border-color:var(--transit-action); }
-  .transit-page .transit-metric-label { color:#3e596c; font-size:.84rem; font-weight:650; }
-  .transit-page .transit-metric-value { margin-top:7px; color:var(--transit-ink); font:750 clamp(1.45rem,2.1vw,1.9rem)/1.15 ui-monospace,Consolas,monospace; font-variant-numeric:tabular-nums; }
-  .transit-page .transit-metric-sub { margin-top:6px; color:var(--transit-muted); font-size:.85rem; }
-  .transit-page .transit-definition { padding:11px 13px; border-inline-start:3px solid #83a8b8; background:#f3f7f9; color:#334e60; font-size:.88rem; line-height:1.5; }
-  .transit-page .transit-table-wrap { border:1px solid var(--transit-line); border-radius:7px; }
-  .transit-page .transit-table { min-width:1120px; color:#213d50; }
-  .transit-table td, .transit-table th { vertical-align:middle; }
-  .transit-page .transit-table th { position:sticky; top:0; z-index:1; white-space:nowrap; background:#eaf1f5; color:#28475b; font-size:.8rem; font-weight:700; }
-  .transit-page .transit-table td { font-size:.86rem; }
-  .transit-page .transit-table tbody tr:hover { background:#f3f8fa; }
-  .transit-page .transit-table th:first-child,
-  .transit-page .transit-table td:first-child { position:sticky; left:0; z-index:2; background:#fff; }
-  .transit-page .transit-table th:first-child { z-index:3; background:#eaf1f5; }
-  .transit-page .transit-th-content { display:flex; align-items:center; justify-content:flex-start; gap:6px; }
-  .transit-page .transit-col-filter { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; flex:0 0 36px; padding:0; border:1px solid transparent; border-radius:6px; background:transparent; color:#425f72; cursor:pointer; }
-  .transit-page .transit-col-filter:hover { border-color:#9bbbc9; background:#dceaf0; color:#104d67; }
-  .transit-page .transit-col-filter.is-active { border-color:#79aabd; background:#cce1e9; color:#104d67; }
-  .transit-page .transit-col-filter:focus-visible { box-shadow:0 0 0 3px rgba(23,107,135,.22); }
-  .transit-filter-menu { position:fixed; z-index:3000; width:290px; max-width:calc(100vw - 16px); padding:12px; border:1px solid #cbd5e1; border-radius:10px; background:#fff; box-shadow:0 12px 32px rgba(15,23,42,.2); color:#1e293b; }
-  .transit-filter-menu[hidden] { display:none; }
-  .transit-filter-menu-title { margin-bottom:8px; font-size:.82rem; font-weight:700; }
-  .transit-filter-menu-search { width:100%; height:36px; padding:6px 9px; border:1px solid #cbd5e1; border-radius:6px; }
-  .transit-filter-menu-search:focus { border-color:#60a5fa; outline:3px solid rgba(59,130,246,.2); }
-  .transit-filter-select-all { display:flex; align-items:center; gap:8px; padding:8px 2px; border-bottom:1px solid #e2e8f0; font-size:.8rem; font-weight:600; }
-  .transit-filter-options { max-height:220px; overflow:auto; padding:4px 0; }
-  .transit-filter-option { display:flex; align-items:center; gap:8px; min-height:30px; margin:0; padding:4px 5px; border-radius:5px; font-size:.8rem; font-weight:400; cursor:pointer; }
-  .transit-filter-option:hover { background:#f1f5f9; }
-  .transit-filter-option span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .transit-filter-no-options { padding:12px 5px; color:#64748b; font-size:.8rem; }
-  .transit-filter-menu-actions { display:flex; align-items:center; justify-content:space-between; gap:6px; padding-top:9px; border-top:1px solid #e2e8f0; }
-  .transit-filter-menu-actions button { padding:5px 9px; border:0; border-radius:5px; background:#f1f5f9; color:#334155; font-size:.77rem; cursor:pointer; }
-  .transit-filter-menu-actions button:hover { background:#e2e8f0; }
-  .transit-filter-menu-actions .apply { background:#2563eb; color:white; }
-  .transit-filter-menu-actions .apply:hover { background:#1d4ed8; }
-  .transit-page .transit-column-filter-summary { min-height:24px; color:#526777; font-size:.82rem; }
-  .transit-page .transit-column-filter-summary.active { color:#125a73; font-weight:600; }
-  .transit-page .transit-table td.amount { text-align:right; font-family:ui-monospace,Consolas,monospace; font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap; }
-  .transit-page .transit-empty-state { padding-block:3rem !important; color:#526777; }
-  .transit-page .transit-pagination { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:10px; color:#405b6e; font-size:.86rem; }
-  .transit-page .transit-pagination-controls { display:flex; align-items:center; gap:8px; }
-  .transit-page .transit-pagination button,
-  .transit-page .transit-pagination select { min-height:40px; border:1px solid #b9cbd5; border-radius:5px; background:#fff; color:var(--transit-ink); padding-inline:10px; }
-  .transit-page .transit-pagination button:disabled { opacity:.5; cursor:not-allowed; }
-  @media (max-width:1100px) {
-    .transit-page .transit-filter > div,
-    .transit-page .transit-filter > div:nth-child(2),
-    .transit-page .transit-filter > div:nth-child(4) { grid-column:span 4; }
-    .transit-page .transit-period-control { grid-column:span 4 !important; }
-    .transit-page .transit-search-control { grid-column:span 4; }
-  }
-  @media (max-width:600px) {
-    .transit-page { padding-inline:12px !important; }
-    .transit-page .transit-heading { font-size:1.35rem; }
-    .transit-page .transit-filter > div,
-    .transit-page .transit-filter > div:nth-child(2),
-    .transit-page .transit-filter > div:nth-child(4),
-    .transit-page .transit-period-control,
-    .transit-page .transit-search-control { grid-column:1 / -1 !important; }
-    .transit-page .transit-search-control { width:100%; }
-    .transit-page .transit-metric { min-height:112px; }
-    .transit-page .transit-metric-value { font-size:1.45rem; }
-  }
-  @media (prefers-reduced-motion:reduce) {
-    .transit-page *, .transit-filter-menu { scroll-behavior:auto !important; transition:none !important; animation:none !important; }
-  }
+  .transit-page{--ink:#102b3d;--blue:#126982;--blue-soft:#e6f1f4;--copper:#ab5c1d;--copper-soft:#fbf0e6;--paper:#eef3f5;--line:#cfdae0;--muted:#526978;max-width:1540px;margin:auto;padding:22px 28px!important;background:var(--paper);color:var(--ink)}
+  .transit-page *{box-sizing:border-box}
+  .transit-page .transit-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;padding:7px 0 20px;border-bottom:1px solid #cbd8de}
+  .transit-page .transit-heading{margin:0;color:var(--ink);font-size:clamp(1.8rem,3vw,2.6rem);font-weight:750;letter-spacing:-.045em;line-height:1.05}
+  .transit-page .transit-subtitle{margin:9px 0 0;color:var(--muted);font-size:.98rem}
+  .transit-page .transit-back{flex:0 0 auto;margin:0 0 2px;border-color:#aebfc8;color:#294a5d}
+  .transit-page .transit-filter-card{margin:18px 0 16px;padding:15px 16px;background:#fff;border:1px solid var(--line);border-radius:8px}
+  .transit-page .transit-filter{display:grid;grid-template-columns:1fr 1.45fr 1fr 1.1fr 1fr auto;align-items:end;gap:11px}
+  .transit-page .transit-filter>div{min-width:0}
+  .transit-page .transit-filter label{display:block;margin:0 0 5px;color:#365568;font-size:.78rem;font-weight:650}
+  .transit-page .transit-filter .form-control{width:100%;height:42px;min-width:0;border:1px solid #b9c9d1;border-radius:5px;color:var(--ink);font-size:.9rem}
+  .transit-page .transit-filter .form-control:focus,.transit-page .transit-quick-search:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(18,105,130,.16)}
+  .transit-page .transit-search-control{height:42px;margin:0;padding-inline:18px;white-space:nowrap;background:var(--blue);border-color:var(--blue)}
+  .transit-page :is(button,a,input,select):focus-visible{outline:3px solid #77b6c9;outline-offset:2px}
+  .transit-page .transit-overview{position:relative;display:grid;grid-template-columns:minmax(190px,.7fr) minmax(0,2fr);gap:24px;align-items:center;overflow:hidden;margin:0 0 20px;padding:20px 24px;background:#12364b;border-radius:8px;color:#f6fbfc}
+  .transit-page .transit-overview:before{position:absolute;inset:0 auto 0 0;width:5px;background:#61a5b4;content:""}
+  .transit-page .transit-volume-label{color:#c4d8df;font-size:.82rem;font-weight:600}
+  .transit-page .transit-volume-count{margin:3px 0 0;color:#fff;font:750 clamp(2rem,4vw,3.15rem)/1 ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.05em}
+  .transit-page .transit-volume-note{margin:7px 0 0;color:#bed0d8;font-size:.85rem}
+  .transit-page .transit-flow-grid{display:grid;grid-template-columns:1fr 1fr;border-left:1px solid rgba(214,232,238,.25)}
+  .transit-page .transit-metric{min-width:0;padding:4px 22px}
+  .transit-page .transit-metric+.transit-metric{border-left:1px solid rgba(214,232,238,.25)}
+  .transit-page .transit-metric-label{display:flex;align-items:center;gap:8px;color:#d9e7eb;font-size:.87rem;font-weight:600}
+  .transit-page .transit-metric-label:before{width:8px;height:8px;border-radius:50%;background:#d18b48;content:""}
+  .transit-page .transit-metric.incoming .transit-metric-label:before{background:#68b2bd}
+  .transit-page .transit-metric-value{margin-top:8px;color:white;font:700 clamp(1.35rem,2.4vw,2rem)/1.1 ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.025em}
+  .transit-page .transit-metric-sub{margin-top:6px;color:#c4d8df;font-size:.83rem}
+  .transit-page .transit-detail{overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:8px}
+  .transit-page .transit-detail-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:18px 20px 14px}
+  .transit-page .transit-detail-title{margin:0;color:var(--ink);font-size:1.22rem;font-weight:700;letter-spacing:-.02em}
+  .transit-page .transit-definition{margin:6px 0 0;color:var(--muted);font-size:.84rem;line-height:1.45}
+  .transit-page .transit-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+  .transit-page .transit-actions .btn{margin:0}
+  .transit-page .transit-workbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 20px;background:#f5f8f9;border-block:1px solid #dce5e9}
+  .transit-page .transit-quick-filters{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+  .transit-page .transit-sense-btn{display:flex;align-items:center;gap:8px;min-height:40px;padding:6px 12px;border:1px solid transparent;border-radius:5px;background:transparent;color:#38576a;font-size:.86rem;font-weight:600;cursor:pointer}
+  .transit-page .transit-sense-btn:hover{background:#e8eff2}
+  .transit-page .transit-sense-btn[aria-pressed="true"]{border-color:#b9cbd3;background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(16,43,61,.06)}
+  .transit-page .transit-sense-count{color:#637985;font:650 .78rem ui-monospace,Consolas,monospace}
+  .transit-page .transit-quick-search-wrap{position:relative;width:min(340px,100%)}
+  .transit-page .transit-quick-search{width:100%;height:42px;padding:8px 12px 8px 36px;border:1px solid #b9c9d1;border-radius:5px;background:#fff;color:var(--ink);font:inherit;font-size:.88rem}
+  .transit-page .transit-quick-search-wrap:before{position:absolute;left:13px;top:11px;color:#557080;font:normal 14px FontAwesome;content:"\f002"}
+  .transit-page .transit-column-filter-summary{padding:9px 20px 0;color:var(--muted);font-size:.8rem}
+  .transit-page .transit-column-filter-summary.active{color:#12566c;font-weight:600}
+  .transit-page .transit-pagination{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:9px 20px;color:#405b6e;font-size:.84rem}
+  .transit-page .transit-pagination-controls{display:flex;align-items:center;gap:8px}
+  .transit-page .transit-pagination button,.transit-page .transit-pagination select{min-height:38px;padding-inline:10px;border:1px solid #b9cbd5;border-radius:5px;background:#fff;color:var(--ink)}
+  .transit-page .transit-pagination button:disabled{opacity:.48;cursor:not-allowed}
+  .transit-page .transit-table-wrap{border-top:1px solid var(--line)}
+  .transit-page .transit-table{min-width:1120px;margin:0;color:#203d50}
+  .transit-page .transit-table td,.transit-page .transit-table th{vertical-align:middle}
+  .transit-page .transit-table th{position:sticky;top:0;z-index:1;padding:7px 8px;white-space:nowrap;background:#e8eff2;color:#2e4d60;font-size:.77rem;font-weight:700}
+  .transit-page .transit-table td{padding:7px 8px;border-color:#e6ecef;font-size:.83rem}
+  .transit-page .transit-table tbody tr:nth-child(even){background:#f8fafb}
+  .transit-page .transit-table tbody tr:hover{background:#edf5f7}
+  .transit-page .transit-table th:first-child,.transit-page .transit-table td:first-child{position:sticky;left:0;z-index:2;background:#fff}
+  .transit-page .transit-table th:first-child{z-index:3;background:#e8eff2}
+  .transit-page .transit-th-content{display:flex;align-items:center;gap:4px}
+  .transit-page .transit-col-filter{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;flex:0 0 30px;padding:0;border:1px solid transparent;border-radius:4px;background:transparent;color:#486577;cursor:pointer}
+  .transit-page .transit-col-filter:hover,.transit-page .transit-col-filter.is-active{border-color:#afc7d0;background:#d9e8ed;color:#10546b}
+  .transit-page .transit-col-filter:focus-visible{box-shadow:0 0 0 3px rgba(18,105,130,.2)}
+  .transit-page .transit-table td.amount{text-align:right;font-family:ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+  .transit-page .transit-empty-state{padding:42px 20px!important;color:var(--muted)}
+  .transit-filter-menu{position:fixed;z-index:3000;width:290px;max-width:calc(100vw - 16px);padding:12px;border:1px solid #bdcbd2;border-radius:7px;background:#fff;box-shadow:0 12px 32px rgba(15,35,48,.2);color:#19384b}
+  .transit-filter-menu[hidden]{display:none}.transit-filter-menu-title{margin-bottom:8px;font-size:.84rem;font-weight:700}.transit-filter-menu-search{width:100%;height:38px;padding:6px 9px;border:1px solid #bdcbd2;border-radius:4px}.transit-filter-menu-search:focus{border-color:var(--blue);outline:3px solid rgba(18,105,130,.16)}
+  .transit-filter-select-all{display:flex;align-items:center;gap:8px;padding:8px 2px;border-bottom:1px solid #e0e8ec;font-size:.82rem;font-weight:600}.transit-filter-options{max-height:220px;overflow:auto;padding:4px 0}.transit-filter-option{display:flex;align-items:center;gap:8px;min-height:34px;margin:0;padding:4px 5px;border-radius:4px;font-size:.82rem;font-weight:400;cursor:pointer}.transit-filter-option:hover{background:#edf4f6}.transit-filter-option span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.transit-filter-no-options{padding:12px 5px;color:var(--muted);font-size:.82rem}.transit-filter-menu-actions{display:flex;align-items:center;justify-content:space-between;gap:6px;padding-top:9px;border-top:1px solid #e0e8ec}.transit-filter-menu-actions button{padding:7px 10px;border:0;border-radius:4px;background:#edf2f4;color:#29485b;font-size:.8rem;cursor:pointer}.transit-filter-menu-actions .apply{background:var(--blue);color:#fff}
+  @media(max-width:1100px){.transit-page .transit-filter{grid-template-columns:repeat(3,minmax(0,1fr))}.transit-page .transit-search-control{grid-column:span 1}.transit-page .transit-overview{grid-template-columns:1fr 2fr}}
+  @media(max-width:700px){.transit-page{padding:16px 12px!important}.transit-page .transit-hero{align-items:flex-start}.transit-page .transit-hero .transit-back{font-size:0}.transit-page .transit-hero .transit-back i{font-size:1rem;margin:0!important}.transit-page .transit-filter{grid-template-columns:repeat(2,minmax(0,1fr))}.transit-page .transit-filter>div:nth-child(2){grid-column:span 2}.transit-page .transit-overview{grid-template-columns:1fr;gap:17px;padding:18px}.transit-page .transit-flow-grid{border-left:0;border-top:1px solid rgba(214,232,238,.25);padding-top:14px}.transit-page .transit-metric{padding:4px 12px}.transit-page .transit-metric:first-child{padding-left:0}.transit-page .transit-detail-head{align-items:flex-start;flex-direction:column;padding:16px}.transit-page .transit-workbar{align-items:stretch;flex-direction:column;padding:10px 14px}.transit-page .transit-quick-search-wrap{width:100%}.transit-page .transit-pagination{padding-inline:14px}.transit-page .transit-pagination-controls{flex-wrap:wrap}}
+  @media(max-width:420px){.transit-page .transit-filter{grid-template-columns:1fr}.transit-page .transit-filter>div:nth-child(2){grid-column:auto}.transit-page .transit-search-control{grid-column:auto}.transit-page .transit-flow-grid{grid-template-columns:1fr;gap:12px}.transit-page .transit-metric+.transit-metric{padding-left:0;border-left:0}.transit-page .transit-pagination-controls label{display:none}}
+  @media(prefers-reduced-motion:reduce){.transit-page *,.transit-filter-menu{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 </style>
 
 <main class="container-fluid px-3 py-3 transit-page">
-  <header class="d-flex align-items-center justify-content-between flex-wrap mb-3" style="gap:12px;">
+  <header class="transit-hero">
     <div>
-      <h1 class="mb-1 font-weight-bold transit-heading">Reporte de tránsitos</h1>
-      <p class="mb-0 transit-subtitle">Consulta mensual de saldos entre periodos, con desglose por empresa, banco y estación.</p>
+      <h1 class="transit-heading">Tránsitos</h1>
+      <p class="transit-subtitle">Movimientos que cruzan el cierre de un mes al siguiente.</p>
     </div>
-    <a class="btn btn-outline-secondary btn-sm rounded-pill" href="/income/summary_v3">
+    <a class="btn btn-outline-secondary btn-sm transit-back" href="/income/summary_v3">
       <i class="fas fa-arrow-left mr-1"></i> Volver al dashboard
     </a>
   </header>
 
-  <section class="transit-card transit-filter-card p-3 p-md-4 mb-3" aria-labelledby="transitFiltersTitle">
-    <h2 id="transitFiltersTitle" class="sr-only">Filtros del reporte</h2>
+  <section class="transit-filter-card" aria-labelledby="transitFiltersTitle">
+    <h2 id="transitFiltersTitle" class="sr-only">Define el corte de consulta</h2>
     <form id="transitFilterForm" class="transit-filter" role="search" aria-labelledby="transitFiltersTitle">
       <div>
         <label for="transitCompany">Empresa</label>
@@ -141,30 +121,33 @@
     </form>
   </section>
 
-  <section class="row mb-3" aria-label="Totales de tránsitos">
-    <div class="col-md-6 mb-2">
-      <article class="transit-card transit-metric outgoing">
-        <div class="transit-metric-label"><i class="fas fa-arrow-up mr-1"></i> Tránsito saliente</div>
-        <div id="outgoingAmount" class="transit-metric-value">—</div>
-        <div id="outgoingCount" class="transit-metric-sub">Ventas del mes que pasan al siguiente</div>
-      </article>
+  <section class="transit-overview" aria-label="Resumen del corte mensual">
+    <div class="transit-volume">
+      <div class="transit-volume-label">Registros en este corte</div>
+      <div id="transitTotalCount" class="transit-volume-count">—</div>
+      <p class="transit-volume-note">Entradas aplicadas y salidas del periodo</p>
     </div>
-    <div class="col-md-6 mb-2">
-      <article class="transit-card transit-metric incoming">
-        <div class="transit-metric-label"><i class="fas fa-arrow-down mr-1"></i> Tránsito entrante aplicado</div>
+    <div class="transit-flow-grid">
+      <article class="transit-metric outgoing">
+        <div class="transit-metric-label">Tránsito saliente</div>
+        <div id="outgoingAmount" class="transit-metric-value">—</div>
+        <div id="outgoingCount" class="transit-metric-sub">Venta que pasa al siguiente mes</div>
+      </article>
+      <article class="transit-metric incoming">
+        <div class="transit-metric-label">Tránsito entrante aplicado</div>
         <div id="incomingAmount" class="transit-metric-value">—</div>
-        <div id="incomingCount" class="transit-metric-sub">Saldos del mes anterior conciliados en el mes</div>
+        <div id="incomingCount" class="transit-metric-sub">Saldo anterior conciliado este mes</div>
       </article>
     </div>
   </section>
 
-  <section class="transit-card p-3 p-md-4 mb-3">
-    <div class="transit-definition mb-3">
-      <strong>Cómo se cuentan:</strong> saliente = venta del mes seleccionado que se mandó al siguiente; entrante aplicado = tránsito del mes anterior que quedó unido a una conciliación del mes seleccionado.
-    </div>
-    <div class="d-flex justify-content-between align-items-center flex-wrap mb-2" style="gap:8px;">
-      <h6 class="mb-0 font-weight-bold">Detalle por estación, banco y afiliación</h6>
-      <div class="d-flex align-items-center flex-wrap" style="gap:10px;">
+  <section class="transit-detail" aria-labelledby="transitDetailTitle">
+    <div class="transit-detail-head">
+      <div>
+        <h2 id="transitDetailTitle" class="transit-detail-title">Movimientos del periodo</h2>
+        <p class="transit-definition">Saliente: venta enviada al mes siguiente. Entrante aplicado: saldo anterior unido a una conciliación de este mes.</p>
+      </div>
+      <div class="transit-actions">
         <small id="transitPeriodLabel" class="text-muted"></small>
         <button id="exportTransitExcel" class="btn btn-success btn-sm" type="button" disabled>
           <i class="fas fa-file-excel mr-1"></i> Exportar Excel
@@ -174,7 +157,18 @@
         </button>
       </div>
     </div>
-    <div class="transit-column-filter-summary mb-2" id="transitColumnFilterSummary" aria-live="polite">Los filtros de encabezado solo afectan el detalle; los totales mantienen los filtros de empresa, banco, estación y mes.</div>
+    <div class="transit-workbar">
+      <div class="transit-quick-filters" role="group" aria-label="Filtrar movimientos por sentido">
+        <button class="transit-sense-btn" type="button" data-transit-sense="TODOS" aria-pressed="true">Todos <span id="transitAllCount" class="transit-sense-count">—</span></button>
+        <button class="transit-sense-btn" type="button" data-transit-sense="ENTRANTE" aria-pressed="false">Entrantes <span id="transitIncomingFilterCount" class="transit-sense-count">—</span></button>
+        <button class="transit-sense-btn" type="button" data-transit-sense="SALIENTE" aria-pressed="false">Salientes <span id="transitOutgoingFilterCount" class="transit-sense-count">—</span></button>
+      </div>
+      <div class="transit-quick-search-wrap">
+        <label class="sr-only" for="transitQuickSearch">Buscar en los movimientos</label>
+        <input id="transitQuickSearch" class="transit-quick-search" type="search" autocomplete="off" placeholder="Buscar estación, banco o afiliación">
+      </div>
+    </div>
+    <div class="transit-column-filter-summary" id="transitColumnFilterSummary" aria-live="polite">Los filtros de encabezado se combinan con el sentido y la búsqueda; el resumen conserva el corte completo.</div>
     <div id="transitError" class="alert alert-danger d-none" role="alert"></div>
     <div id="transitEmpty" class="text-center transit-empty-state" role="status" aria-live="polite">
       <i class="fas fa-calendar-alt d-block mb-2" style="font-size:2rem;"></i>
@@ -228,6 +222,8 @@ let visibleTransitReportRows = [];
 let transitReportPeriod = '';
 let transitReportReady = false;
 let transitCurrentPage = 1;
+let transitSenseFilter = 'TODOS';
+let transitQuickSearchTerm = '';
 const transitColumnFilters = new Map();
 let activeTransitMenu = null;
 const transitColumnNames = ['Sentido','Estación','Empresa','Razón social / Denominación','Banco','Afiliación','Mes origen','Mes destino','Conciliación','Monto'];
@@ -318,6 +314,10 @@ function renderReporteTransitos(rows, period, denominaciones = []) {
   $('#outgoingCount').text(`${outgoing.length} registros · venta de ${period} que pasa a ${outgoing[0]?.mes_destino || siguienteMes(period)}`);
   $('#incomingAmount').text(TRANSIT_FMT.format(total(incoming)));
   $('#incomingCount').text(`${incoming.length} registros · origen ${anteriorMes(period)} y aplicado en ${period}`);
+  $('#transitTotalCount').text(filteredRows.length.toLocaleString('es-MX'));
+  $('#transitAllCount').text(filteredRows.length.toLocaleString('es-MX'));
+  $('#transitIncomingFilterCount').text(incoming.length.toLocaleString('es-MX'));
+  $('#transitOutgoingFilterCount').text(outgoing.length.toLocaleString('es-MX'));
   const station = $('#transitStation option:selected').text();
   $('#transitPeriodLabel').text(`${period} · ${$('#transitStation').val() ? station : 'todas las estaciones'}`);
 
@@ -342,6 +342,14 @@ function sentidoTransito(row) {
 
 function renderTransitosFiltrados() {
   const visibleRows = transitReportRows.filter(row => {
+    const sense = sentidoTransito(row);
+    if (transitSenseFilter !== 'TODOS' && sense !== transitSenseFilter) return false;
+    if (transitQuickSearchTerm) {
+      const haystack = [row.estacion,row.razon_social,row.denominacion,row.banco,row.afiliacion,row.mes_origen,row.mes_destino,row.conciliacion,row.monto_transito]
+        .filter(value => value != null).join(' ').toLocaleLowerCase('es-MX').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const needle = transitQuickSearchTerm.toLocaleLowerCase('es-MX').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (!haystack.includes(needle)) return false;
+    }
     for (const [column, selected] of transitColumnFilters) {
       if (!selected.has(valorColumnaTransito(row, column))) return false;
     }
@@ -355,7 +363,7 @@ function renderTransitosFiltrados() {
   $('#clearTransitColumnFilters').prop('disabled', activeCount === 0);
   $('#transitColumnFilterSummary')
     .toggleClass('active', activeCount > 0)
-    .text(activeCount ? `${activeCount} filtro${activeCount === 1 ? '' : 's'} de columna activo${activeCount === 1 ? '' : 's'} · aplica solo al detalle.` : 'Los filtros de encabezado solo afectan el detalle; los totales mantienen los filtros de empresa, banco, estación y mes.');
+    .text(activeCount ? `${activeCount} filtro${activeCount === 1 ? '' : 's'} de columna activo${activeCount === 1 ? '' : 's'} · combinado${activeCount === 1 ? '' : 's'} con sentido y búsqueda. El resumen conserva el corte completo.` : 'Sentido, búsqueda y filtros de encabezado afinan el detalle; el resumen conserva el corte completo.');
 
   document.querySelectorAll('.transit-col-filter').forEach(button => {
     const active = transitColumnFilters.has(Number(button.dataset.transitFilterColumn));
@@ -667,6 +675,16 @@ $(function() {
   $('#transitNextPage').on('click', function() {
     transitCurrentPage += 1;
     renderTransitosPagina();
+  });
+  $('.transit-sense-btn').on('click', function() {
+    transitSenseFilter = this.dataset.transitSense;
+    $('.transit-sense-btn').attr('aria-pressed', 'false');
+    $(this).attr('aria-pressed', 'true');
+    renderTransitosFiltrados();
+  });
+  $('#transitQuickSearch').on('input', function() {
+    transitQuickSearchTerm = this.value.trim();
+    renderTransitosFiltrados();
   });
   $('#transitCompany').on('change', function() {
     $('#transitDenominacion').val('');
