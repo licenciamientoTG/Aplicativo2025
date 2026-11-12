@@ -39,6 +39,13 @@ class inventario_urovo {
         } catch (Throwable $e) { $this->error($e); }
     }
 
+    public function dashboard(): void {
+        try {
+            $this->authorize(); $this->requireMethod('GET');
+            $this->respond(['success'=>true]+$this->model->dashboard());
+        } catch (Throwable $e) { $this->error($e); }
+    }
+
     public function summary_detail(int $station_id): void {
         try {
             $this->authorize(); $this->requireMethod('GET');
