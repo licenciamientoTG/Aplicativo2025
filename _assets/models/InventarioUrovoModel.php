@@ -27,33 +27,47 @@ class InventarioUrovoModel extends Model {
         return $this->sql->select('SELECT Codigo,Nombre FROM [TG].[dbo].[Estaciones] WHERE activa=1 AND Codigo NOT IN (0,4,20) ORDER BY Nombre');
     }
 
-    /** Objetivos fijos del usuario contra terminales Urovo operativas por código interno de TG. */
+    /** Resumen por marca frente a objetivos y terminales disponibles. */
     public function dashboard(): array {
-        $counts=$this->sql->select("SELECT estacion_codigo AS station_id,COUNT(*) AS funcionando
+        $counts=$this->sql->select("SELECT tipo_terminal,estacion_codigo AS station_id,COUNT(*) AS funcionando
             FROM [TG].[dbo].[inv_urovo_terminales]
-            WHERE tipo_terminal=? AND ubicacion_tipo=? AND condicion=? AND estacion_codigo IS NOT NULL
-            GROUP BY estacion_codigo",['urovo','estacion','operativa']);
-        $byStation=[];
-        foreach ($counts as $row) $byStation[(int)$row['station_id']]=(int)$row['funcionando'];
-        $rows=[]; $totalObjective=0; $totalFunctioning=0;
+            WHERE tipo_terminal IN (?,?) AND ubicacion_tipo=? AND condicion=? AND estacion_codigo IS NOT NULL
+            GROUP BY tipo_terminal,estacion_codigo",['urovo','verifone','estacion','operativa']);
+        $byStation=['urovo'=>[],'verifone'=>[]];
+        foreach ($counts as $row) $byStation[(string)$row['tipo_terminal']][(int)$row['station_id']]=(int)$row['funcionando'];
+        $totals=[
+            'urovo'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_reparacion'=>0],
+            'verifone'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_reparacion'=>0],
+        ];
+        $rows=[];
         foreach (self::DASHBOARD_OBJECTIVES as [$stationId,$name,$objective]) {
-            $functioning=$byStation[$stationId]??0;
-            $rows[]=['station_id'=>$stationId,'station_name'=>$name,'objetivo'=>$objective,'funcionando'=>$functioning,'diferencia'=>$objective-$functioning];
-            $totalObjective+=$objective; $totalFunctioning+=$functioning;
+            $urovoFunctioning=$byStation['urovo'][$stationId]??0;
+            $verifoneFunctioning=$byStation['verifone'][$stationId]??0;
+            $rows[]=['station_id'=>$stationId,'station_name'=>$name,
+                'urovo'=>['objetivo'=>$objective,'funcionando'=>$urovoFunctioning,'diferencia'=>$urovoFunctioning-$objective],
+                'verifone'=>['objetivo'=>0,'funcionando'=>$verifoneFunctioning,'diferencia'=>$verifoneFunctioning]];
+            $totals['urovo']['total_objetivo']+=$objective;
+            $totals['urovo']['total_funcionando']+=$urovoFunctioning;
+            $totals['verifone']['total_funcionando']+=$verifoneFunctioning;
         }
-          $inventoryTotals=$this->sql->select("SELECT
-                  SUM(CASE WHEN ubicacion_tipo='almacen' THEN 1 ELSE 0 END) AS stock,
-                  SUM(CASE WHEN ubicacion_tipo='reparacion' THEN 1 ELSE 0 END) AS reparacion
-              FROM [TG].[dbo].[inv_urovo_terminales]
-              WHERE tipo_terminal=? AND ubicacion_tipo IN (?,?)",['urovo','almacen','reparacion']);
-          $stock=(int)($inventoryTotals[0]['stock']??0);
-          $repair=(int)($inventoryTotals[0]['reparacion']??0);
-          $stationMissing=max(0,$totalObjective-$totalFunctioning);
-          $totalMissing=max(0,$totalObjective-($totalFunctioning+$stock+$repair));
-          return ['rows'=>$rows,'total_objetivo'=>$totalObjective,'total_funcionando'=>$totalFunctioning,
-              'total_stock'=>$stock,'total_reparacion'=>$repair,
-              'faltante_en_estacion'=>$stationMissing,'faltante_total'=>$totalMissing,
-              'faltantes'=>$stationMissing];
+        $inventoryTotals=$this->sql->select("SELECT tipo_terminal,
+                SUM(CASE WHEN ubicacion_tipo='almacen' THEN 1 ELSE 0 END) AS stock,
+                SUM(CASE WHEN ubicacion_tipo='reparacion' THEN 1 ELSE 0 END) AS reparacion
+            FROM [TG].[dbo].[inv_urovo_terminales]
+            WHERE tipo_terminal IN (?,?) AND ubicacion_tipo IN (?,?)
+            GROUP BY tipo_terminal",['urovo','verifone','almacen','reparacion']);
+        foreach ($inventoryTotals as $row) {
+            $type=(string)$row['tipo_terminal'];
+            if (!isset($totals[$type])) continue;
+            $totals[$type]['total_stock']=(int)($row['stock']??0);
+            $totals[$type]['total_reparacion']=(int)($row['reparacion']??0);
+        }
+        foreach ($totals as $type=>&$total) {
+            $total['faltante_en_estacion']=$total['total_funcionando']-$total['total_objetivo'];
+            $total['faltante_total']=($total['total_funcionando']+$total['total_stock']+$total['total_reparacion'])-$total['total_objetivo'];
+        }
+        unset($total);
+        return ['rows'=>$rows,'totals'=>$totals];
     }
 
     /** Resumen por estación, agregando cada fuente antes de unirla para evitar multiplicar conteos. */
