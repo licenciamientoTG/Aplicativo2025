@@ -82,6 +82,7 @@ class InventarioUrovoModel extends Model {
             if ($filters['status']==='sin_serie') $where[]='t.numero_serie IS NULL';
             else { $where[]='t.ubicacion_tipo=?'; $params[]=$filters['status']; }
         }
+        if (!empty($filters['terminal_type'])) { $where[]='t.tipo_terminal=?'; $params[]=$filters['terminal_type']; }
         if (!empty($filters['q'])) { $where[]='(t.numero_serie LIKE ? OR t.modelo LIKE ? OR t.ip LIKE ? OR t.imei LIKE ?)'; $q='%'.$filters['q'].'%'; array_push($params,$q,$q,$q,$q); }
         $sqlWhere = $where ? ' WHERE '.implode(' AND ',$where) : '';
         $rows = $this->sql->select("SELECT t.*,s.Nombre AS estacion_nombre,lm.fecha_evento AS last_movement,lm.tipo_evento AS last_movement_type,lm.motivo AS last_movement_reason FROM [TG].[dbo].[inv_urovo_terminales] t LEFT JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=t.estacion_codigo OUTER APPLY (SELECT TOP (1) h.fecha_evento,h.tipo_evento,h.motivo FROM [TG].[dbo].[inv_urovo_movimientos] h WHERE h.terminal_id=t.id ORDER BY h.fecha_evento DESC,h.id DESC) lm$sqlWhere ORDER BY t.actualizado_en DESC,t.id DESC", $params);

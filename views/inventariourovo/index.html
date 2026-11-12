@@ -19,6 +19,7 @@
     <aside class="urovo-side">
       <h3>Filtrar inventario</h3>
       <label for="urovoStatus">Estado</label><select id="urovoStatus" class="form-control"><option value="">Todos los estados</option><option value="estacion">En estación</option><option value="almacen">En almacén</option><option value="reparacion">En reparación</option><option value="perdida">Extraviado</option><option value="baja_definitiva">Baja definitiva</option><option value="sin_serie">Sin número de serie</option></select>
+      <label for="urovoType">Tipo de terminal</label><select id="urovoType" class="form-control"><option value="">Todos los tipos</option><option value="urovo">Urovo</option><option value="verifone">Verifone</option></select>
     </aside>
     <div class="urovo-main">
   <div class="urovo-table-heading"><div><h3>Terminales registradas</h3><p id="urovoResultCount">Cargando inventario…</p></div><div class="urovo-table-actions"><label class="urovo-search-box" for="urovoSearch"><i class="fas fa-search" aria-hidden="true"></i><input id="urovoSearch" class="form-control" type="search" placeholder="Serie, modelo, IP o IMEI" aria-label="Buscar terminales registradas"></label><button type="button" class="btn btn-link" id="urovoRefresh"><i class="fas fa-sync-alt"></i> Actualizar</button></div></div>
