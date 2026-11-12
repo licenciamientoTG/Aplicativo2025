@@ -102,3 +102,52 @@
 #urovoInventory .urovo-dashboard-table .is-surplus{color:#28643d;font-weight:700}
 #urovoInventory .urovo-dashboard-table tfoot th,#urovoInventory .urovo-dashboard-table tfoot td{border-top:2px solid #ccdce7;background:#f7fafc;font-weight:750}
 @media(max-width:600px){#urovoInventory .urovo-dashboard-toolbar{gap:.4rem;padding:.45rem}#urovoInventory .urovo-dashboard-filter{gap:.35rem}#urovoInventory .urovo-dashboard-filter label{font-size:.75rem}#urovoInventory .urovo-dashboard-filter select{width:160px;font-size:.78rem}#urovoInventory .urovo-dashboard-toolbar>.btn{padding:.35rem;font-size:.78rem}#urovoInventory .urovo-dashboard-cards{grid-template-columns:1fr}#urovoInventory .urovo-dashboard-gap{min-height:98px;padding:.85rem 1rem}}
+/* Visual refresh: inventory equipment palette and clearer working hierarchy. */
+#urovoInventory{
+  --urovo-ink:#18364b;
+  --urovo-blue:#146b70;
+  --urovo-line:#d6e0e2;
+  --urovo-paper:#f2f6f6;
+  color:#263f4c;
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+#urovoInventory .urovo-head{padding:1.45rem 0 1.2rem}
+#urovoInventory .urovo-intro{color:#58717b;font-size:.88rem}
+#urovoInventory .urovo-head h2{color:#18364b;font-size:1.8rem;font-weight:700;letter-spacing:-.04em}
+#urovoInventory .urovo-subtitle{color:#60747c}
+#urovoInventory .urovo-location-bar{border-color:#d2dfe0;border-left-color:#146b70;border-radius:.35rem;background:#fff}
+#urovoInventory .urovo-location-icon{border-radius:.3rem;background:#e6f1ef;color:#146b70}
+#urovoInventory .urovo-location-copy label{color:#18364b}
+#urovoInventory .urovo-location-copy small{color:#687d83}
+#urovoInventory .urovo-location-bar .btn-primary,
+#urovoInventory .btn-primary{border-color:#146b70;background-color:#146b70;color:#fff}
+#urovoInventory .urovo-location-bar .btn-primary:hover,
+#urovoInventory .btn-primary:hover{border-color:#0d565a;background-color:#0d565a}
+#urovoInventory .urovo-tabs{margin-top:.8rem;border-bottom-color:#cbd9da}
+#urovoInventory .urovo-tabs [role="tab"]{color:#657a80}
+#urovoInventory .urovo-tabs [role="tab"][aria-selected="true"]{color:#105e63}
+#urovoInventory .urovo-tabs [role="tab"][aria-selected="true"]::after{border-color:#d79531}
+#urovoInventory .urovo-side{border-color:#d7e1e2;border-radius:.35rem;background:#f2f6f6}
+#urovoInventory .urovo-side h3,#urovoInventory .urovo-table-heading h3{color:#18364b}
+#urovoInventory .urovo-main{border-color:#d7e1e2;border-radius:.35rem;box-shadow:0 2px 8px rgba(24,54,75,.04)}
+#urovoInventory .urovo-table-heading{padding:1rem 1.1rem;border-bottom-color:#dce5e6}
+#urovoInventory .urovo-table-heading p{color:#687d83}
+#urovoInventory .urovo-table-wrap{overflow-x:auto;overscroll-behavior-x:contain;scrollbar-gutter:stable}
+#urovoInventory .urovo-table thead th{background:#edf3f3;border-bottom-color:#d2dfe0;color:#536d75;font-size:.73rem;letter-spacing:.015em}
+#urovoInventory .urovo-table tbody td{border-color:#e7eded;color:#354f5a}
+#urovoInventory .urovo-table tbody tr:hover{background:#f5faf9}
+#urovoInventory .urovo-status{background:#e5efee;color:#245c5e}
+#urovoInventory .urovo-status.is-repair{background:#fff1d8;color:#805512}
+#urovoInventory .urovo-search-box{border-color:#ccd9db;border-radius:.35rem}
+#urovoInventory .urovo-search-box:focus-within{border-color:#146b70;box-shadow:0 0 0 3px rgba(20,107,112,.14)}
+#urovoInventory .terminal-type-badge.is-urovo{background:#146b70}
+#urovoInventory .terminal-type-badge.is-verifone{background:#596b91}
+#urovoInventory .urovo-pagination{border-top:1px solid #e7eded}
+#urovoInventory :focus-visible,#urovoBatchModal :focus-visible,#urovoDetailModal :focus-visible,#urovoAnonymousModal :focus-visible{outline-color:#b27618!important;outline-offset:3px}
+@media(max-width:800px){
+  #urovoInventory .urovo-head{gap:.8rem;padding-top:1rem}
+  #urovoInventory .urovo-head h2{font-size:1.5rem}
+  #urovoInventory .urovo-table-heading{flex-wrap:wrap;padding:.85rem}
+  #urovoInventory .urovo-table-wrap:focus-visible{outline:3px solid #b27618;outline-offset:2px}
+}
+@media(prefers-reduced-motion:reduce){#urovoInventory .urovo-tabs [role="tab"]{scroll-behavior:auto}}
