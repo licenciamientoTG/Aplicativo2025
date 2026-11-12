@@ -131,6 +131,7 @@ def render_bodies(stations, counts, months: list[date], category: str, title: st
     grand_total = 0
     column_totals = [0] * len(months)
     for code, name in stations:
+        display_name = "19 Independencia" if code == 3 else name
         numbers = [counts.get((code, month.year, month.month, category), 0) for month in months]
         total = sum(numbers)
         grand_total += total
@@ -142,9 +143,9 @@ def render_bodies(stations, counts, months: list[date], category: str, title: st
             cells.append(f'<td style="padding:7px;text-align:center;border-bottom:1px solid #ddd">{label}</td>')
         url = escape(report_link(code, category, start, end), quote=True)
         total_label = f'<a href="{url}">{total}</a>'
-        html_rows.append(f'<tr><td style="padding:7px;border-bottom:1px solid #ddd">{escape(name)} ({code})</td>'
+        html_rows.append(f'<tr><td style="padding:7px;border-bottom:1px solid #ddd">{escape(display_name)} ({code})</td>'
                          + "".join(cells) + f'<td style="padding:7px;text-align:center;font-weight:bold">{total_label}</td></tr>')
-        text_rows.append(f"{name} ({code}) | " + " | ".join(map(str, numbers)) + f" | {total}")
+        text_rows.append(f"{display_name} ({code}) | " + " | ".join(map(str, numbers)) + f" | {total}")
     total_cells = "".join(
         f'<td style="padding:7px;text-align:center;font-weight:bold">'
         f'<a href="{escape(report_link(0, category, month, month_end(month)), quote=True)}">{value}</a></td>'
