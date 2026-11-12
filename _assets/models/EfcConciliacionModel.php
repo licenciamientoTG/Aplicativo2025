@@ -4,6 +4,12 @@ class EfcConciliacionModel {
     private PDO $db;
     private array $bankStationCatalogCache = [];
     private const TOLERANCE = 20.00;
+    public const PRAXEDIS_STATION_ID = 40;
+    private const PRAXEDIS_SUMMARY_FIELDS = [
+        'venta_mn','venta_morralla','venta_total_mn','depositos_mes_mn',
+        'deposito_transito_mn','total_comprobado','diferencia','venta_pesos_usd',
+        'ventas_usd','depositos_usd','transito_usd','venta_total_mn_global','saldo_inicial',
+    ];
     private const COMPANY_ACCOUNTS = [
         'DIAZ GAS' => ['0185322470', '369', '60630878973'],
         'FORANEAS'  => ['3281', '8837', '8520', '7291', '2570', '7533', '2627', '5247', '7604', '0031'],
@@ -124,6 +130,7 @@ class EfcConciliacionModel {
         $statements[] = "UPDATE P SET fecha_operacion=T.fecha_origen FROM dbo.efc_conc_partidas P JOIN dbo.efc_conc_transitos T ON P.clave_externa='TR:'+CONVERT(VARCHAR(20),T.id) WHERE P.origen='CG' AND P.fecha_operacion<>T.fecha_origen";
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_cierres','U') IS NULL CREATE TABLE dbo.efc_conc_cierres (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, mes CHAR(7) NOT NULL, concepto VARCHAR(20) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL DEFAULT 0, total_banco DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_declarado DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_real DECIMAL(18,2) NOT NULL DEFAULT 0, total_diferencia DECIMAL(18,2) NOT NULL DEFAULT 0, total_transito DECIMAL(18,2) NOT NULL DEFAULT 0, operaciones INT NOT NULL DEFAULT 0, pendientes INT NOT NULL DEFAULT 0, estado VARCHAR(12) NOT NULL DEFAULT 'CERRADO', cerrado_por INT NULL, cerrado_en DATETIME NULL, reabierto_por INT NULL, reabierto_en DATETIME NULL, nota VARCHAR(500) NULL, CONSTRAINT UQ_efc_conc_cierre UNIQUE(estacion_id,mes,concepto))";
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_cierres_etapas','U') IS NULL CREATE TABLE dbo.efc_conc_cierres_etapas (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, mes CHAR(7) NOT NULL, concepto VARCHAR(20) NOT NULL, etapa VARCHAR(10) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_declarado DECIMAL(18,2) NOT NULL DEFAULT 0, total_regio_real DECIMAL(18,2) NOT NULL DEFAULT 0, total_banco DECIMAL(18,2) NOT NULL DEFAULT 0, diferencia_regio DECIMAL(18,2) NOT NULL DEFAULT 0, diferencia_banco DECIMAL(18,2) NOT NULL DEFAULT 0, total_transito DECIMAL(18,2) NOT NULL DEFAULT 0, operaciones INT NOT NULL DEFAULT 0, pendientes INT NOT NULL DEFAULT 0, estado VARCHAR(12) NOT NULL DEFAULT 'CERRADO', cerrado_por INT NULL, cerrado_en DATETIME NULL, reabierto_por INT NULL, reabierto_en DATETIME NULL, nota VARCHAR(500) NULL, CONSTRAINT UQ_efc_conc_cierre_etapa UNIQUE(estacion_id,mes,concepto,etapa))";
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_resumen_praxedis_manual','U') IS NULL CREATE TABLE dbo.efc_conc_resumen_praxedis_manual (estacion_id INT NOT NULL CONSTRAINT DF_efc_conc_resumen_praxedis_estacion DEFAULT 40, anio SMALLINT NOT NULL, mes TINYINT NOT NULL, venta_mn DECIMAL(19,2) NOT NULL, venta_morralla DECIMAL(19,2) NOT NULL, venta_total_mn DECIMAL(19,2) NOT NULL, depositos_mes_mn DECIMAL(19,2) NOT NULL, deposito_transito_mn DECIMAL(19,2) NOT NULL, total_comprobado DECIMAL(19,2) NOT NULL, diferencia DECIMAL(19,2) NOT NULL, venta_pesos_usd DECIMAL(19,2) NOT NULL, ventas_usd DECIMAL(19,2) NOT NULL, depositos_usd DECIMAL(19,2) NOT NULL, transito_usd DECIMAL(19,2) NOT NULL, venta_total_mn_global DECIMAL(19,2) NOT NULL, saldo_inicial DECIMAL(19,2) NOT NULL, actualizado_por INT NULL, actualizado_en DATETIME2 NOT NULL CONSTRAINT DF_efc_conc_resumen_praxedis_actualizado DEFAULT SYSDATETIME(), CONSTRAINT PK_efc_conc_resumen_praxedis_manual PRIMARY KEY(estacion_id,anio,mes), CONSTRAINT CK_efc_conc_resumen_praxedis_station CHECK(estacion_id=40), CONSTRAINT CK_efc_conc_resumen_praxedis_period CHECK(anio BETWEEN 2020 AND 2100 AND mes BETWEEN 1 AND 12))";
         // The Python scheduler owns writes to this history; creating it here
         // keeps the page readable before the first scheduled invocation.
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_ejecuciones_automaticas','U') IS NULL CREATE TABLE dbo.efc_conc_ejecuciones_automaticas (id BIGINT IDENTITY PRIMARY KEY,inicio_en DATETIME2 NOT NULL DEFAULT SYSDATETIME(),fin_en DATETIME2 NULL,estado VARCHAR(20) NOT NULL,conciliadas INT NOT NULL DEFAULT 0,omitidas INT NOT NULL DEFAULT 0,errores INT NOT NULL DEFAULT 0,detalle NVARCHAR(MAX) NULL)";
@@ -1064,6 +1071,56 @@ class EfcConciliacionModel {
             }
         }
         return array_values($groups);
+    }
+
+    public function praxedisManualSummary(int $year, int $month): ?array {
+        $this->assertPraxedisSummaryPeriod($year,$month);
+        $fields=implode(',',self::PRAXEDIS_SUMMARY_FIELDS);
+        $stmt=$this->db->prepare("SELECT $fields,actualizado_por,actualizado_en FROM dbo.efc_conc_resumen_praxedis_manual WHERE estacion_id=? AND anio=? AND mes=?");
+        $stmt->execute([self::PRAXEDIS_STATION_ID,$year,$month]);
+        $row=$stmt->fetch(PDO::FETCH_ASSOC);
+        if(!$row) return null;
+        foreach(self::PRAXEDIS_SUMMARY_FIELDS as $field) $row[$field]=(float)$row[$field];
+        $row['actualizado_por']=$row['actualizado_por']===null?null:(int)$row['actualizado_por'];
+        if($row['actualizado_en'] instanceof DateTimeInterface) $row['actualizado_en']=$row['actualizado_en']->format('Y-m-d H:i:s');
+        return $row;
+    }
+
+    public function savePraxedisManualSummary(int $year, int $month, array $values, int $userId): array {
+        $this->assertPraxedisSummaryPeriod($year,$month);
+        if($userId<1 || count($values)!==count(self::PRAXEDIS_SUMMARY_FIELDS)
+            || array_diff(array_keys($values),self::PRAXEDIS_SUMMARY_FIELDS)
+            || array_diff(self::PRAXEDIS_SUMMARY_FIELDS,array_keys($values))) throw new RuntimeException('Importes manuales inválidos.');
+        $normalised=[];
+        foreach(self::PRAXEDIS_SUMMARY_FIELDS as $field) {
+            $value=$values[$field];
+            if(!(is_int($value)||is_float($value)||(is_string($value)&&is_numeric(trim($value))))) throw new RuntimeException('Todos los importes deben ser numéricos.');
+            $number=(float)$value;
+            if(!is_finite($number)||abs($number)>=1.0e17) throw new RuntimeException('Hay un importe fuera del rango permitido.');
+            $normalised[$field]=round($number,2);
+        }
+        $columns=implode(',',self::PRAXEDIS_SUMMARY_FIELDS);
+        $assignments=implode(',',array_map(static fn($field)=>$field.'=?',self::PRAXEDIS_SUMMARY_FIELDS));
+        $params=array_values($normalised);
+        $this->db->beginTransaction();
+        try {
+            $exists=$this->db->prepare('SELECT 1 FROM dbo.efc_conc_resumen_praxedis_manual WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND anio=? AND mes=?');
+            $exists->execute([self::PRAXEDIS_STATION_ID,$year,$month]);
+            if($exists->fetchColumn()) {
+                $stmt=$this->db->prepare("UPDATE dbo.efc_conc_resumen_praxedis_manual SET $assignments,actualizado_por=?,actualizado_en=SYSDATETIME() WHERE estacion_id=? AND anio=? AND mes=?");
+                $stmt->execute(array_merge($params,[$userId,self::PRAXEDIS_STATION_ID,$year,$month]));
+            } else {
+                $marks=implode(',',array_fill(0,count(self::PRAXEDIS_SUMMARY_FIELDS)+4,'?'));
+                $stmt=$this->db->prepare("INSERT dbo.efc_conc_resumen_praxedis_manual(estacion_id,anio,mes,$columns,actualizado_por) VALUES($marks)");
+                $stmt->execute(array_merge([self::PRAXEDIS_STATION_ID,$year,$month],$params,[$userId]));
+            }
+            $this->db->commit();
+        } catch(Throwable $e) { if($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
+        return $this->praxedisManualSummary($year,$month)??[];
+    }
+
+    private function assertPraxedisSummaryPeriod(int $year,int $month): void {
+        if($year<2020||$year>2100||$month<1||$month>12) throw new RuntimeException('Periodo inválido.');
     }
 
     public function reclassify(array $data, int $userId): int {

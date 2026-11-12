@@ -18,7 +18,7 @@
   .transit-metric-label { color:#64748b; font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
   .transit-metric-value { margin-top:5px; color:#1e293b; font:800 1.55rem/1.2 Consolas,monospace; }
   .transit-metric-sub { margin-top:4px; color:#64748b; font-size:.8rem; }
-  .transit-table { min-width:1000px; }
+  .transit-table { min-width:1120px; }
   .transit-table td, .transit-table th { vertical-align:middle; }
   .transit-table th { white-space:nowrap; }
   .transit-th-content { display:flex; align-items:center; justify-content:flex-start; gap:6px; }
@@ -64,10 +64,15 @@
       <div>
         <label for="transitCompany">EMPRESA</label>
         <select id="transitCompany" class="form-control">
-          <option value="DIAZ GAS">DIAZ</option>
+          <option value="">Todas las empresas</option>
+          <option value="DIAZ GAS">DIAZ GAS</option>
           <option value="FORANEAS">FORÁNEAS</option>
           <option value="GASOMEX">GASOMEX</option>
         </select>
+      </div>
+      <div>
+        <label for="transitDenominacion">RAZÓN SOCIAL / DENOMINACIÓN</label>
+        <select id="transitDenominacion" class="form-control"><option value="">Todas</option></select>
       </div>
       <div>
         <label for="transitBank">BANCO</label>
@@ -135,12 +140,13 @@
           <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="0" aria-label="Filtrar por Sentido" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Sentido</span></div></th>
           <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="1" aria-label="Filtrar por Estación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Estación</span></div></th>
           <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="2" aria-label="Filtrar por Empresa" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Empresa</span></div></th>
-          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="3" aria-label="Filtrar por Banco" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Banco</span></div></th>
-          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="4" aria-label="Filtrar por Afiliación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Afiliación</span></div></th>
-          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="5" aria-label="Filtrar por Mes origen" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Mes origen</span></div></th>
-          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="6" aria-label="Filtrar por Mes destino" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Mes destino</span></div></th>
-          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="7" aria-label="Filtrar por Conciliación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Conciliación</span></div></th>
-          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="8" aria-label="Filtrar por Monto" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Monto</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="3" aria-label="Filtrar por Razón social" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Razón social / Denominación</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="4" aria-label="Filtrar por Banco" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Banco</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="5" aria-label="Filtrar por Afiliación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Afiliación</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="6" aria-label="Filtrar por Mes origen" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Mes origen</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="7" aria-label="Filtrar por Mes destino" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Mes destino</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="8" aria-label="Filtrar por Conciliación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Conciliación</span></div></th>
+          <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="9" aria-label="Filtrar por Monto" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Monto</span></div></th>
         </tr></thead>
         <tbody id="transitRows"></tbody>
       </table>
@@ -155,12 +161,13 @@ const TRANSIT_FMT = new Intl.NumberFormat('es-MX', { style:'currency', currency:
 let transitRequest = 0;
 let stationRequest = 0;
 let transitReportRows = [];
+let transitReportRawRows = [];
 let visibleTransitReportRows = [];
 let transitReportPeriod = '';
 let transitReportReady = false;
 const transitColumnFilters = new Map();
 let activeTransitMenu = null;
-const transitColumnNames = ['Sentido','Estación','Empresa','Banco','Afiliación','Mes origen','Mes destino','Conciliación','Monto'];
+const transitColumnNames = ['Sentido','Estación','Empresa','Razón social / Denominación','Banco','Afiliación','Mes origen','Mes destino','Conciliación','Monto'];
 
 function cargarBancosTransitos() {
   const empresa = $('#transitCompany').val();
@@ -176,10 +183,10 @@ function cargarBancosTransitos() {
 function cargarEstacionesTransitos() {
   const empresa = $('#transitCompany').val();
   const request = ++stationRequest;
-  $.getJSON('/income/get_estaciones_catalogo', { empresa, all: 1 }, function(res) {
+  $.getJSON('/income/get_transitos_v3_estaciones', { empresa }, function(res) {
     if (request !== stationRequest || empresa !== $('#transitCompany').val() || res.status !== 'success') return;
     const $station = $('#transitStation').empty().append($('<option>').val('').text('Todas las estaciones'));
-    (res.respuesta || []).forEach(row => $station.append($('<option>').val(row.Codigo).text(row.Nombre)));
+    (res.data || []).forEach(row => $station.append($('<option>').val(row.Codigo).text(row.Nombre)));
   });
 }
 
@@ -192,7 +199,8 @@ function consultarTransitos() {
   const request = ++transitRequest;
   const params = {
     year, month,
-    razon_social: $('#transitCompany').val(),
+    empresa: $('#transitCompany').val(),
+    denominacion: $('#transitDenominacion').val(),
     banco: $('#transitBank').val(),
     estacion_id: $('#transitStation').val()
   };
@@ -206,7 +214,7 @@ function consultarTransitos() {
     .done(res => {
       if (request !== transitRequest) return;
       if (res.status !== 'success') { mostrarTransitoError(res.message || 'No se pudo consultar el reporte.'); return; }
-      renderReporteTransitos(res.data || [], `${year}-${month}`);
+      renderReporteTransitos(res.data || [], `${year}-${month}`, res.denominaciones || res.denominaciones_disponibles || []);
     })
     .fail(() => { if (request === transitRequest) mostrarTransitoError('Ocurrió un error al consultar los tránsitos.'); })
     .always(() => { if (request === transitRequest) $('#transitLoading').addClass('d-none'); });
@@ -221,11 +229,22 @@ function mostrarTransitoError(message) {
   $('#transitError').removeClass('d-none').text(message);
 }
 
-function renderReporteTransitos(rows, period) {
+function renderReporteTransitos(rows, period, denominaciones = []) {
   transitReportPeriod = period;
   transitReportReady = true;
-  const outgoing = rows.filter(row => sentidoTransito(row) === 'SALIENTE');
-  const incoming = rows.filter(row => sentidoTransito(row) === 'ENTRANTE');
+  transitReportRawRows = rows;
+  const selectedDenominacion = $('#transitDenominacion').val();
+  const options = [...new Set([...(denominaciones || []), ...rows.map(row => row.denominacion || row.razon_social).filter(Boolean)])]
+    .map(value => typeof value === 'object' ? (value.denominacion || value.razon_social || value.nombre || '') : String(value))
+    .filter(Boolean).filter((value, index, list) => list.indexOf(value) === index)
+    .sort((a, b) => a.localeCompare(b, 'es', { sensitivity:'base' }));
+  const $denom = $('#transitDenominacion').empty().append($('<option>').val('').text('Todas'));
+  options.forEach(value => $denom.append($('<option>').val(value).text(value)));
+  if (options.includes(selectedDenominacion)) $denom.val(selectedDenominacion);
+  const selected = $('#transitDenominacion').val();
+  const filteredRows = transitReportRawRows.filter(row => !selected || (row.denominacion || row.razon_social || '') === selected);
+  const outgoing = filteredRows.filter(row => sentidoTransito(row) === 'SALIENTE');
+  const incoming = filteredRows.filter(row => sentidoTransito(row) === 'ENTRANTE');
   const total = list => list.reduce((sum, row) => sum + Number(row.monto_transito || 0), 0);
   $('#outgoingAmount').text(TRANSIT_FMT.format(total(outgoing)));
   $('#outgoingCount').text(`${outgoing.length} registros · venta de ${period} que pasa a ${outgoing[0]?.mes_destino || siguienteMes(period)}`);
@@ -234,14 +253,14 @@ function renderReporteTransitos(rows, period) {
   const station = $('#transitStation option:selected').text();
   $('#transitPeriodLabel').text(`${period} · ${$('#transitStation').val() ? station : 'todas las estaciones'}`);
 
-  transitReportRows = rows;
+  transitReportRows = filteredRows;
   renderTransitosFiltrados();
   $('#exportTransitExcel').prop('disabled', false);
   $('#transitLoading').addClass('d-none');
 }
 
 function valorColumnaTransito(row, column) {
-  const values = [sentidoTransito(row),row.estacion,row.razon_social,row.banco,row.afiliacion,row.mes_origen,row.mes_destino,row.conciliacion,Number(row.monto_transito || 0).toFixed(2)];
+  const values = [sentidoTransito(row),row.estacion,row.razon_social,row.denominacion,row.banco,row.afiliacion,row.mes_origen,row.mes_destino,row.conciliacion,Number(row.monto_transito || 0).toFixed(2)];
   return values[column] == null ? '' : String(values[column]);
 }
 
@@ -266,7 +285,7 @@ function renderTransitosFiltrados() {
   visibleRows.forEach(row => {
     const tr = document.createElement('tr');
     const sentido = sentidoTransito(row);
-    const values = [sentido || 'Sin sentido',row.estacion,row.razon_social,row.banco,row.afiliacion || '—',row.mes_origen,row.mes_destino,row.conciliacion || '—'];
+    const values = [sentido || 'Sin sentido',row.estacion,row.razon_social,row.denominacion,row.banco,row.afiliacion || '—',row.mes_origen,row.mes_destino,row.conciliacion || '—'];
     values.forEach((value, index) => {
       const td = document.createElement('td');
       if (index === 0) {
@@ -316,13 +335,15 @@ async function exportarTransitosExcel() {
   const stationId = $('#transitStation').val();
   const payload = {
     period: transitReportPeriod,
-    empresa: $('#transitCompany').val(),
+    empresa: $('#transitCompany').val() || 'Todas',
+    denominacion: $('#transitDenominacion').val() || 'Todas',
     banco: $('#transitBank').val(),
     estacion: stationId ? $('#transitStation option:selected').text() : 'Todas las estaciones',
     rows: visibleTransitReportRows.map(row => ({
       sentido: sentidoTransito(row),
       estacion: row.estacion || '',
       razon_social: row.razon_social || '',
+      denominacion: row.denominacion || '',
       banco: row.banco || '',
       afiliacion: row.afiliacion || '',
       mes_origen: row.mes_origen || '',
@@ -540,8 +561,13 @@ $(function() {
   const now = new Date();
   $('#transitPeriod').val(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
   $('#transitCompany').on('change', function() {
+    $('#transitDenominacion').val('');
     cargarBancosTransitos();
     cargarEstacionesTransitos();
+  });
+  $('#transitDenominacion').on('change', function() {
+    if (!transitReportReady) return;
+    consultarTransitos();
   });
   cargarBancosTransitos();
   cargarEstacionesTransitos();

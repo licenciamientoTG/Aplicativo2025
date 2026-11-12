@@ -249,6 +249,12 @@ class EfcAnaliticosModel {
 
     public function createManagedPaper(array $data, int $userId): int {
         $values=$this->validateManagedPaper($data);
+        if ($values['declared_mn']==0.0 && $values['real_mn']==0.0 && $values['declared_usd']==0.0 && $values['real_usd']==0.0) {
+            throw new RuntimeException('Capture al menos un importe distinto de cero.');
+        }
+        // Las capturas manuales no tienen hora de origen. Conservamos el valor
+        // esperado por la base de datos sin cambiar la edición de importadas.
+        $values['time']='0';
         if ($userId<1) throw new RuntimeException('No se pudo identificar al usuario de sesión.');
         $company=strtoupper(trim((string)($data['empresa']??'DIAZ GAS')));
         if (!in_array($company,['DIAZ GAS','FORANEAS','GASOMEX'],true)) throw new RuntimeException('Empresa inválida.');

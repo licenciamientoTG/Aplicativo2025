@@ -54,6 +54,7 @@ class Supply
     public FacturasMovimientosTanquesModel $facturasMovimientosTanquesModel;
     public CrePlacesModel $crePlacesModel;
     public CrePricesModel $crePricesModel;
+    private PermissionsModel $permissionsModel;
     public PetrotalReconciliationModel $petrotalReconciliationModel;
     public FuelReceptionScheduleModel $fuelReceptionScheduleModel;
     public FuelReceptionInvoiceModel $fuelReceptionInvoiceModel;
@@ -71,6 +72,7 @@ class Supply
         $this->tanquesModel                                      = new TanquesModel();
         $this->tvariasModel                                      = new TVariasModel();
         $this->preciosModel                                      = new PreciosModel();
+        $this->permissionsModel                                  = new PermissionsModel();
         $this->estacionesModel                                   = new EstacionesModel();
         $this->documentosModel                                   = new DocumentosModel();
         $this->binnaclePricesModel                               = new BinnaclePricesModel();
@@ -269,12 +271,17 @@ class Supply
 
     function fuel_prices(): void
     {
-        $prices = $this->preciosModel->get_today_prices();
+        $canViewCurrent = authorized(42);
+        $historyPermission = $this->historyPricesPermissionId();
+        $canViewHistory = $historyPermission !== false && authorized($historyPermission);
+        if (!$canViewCurrent && !$canViewHistory) { http_response_code(403); echo 'No tienes permiso para acceder a esta sección'; return; }
+
+        $prices = $canViewCurrent ? $this->preciosModel->get_today_prices() : [];
         binnacle_register_prices($_SESSION['tg_user']['Id'], 'Ingreso', 'Se ingresó a la pantalla de precios de combustibles', $_SERVER['REMOTE_ADDR'], 'supply.php', 'fuel_prices');
-        $stations = $this->gasolinerasModel->get_active_station_TG();
+        $stations = $canViewCurrent ? $this->gasolinerasModel->get_active_station_TG() : [];
 
         $mensajeFinal = 'No existe programación para cambio de precios de combustibles el día de hoy.';
-        if ($todaySchedule = $this->preciosModel->get_today_schedules()) {
+        if ($canViewCurrent && ($todaySchedule = $this->preciosModel->get_today_schedules())) {
             // Construir el mensaje final
             $mensajeFinal = "<p class=\"d-inline-flex gap-1\">
                                   <a data-bs-toggle=\"collapse\" href=\"#collapseExample\" role=\"button\" aria-expanded=\"false\" aria-controls=\"collapseExample\">Notificación de actualización de precios de combustibles para el día de hoy <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"feather feather-arrow-down align-middle me-2\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"></line><polyline points=\"19 12 12 19 5 12\"></polyline></svg></a>
@@ -310,7 +317,7 @@ class Supply
         }
 
         $mensajeFinal2 = '<b class="text-muted">No existe programación para cambio de precios de combustibles el día de mañana.</b>';
-        if ($tomorrowSchedule = $this->preciosModel->getTomorrowSchedules()) {
+        if ($canViewCurrent && ($tomorrowSchedule = $this->preciosModel->getTomorrowSchedules())) {
             // Construir el mensaje final
             $mensajeFinal2 = "<p class=\"d-inline-flex gap-1\">
                                   <a data-bs-toggle=\"collapse\" href=\"#collapseTomorrow\" role=\"button\" aria-expanded=\"false\" aria-controls=\"collapseTomorrow\">Notificación de actualización de precios de combustibles para el día de mañana <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"feather feather-arrow-down align-middle me-2\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"></line><polyline points=\"19 12 12 19 5 12\"></polyline></svg></a>
@@ -345,9 +352,14 @@ class Supply
             $mensajeFinal2 .= "</div></div>";
         }
 
-        $history_stations = $this->preciosModel->get_history_stations();
+        $history_stations = $canViewHistory ? $this->preciosModel->get_history_stations() : [];
 
-        echo $this->twig->render($this->route . 'fuel_prices.html', compact('stations', 'mensajeFinal', 'mensajeFinal2', 'prices', 'history_stations'));
+        echo $this->twig->render($this->route . 'fuel_prices.html', compact('stations', 'mensajeFinal', 'mensajeFinal2', 'prices', 'history_stations', 'canViewCurrent', 'canViewHistory'));
+    }
+
+    private function historyPricesPermissionId(): int|false
+    {
+        return $this->permissionsModel->get_active_permission_id('read', 'Abastos', 'Histórico precios combustibles - Lectura');
     }
 
     /**
@@ -357,6 +369,8 @@ class Supply
      */
     function fuel_price_history(): void
     {
+        $permission = $this->historyPricesPermissionId();
+        if ($permission === false || !authorized($permission)) { http_response_code(403); json_output(['error' => 'Sin permiso']); return; }
         $codgas = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['codgas'] ?? [])))));
         $fromMonth = $_POST['from'] ?? '';
         $toMonth   = $_POST['to'] ?? '';
@@ -495,6 +509,7 @@ class Supply
 
     function datatable_product_prices()
     {
+        if (!authorized(42)) { http_response_code(403); json_output(['error' => 'Sin permiso']); return; }
         binnacle_register_prices($_SESSION['tg_user']['Id'], 'Visualización', 'Se visualizo la tabla de precios de combustibles', $_SERVER['REMOTE_ADDR'], 'supply.php', 'binnacle_register_prices');
         $data = [];
         $stations = $this->gasolinerasModel->get_active_station_TG();
@@ -571,6 +586,7 @@ class Supply
 
     function delete_price($codprd, $codgas, $fch, $hra)
     {
+        if (!authorized(42)) { http_response_code(403); echo 'Sin permiso'; return; }
 
         binnacle_register_prices($_SESSION['tg_user']['Id'], 'Eliminación', "Se eliminó el siguiente registro: codprd: {$codprd}, codgas: {$codgas}, fch: {$fch}, hra: {$hra}.", $_SERVER['REMOTE_ADDR'], 'supply.php', 'delete_price');
         if ($this->preciosModel->delete_price($codprd, $codgas, $fch, $hra)) {
@@ -583,6 +599,7 @@ class Supply
 
     function send_prices()
     {
+        if (!authorized(42)) { http_response_code(403); echo 'Sin permiso'; return; }
         $pre = $_GET['pre'];
         $fch = $_GET['from'];
         $hour = str_replace(":", "", $_GET['hour']);
@@ -635,6 +652,7 @@ class Supply
 
     function get_ieps($codprd)
     {
+        if (!authorized(42)) { http_response_code(403); json_output(['error' => 'Sin permiso']); return; }
         $ieps = $this->tvariasModel->get_ieps();
         switch ($codprd) {
             case 193:
@@ -658,6 +676,7 @@ class Supply
 
     function update_price()
     {
+        if (!authorized(42)) { http_response_code(403); json_output(['status' => 'Error', 'message' => 'Sin permiso']); return; }
         $codprd = $_POST['codprd'];
         $codgas = $_POST['codgas'];
         $fch = $_POST['fch'];

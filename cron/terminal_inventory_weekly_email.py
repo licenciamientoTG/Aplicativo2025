@@ -39,6 +39,11 @@ VALERA_DISPLAY_ORDER = ("inburgas", "ticketcard", "ultragas", "efecticard", "eox
 LOCAL_TIMEZONE = ZoneInfo("America/Ojinaga")
 
 
+def station_display_name(name: object, code: object = None) -> str:
+    """Devuelve el alias de presentación sin cambiar el nombre almacenado."""
+    return "19 Independencia" if str(code) == "3" else str(name or "—")
+
+
 def load_env_file() -> None:
     """Carga un .env sin sobrescribir variables ya definidas por el servidor."""
     candidates = (SCRIPT_DIR / ".env", ROOT / ".env", Path.cwd() / ".env")
@@ -119,7 +124,8 @@ def business_time(from_value: object, until: datetime) -> dict[str, float]:
 def fetch_open_incidents(connection: pyodbc.Connection) -> list[dict[str, object]]:
     query = """
         SELECT i.ticket_mojo_id, i.tipo_terminal, i.descripcion,
-               i.fecha_apertura_mojo, i.estado_mojo, s.Nombre AS estacion_nombre,
+               i.fecha_apertura_mojo, i.estado_mojo, s.Codigo AS estacion_codigo,
+               s.Nombre AS estacion_nombre,
                NULLIF(LTRIM(RTRIM(COALESCE(u.first_name, '') + CASE WHEN COALESCE(u.last_name, '') = '' THEN '' ELSE ' ' + u.last_name END)), '') AS responsable
         FROM TG.dbo.inv_ter_incidencias AS i
         LEFT JOIN TG.dbo.Estaciones AS s ON s.Codigo = i.estacion_id
@@ -264,7 +270,7 @@ def render_html(rows: Iterable[dict[str, object]], sent_at: datetime, category: 
             f'<tr style="background:{background};border-bottom:1px solid #dbe7f2">'
             f'<td style="padding:11px 10px"><a style="color:#125ca8;font-weight:700;text-decoration:none" href="{escape(MOJO_TICKET_URL.format(ticket), quote=True)}">#{escape(ticket)}</a></td>'
             f'<td style="padding:11px 10px;color:#304a61;font-weight:700">{escape(str(row.get("tipo_terminal") or "—"))}</td>'
-            f'<td style="padding:11px 10px;color:#52616f">{escape(str(row.get("estacion_nombre") or "—"))}</td>'
+            f'<td style="padding:11px 10px;color:#52616f">{escape(station_display_name(row.get("estacion_nombre"), row.get("estacion_codigo")))}</td>'
             f'<td style="padding:11px 10px;color:#52616f;max-width:280px">{escape(str(row.get("descripcion") or "—"))}</td>'
             f'<td style="padding:11px 10px;color:#52616f;white-space:nowrap">{opened}</td>'
             f'<td style="padding:11px 10px;text-align:center;color:#125ca8;font-weight:800;white-space:nowrap">{int(row["dias_laborales"])} días / {float(row["horas_laborales"]):.2f} h</td>'
@@ -287,7 +293,7 @@ def render_text(rows: Iterable[dict[str, object]], sent_at: datetime) -> str:
     for row in rows:
         lines.append(
             f"#{row['ticket_mojo_id']} | {row.get('tipo_terminal', '—')} | "
-            f"{row.get('estacion_nombre', '—')} | {row.get('descripcion', '—')} | "
+            f"{station_display_name(row.get('estacion_nombre'), row.get('estacion_codigo'))} | {row.get('descripcion', '—')} | "
             f"{row['dias_laborales']} días / {row['horas_laborales']:.2f} h | {spanish_status(row.get('estado_mojo'))} | "
             f"{MOJO_TICKET_URL.format(row['ticket_mojo_id'])}"
         )
@@ -301,11 +307,11 @@ def render_valera_html(inventory_rows: list[dict[str, object]], codes: list[str]
         labels[str(row["valera_codigo"]).lower()] = str(row.get("valera_nombre") or row["valera_codigo"])
     incidents_by_station: dict[str, list[dict[str, object]]] = {}
     for incident in incidents:
-        incidents_by_station.setdefault(str(incident.get("estacion_nombre") or "Sin estación"), []).append(incident)
+        incidents_by_station.setdefault(station_display_name(incident.get("estacion_nombre"), incident.get("estacion_codigo")), []).append(incident)
 
     station_rows: dict[str, dict[str, object]] = {}
     for row in inventory_rows:
-        station = str(row.get("estacion_nombre") or "Sin estación")
+        station = station_display_name(row.get("estacion_nombre"), row.get("estacion_codigo"))
         station_rows.setdefault(station, {"codigo": row.get("estacion_codigo"), "date": row.get("inventario_fecha"), "types": {}})
         station_rows[station]["types"][str(row["valera_codigo"]).lower()] = row
 
@@ -380,7 +386,7 @@ def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, 
     total_stock = total_damaged = total_working = total_missing = 0
     incidents_by_station: dict[str, list[dict[str, object]]] = {}
     for incident in rows:
-        incidents_by_station.setdefault(str(incident.get("estacion_nombre") or "Sin estación"), []).append(incident)
+        incidents_by_station.setdefault(station_display_name(incident.get("estacion_nombre"), incident.get("estacion_codigo")), []).append(incident)
     for index, row in enumerate(summary):
         stock = int(row.get("stock") or 0)
         damaged = int(row.get("danadas") or 0)
@@ -400,7 +406,7 @@ def render_internal_html(summary: list[dict[str, object]], rows: list[dict[str, 
             coverage_color, coverage_text = "#ffc7ce", "#9c0006"
         total_stock += stock; total_damaged += damaged; total_working += working; total_missing += missing
         background = "#ffffff" if index % 2 == 0 else "#dff3fb"
-        station = str(row.get("estacion_nombre") or "Sin estación")
+        station = station_display_name(row.get("estacion_nombre"), row.get("estacion_codigo"))
         station_label = escape(station)
         if damaged > 0:
             station_link = escape(terminal_incident_report_link(row.get("estacion_codigo"), status="open", type_code="urovo"), quote=True)

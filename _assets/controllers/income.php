@@ -7934,10 +7934,31 @@ public function stamped_invoices_detail(): void
         }
         $sheet->freezePane('A5');
         $archivo = 'resumen_general_' . preg_replace('/[^A-Za-z0-9_-]/', '_', $empresa) . '_' . $periodo . '.xlsx';
+        // Genera primero el libro en memoria para impedir que avisos, espacios o
+        // salida previa del MVC se mezclen con el ZIP y dañen el archivo XLSX.
+        $salida = fopen('php://temp', 'w+b');
+        if ($salida === false) {
+            http_response_code(500);
+            echo 'No fue posible generar el archivo Excel.';
+            return;
+        }
+        (new Xlsx($spreadsheet))->save($salida);
+        rewind($salida);
+        $contenido = stream_get_contents($salida);
+        fclose($salida);
+        if (!is_string($contenido) || $contenido === '') {
+            http_response_code(500);
+            echo 'No fue posible generar el archivo Excel.';
+            return;
+        }
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment; filename="' . $archivo . '"');
-        header('Cache-Control: max-age=0');
-        (new Xlsx($spreadsheet))->save('php://output');
+        header('Content-Length: ' . strlen($contenido));
+        header('Cache-Control: private, no-store, no-cache, must-revalidate');
+        echo $contenido;
         exit;
     }
 
@@ -8135,6 +8156,7 @@ public function stamped_invoices_detail(): void
                     'rates'=>[],
                     'transits'=>['origin'=>[],'incoming'=>[],'next_month'=>(new DateTimeImmutable(sprintf('%04d-%02d-01',$year,$month)))->modify('+1 month')->format('Y-m')],
                     'transit_deposits'=>['origin'=>[],'incoming'=>[]],
+                    'manual_summary'=>null,
                     'work'=>['papers'=>[],'links'=>[]],
                     'errors'=>[],
                 ];
@@ -8209,11 +8231,38 @@ public function stamped_invoices_detail(): void
                         );
                     } catch(Throwable $e) { $data[$key]['errors']['transit_deposits_incoming']=$e->getMessage(); }
                 }
+                if($stationId===EfcConciliacionModel::PRAXEDIS_STATION_ID) {
+                    try { $data[$key]['manual_summary']=$this->efcConciliacion->praxedisManualSummary($year,$month); }
+                    catch(Throwable $e) { $data[$key]['errors']['manual_summary']=$e->getMessage(); }
+                }
             }
             echo json_encode(['status'=>'success','data'=>['stations'=>$data]],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
         } catch(Throwable $e) {
             http_response_code(422);
             echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
+    /** POST /income/efc_conc_resumen_praxedis_guardar {year,month,values}; manually saves Praxedis report amounts. */
+    public function efc_conc_resumen_praxedis_guardar(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $request=json_decode((string)file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);
+            if(!is_array($request)) throw new RuntimeException('Solicitud inválida.');
+            $readPeriod=static function($value,string $name): int {
+                if(!(is_int($value)||(is_string($value)&&preg_match('/^[0-9]{1,4}$/',$value)))) throw new RuntimeException($name.' inválido.');
+                return (int)$value;
+            };
+            $year=$readPeriod($request['year']??null,'Año');
+            $month=$readPeriod($request['month']??null,'Mes');
+            $userId=(int)($_SESSION['tg_user']['Id']??0);
+            if($userId<1) throw new RuntimeException('La sesión no contiene un usuario válido.');
+            $saved=$this->efcConciliacion->savePraxedisManualSummary($year,$month,$request['values']??[], $userId);
+            echo json_encode(['status'=>'success','data'=>$saved],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e) {
+            http_response_code(422);
+            echo json_encode(['status'=>'error','message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE|JSON_INVALID_UTF8_SUBSTITUTE);
         }
         exit;
     }
@@ -9181,13 +9230,13 @@ public function stamped_invoices_detail(): void
     public function get_dashboard_v3_bancos(): void {
         ob_clean();
         header('Content-Type: application/json');
-        $rs = trim($_GET['razon_social'] ?? '');
+        $rs = trim($_GET['empresa'] ?? $_GET['razon_social'] ?? '');
         try {
             $conn = $this->v3_conn();
             $where = "WHERE LEN(ISNULL(TA.afiliacion,'')) > 0";
-            if ($rs === 'DIAZ GAS') $where .= " AND E.RFC='DGA930823KD3'";
+            if ($rs === 'DIAZ GAS') $where .= " AND (E.RFC='DGA930823KD3' OR E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%')";
             elseif ($rs === 'GASOMEX') $where .= " AND E.RFC='DGM880621FU5'";
-            elseif ($rs === 'FORANEAS') $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)";
+            elseif ($rs === 'FORANEAS') $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL) AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAZ%' AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAS%'";
             $stmt = $conn->prepare("SELECT DISTINCT TE.Nombre AS nombre
                 FROM Tesoreria_afil TA
                 JOIN Estaciones E ON E.Codigo=TA.estacion_id
@@ -9201,6 +9250,40 @@ public function stamped_invoices_detail(): void
         exit;
     }
 
+    // Station catalog scoped to the V3 transit report only. Keep the shared
+    // get_estaciones_catalogo endpoint unchanged for other screens.
+    public function get_transitos_v3_estaciones(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+        $empresa = strtoupper(trim((string)($_GET['empresa'] ?? '')));
+        try {
+            $conn = $this->v3_conn();
+            $where = "WHERE E.Codigo<>0 AND E.Codigo NOT IN (199,333)
+                AND ISNULL(E.Nombre,N'') NOT LIKE N'%Colosio%'
+                AND ISNULL(E.Denominacion,N'') NOT LIKE N'%Colosio%'";
+            if ($empresa === 'DIAZ GAS') {
+                $where .= " AND (E.RFC='DGA930823KD3' OR E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%')";
+            } elseif ($empresa === 'GASOMEX') {
+                $where .= " AND E.RFC='DGM880621FU5'";
+            } elseif ($empresa === 'FORANEAS') {
+                $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)
+                    AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAZ%'
+                    AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAS%'";
+            }
+            $stmt = $conn->query("SELECT E.Codigo,
+                CASE WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (Praxedis)' THEN N'Héctor Armandino Fierro Holguín'
+                     WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (VILLA AHUMADA)' THEN N'Gasolinera Villa Ahumada'
+                     ELSE E.Nombre END AS Nombre,
+                CASE WHEN E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%' OR E.RFC='DGA930823KD3' THEN 'DIAZ GAS'
+                     WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS Empresa
+                FROM Estaciones E $where ORDER BY Nombre");
+            echo json_encode(['status'=>'success','data'=>$stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        } catch (Throwable $e) {
+            echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
+        }
+        exit;
+    }
+
     // Dedicated monthly transit report. Outgoing amounts originate in the
     // selected month and move to the next month; incoming amounts originate
     // in the previous month and were reconciled into the selected month.
@@ -9209,9 +9292,10 @@ public function stamped_invoices_detail(): void
         header('Content-Type: application/json');
         $year = (int)($_GET['year'] ?? 0);
         $month = (int)($_GET['month'] ?? 0);
-        $rs = trim($_GET['razon_social'] ?? '');
+        $rs = trim($_GET['empresa'] ?? $_GET['razon_social'] ?? '');
         $banco = trim($_GET['banco'] ?? '');
         $estacion_id = (int)($_GET['estacion_id'] ?? 0);
+        $denominacion = trim((string)($_GET['denominacion'] ?? ''));
         if ($year < 2000 || $month < 1 || $month > 12) {
             echo json_encode(['status'=>'error','message'=>'Selecciona un período válido.']);
             exit;
@@ -9221,48 +9305,71 @@ public function stamped_invoices_detail(): void
         $next = (new DateTimeImmutable($period . '-01'))->modify('+1 month')->format('Y-m');
         try {
             $conn = $this->v3_conn();
+            $denominacionExpr = "CASE WHEN UPPER(LTRIM(RTRIM(ISNULL(E.Denominacion,N'')))) LIKE N'DIAZ GAS%' THEN N'DIAZ GAS' WHEN UPPER(LTRIM(RTRIM(ISNULL(E.Denominacion,N'')))) LIKE N'DISTRIBUIDORA GASO%' THEN N'DISTRIBUIDORA GASO' WHEN UPPER(LTRIM(RTRIM(ISNULL(E.Denominacion,N'')))) LIKE N'ESTACION CUSTODIA%' THEN N'ESTACION CUSTODIA' WHEN UPPER(LTRIM(RTRIM(ISNULL(E.Denominacion,N'')))) LIKE N'GRUPO OPERADOR GASOLINERO TSA DEL CENTRO%' THEN N'GRUPO OPERADOR GASOLINERO TSA DEL CENTRO' ELSE ISNULL(E.Denominacion,N'') END";
+            $stationCompanyWhere = '';
+            if ($rs === 'DIAZ GAS') $stationCompanyWhere = " AND (E.RFC='DGA930823KD3' OR E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%')";
+            elseif ($rs === 'GASOMEX') $stationCompanyWhere = " AND E.RFC='DGM880621FU5'";
+            elseif ($rs === 'FORANEAS') $stationCompanyWhere = " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL) AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAZ%' AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAS%'";
+
+            $denomSql = "SELECT DISTINCT $denominacionExpr AS denominacion FROM Estaciones E
+                WHERE E.Codigo<>0 AND E.Codigo NOT IN (199,333) AND ISNULL(E.Nombre,N'') NOT LIKE N'%Colosio%'
+                  AND ISNULL(E.Denominacion,N'') NOT LIKE N'%Colosio%' $stationCompanyWhere";
+            $denomParams = [];
+            if ($estacion_id > 0) { $denomSql .= ' AND E.Codigo=?'; $denomParams[] = $estacion_id; }
+            $denomSql .= " AND $denominacionExpr<>N'' ORDER BY denominacion";
+            $denomStmt = $conn->prepare($denomSql);
+            $denomStmt->execute($denomParams);
+            $denominaciones = array_map(static fn($row) => ['denominacion' => $row['denominacion']], $denomStmt->fetchAll(PDO::FETCH_ASSOC));
+
             $scope = '';
             if ($banco !== '') $scope .= ' AND TE.Nombre=?';
             if ($estacion_id > 0) $scope .= ' AND T.estacion_id=?';
-            if ($rs === 'DIAZ GAS') $scope .= " AND E.RFC='DGA930823KD3'";
+            if ($denominacion !== '') $scope .= " AND $denominacionExpr=?";
+            if ($rs === 'DIAZ GAS') $scope .= " AND (E.RFC='DGA930823KD3' OR E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%')";
             elseif ($rs === 'GASOMEX') $scope .= " AND E.RFC='DGM880621FU5'";
-            elseif ($rs === 'FORANEAS') $scope .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)";
+            elseif ($rs === 'FORANEAS') $scope .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL) AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAZ%' AND ISNULL(E.Denominacion,N'') NOT LIKE N'%DIAZ GAS%'";
 
             $sql = "SELECT T.id,'SALIENTE' AS sentido,
-                    CASE WHEN E.RFC='DGA930823KD3' THEN 'DIAZ GAS' WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
+                    CASE WHEN E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%' OR E.RFC='DGA930823KD3' THEN 'DIAZ GAS' WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
                     T.conciliacion_id_dest AS conciliacion,T.mes_origen,T.mes_destino,
                     T.concepto,T.descripcion,T.estado,ISNULL(T.monto_transito,0) AS monto_transito,
-                    T.afiliacion,ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) AS estacion,
+                    T.afiliacion,CASE WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (Praxedis)' THEN N'Héctor Armandino Fierro Holguín' WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (VILLA AHUMADA)' THEN N'Gasolinera Villa Ahumada' ELSE ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) END AS estacion,
+                    $denominacionExpr AS denominacion,
                     ISNULL(TE.Nombre,'Banco '+CAST(T.entidad_id AS VARCHAR)) AS banco
                 FROM CV3_Transito T
                 LEFT JOIN Estaciones E ON E.Codigo=T.estacion_id
                 LEFT JOIN Tesoreria_Entidad TE ON TE.id=T.entidad_id
-                WHERE T.estado<>'CANCELADO' AND T.mes_origen=? AND T.mes_destino=? $scope
+                    WHERE T.estado<>'CANCELADO' AND T.estacion_id NOT IN (199,333) AND T.mes_origen=? AND T.mes_destino=? AND ISNULL(E.Nombre,N'') NOT LIKE N'%Colosio%' AND ISNULL(E.Denominacion,N'') NOT LIKE N'%Colosio%' $scope
                 UNION ALL
                 SELECT T.id,'ENTRANTE' AS sentido,
-                    CASE WHEN E.RFC='DGA930823KD3' THEN 'DIAZ GAS' WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
+                    CASE WHEN E.Denominacion LIKE N'%DIAZ GAZ%' OR E.Denominacion LIKE N'%DIAZ GAS%' OR E.RFC='DGA930823KD3' THEN 'DIAZ GAS' WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
                     T.conciliacion_id_dest AS conciliacion,T.mes_origen,T.mes_destino,
                     T.concepto,T.descripcion,T.estado,ISNULL(T.monto_transito,0) AS monto_transito,
-                    T.afiliacion,ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) AS estacion,
+                    T.afiliacion,CASE WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (Praxedis)' THEN N'Héctor Armandino Fierro Holguín' WHEN E.Denominacion=N'DIAZ GAS S.A. DE C.V. (VILLA AHUMADA)' THEN N'Gasolinera Villa Ahumada' ELSE ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) END AS estacion,
+                    $denominacionExpr AS denominacion,
                     ISNULL(TE.Nombre,'Banco '+CAST(T.entidad_id AS VARCHAR)) AS banco
                 FROM CV3_Transito T
                 LEFT JOIN Estaciones E ON E.Codigo=T.estacion_id
                 LEFT JOIN Tesoreria_Entidad TE ON TE.id=T.entidad_id
-                WHERE T.estado='CONCILIADO' AND T.conciliacion_id_dest IS NOT NULL
+                    WHERE T.estado='CONCILIADO' AND T.conciliacion_id_dest IS NOT NULL
+                      AND T.estacion_id NOT IN (199,333)
+                      AND ISNULL(E.Nombre,N'') NOT LIKE N'%Colosio%' AND ISNULL(E.Denominacion,N'') NOT LIKE N'%Colosio%'
                   AND T.mes_origen=? AND T.mes_destino=? $scope
                 ORDER BY sentido,estacion,banco,id";
             $stmt = $conn->prepare($sql);
             $queryParams = [$period,$next];
             if ($banco !== '') $queryParams[] = $banco;
             if ($estacion_id > 0) $queryParams[] = $estacion_id;
+            if ($denominacion !== '') $queryParams[] = $denominacion;
             $queryParams[] = $previous;
             $queryParams[] = $period;
             if ($banco !== '') $queryParams[] = $banco;
             if ($estacion_id > 0) $queryParams[] = $estacion_id;
+            if ($denominacion !== '') $queryParams[] = $denominacion;
             $stmt->execute($queryParams);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             foreach ($rows as &$row) $row['monto_transito'] = (float)$row['monto_transito'];
-            echo json_encode(['status'=>'success','data'=>$rows]);
+            echo json_encode(['status'=>'success','data'=>$rows,'denominaciones'=>$denominaciones,'denominaciones_disponibles'=>$denominaciones]);
         } catch (Exception $e) {
             echo json_encode(['status'=>'error','message'=>$e->getMessage()]);
         }
@@ -9288,12 +9395,13 @@ public function stamped_invoices_detail(): void
         if (!in_array($company, ['DIAZ GAS','FORANEAS','GASOMEX'], true)) $company = 'Todas';
         $bank = trim((string)($data['banco'] ?? '')) ?: 'Todos los bancos';
         $station = trim((string)($data['estacion'] ?? '')) ?: 'Todas las estaciones';
+        $denominacion = trim((string)($data['denominacion'] ?? '')) ?: 'Todas';
 
         try {
             $spreadsheet = new Spreadsheet();
             $sheet = $spreadsheet->getActiveSheet();
             $sheet->setTitle('Tránsitos');
-            $sheet->mergeCells('A1:I1');
+            $sheet->mergeCells('A1:J1');
             $sheet->setCellValue('A1', 'REPORTE DE TRÁNSITOS V3');
             $sheet->setCellValue('A2', 'Período');
             $sheet->setCellValue('B2', $period);
@@ -9305,12 +9413,14 @@ public function stamped_invoices_detail(): void
             $sheet->mergeCells('H2:I2');
             $sheet->setCellValueExplicit('H2', $station, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
 
-            $headers = ['SENTIDO','ESTACIÓN','EMPRESA','BANCO','AFILIACIÓN','MES ORIGEN','MES DESTINO','CONCILIACIÓN','MONTO'];
+            $sheet->setCellValue('A4', 'Razón social / Denominación');
+            $sheet->setCellValueExplicit('B4', $denominacion, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $headers = ['SENTIDO','ESTACIÓN','EMPRESA','RAZÓN SOCIAL / DENOMINACIÓN','BANCO','AFILIACIÓN','MES ORIGEN','MES DESTINO','CONCILIACIÓN','MONTO'];
             $sheet->fromArray($headers, null, 'A5');
             $outgoingTotal = 0.0;
             $incomingTotal = 0.0;
             $rowNumber = 6;
-            $textColumns = ['sentido','estacion','razon_social','banco','afiliacion','mes_origen','mes_destino','conciliacion'];
+            $textColumns = ['sentido','estacion','razon_social','denominacion','banco','afiliacion','mes_origen','mes_destino','conciliacion'];
             foreach ($rows as $item) {
                 if (!is_array($item)) continue;
                 foreach ($textColumns as $column) {
@@ -9320,7 +9430,7 @@ public function stamped_invoices_detail(): void
                 }
                 $amount = filter_var($item['monto_transito'] ?? 0, FILTER_VALIDATE_FLOAT);
                 if ($amount === false || !is_finite((float)$amount)) $amount = 0.0;
-                $sheet->setCellValue('I'.$rowNumber, (float)$amount);
+                $sheet->setCellValue('J'.$rowNumber, (float)$amount);
                 if (($item['sentido'] ?? '') === 'SALIENTE') $outgoingTotal += (float)$amount;
                 if (($item['sentido'] ?? '') === 'ENTRANTE') $incomingTotal += (float)$amount;
                 $rowNumber++;
@@ -9333,21 +9443,21 @@ public function stamped_invoices_detail(): void
             $sheet->setCellValue('D3', $incomingTotal);
             $sheet->setCellValue('E3', 'Filas exportadas');
             $sheet->setCellValue('F3', $rowNumber - 6);
-            $sheet->getStyle('A1:I1')->applyFromArray([
+            $sheet->getStyle('A1:J1')->applyFromArray([
                 'font'=>['bold'=>true,'size'=>14,'color'=>['argb'=>'FFFFFFFF']],
                 'fill'=>['fillType'=>\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,'startColor'=>['argb'=>'FF1E40AF']],
             ]);
             $sheet->getStyle('A2:H3')->getFont()->setBold(true);
-            $sheet->getStyle('A5:I5')->applyFromArray([
+            $sheet->getStyle('A5:J5')->applyFromArray([
                 'font'=>['bold'=>true,'color'=>['argb'=>'FFFFFFFF']],
                 'fill'=>['fillType'=>\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,'startColor'=>['argb'=>'FF334155']],
                 'alignment'=>['horizontal'=>\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
             ]);
             $sheet->getStyle('B3:D3')->getNumberFormat()->setFormatCode('$#,##0.00');
-            if ($lastRow >= 6) $sheet->getStyle('I6:I'.$lastRow)->getNumberFormat()->setFormatCode('$#,##0.00');
-            $sheet->setAutoFilter('A5:I'.$lastRow);
+            if ($lastRow >= 6) $sheet->getStyle('J6:J'.$lastRow)->getNumberFormat()->setFormatCode('$#,##0.00');
+            $sheet->setAutoFilter('A5:J'.$lastRow);
             $sheet->freezePane('A6');
-            foreach (range('A','I') as $column) $sheet->getColumnDimension($column)->setAutoSize(true);
+            foreach (range('A','J') as $column) $sheet->getColumnDimension($column)->setAutoSize(true);
 
             $filename = 'Transitos_V3_'.$period.'.xlsx';
             header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
