@@ -8839,8 +8839,13 @@ public function stamped_invoices_detail(): void
                 $catalogo['1000'] = $hermanosEscobarAlias;
             }
             $correcciones = [];
-            $stmtCorrecciones = $conn->query("SELECT C.movimiento_bancario_id, C.estacion_id, E.Nombre FROM dbo.efc_conc_correcciones_banco C JOIN TG.dbo.Estaciones E ON E.Codigo=C.estacion_id");
-            while ($correccion = $stmtCorrecciones->fetch(PDO::FETCH_ASSOC)) $correcciones[(int)$correccion['movimiento_bancario_id']] = ['station_id'=>(int)$correccion['estacion_id'],'station'=>trim($correccion['Nombre'])];
+            $stmtCorrecciones = $conn->query("SELECT C.movimiento_bancario_id, C.estacion_id, E.Nombre,
+                    COALESCE(U.Nombre, U.Usuario) AS usuario_correccion,
+                    COALESCE(C.actualizado_en, C.creado_en) AS fecha_correccion
+                FROM dbo.efc_conc_correcciones_banco C
+                JOIN TG.dbo.Estaciones E ON E.Codigo=C.estacion_id
+                LEFT JOIN TG.dbo.Usuario U ON U.Id=COALESCE(C.actualizado_por, C.creado_por)");
+            while ($correccion = $stmtCorrecciones->fetch(PDO::FETCH_ASSOC)) $correcciones[(int)$correccion['movimiento_bancario_id']] = ['station_id'=>(int)$correccion['estacion_id'],'station'=>trim($correccion['Nombre']),'corrected_by'=>trim((string)($correccion['usuario_correccion'] ?? '')),'corrected_at'=>$correccion['fecha_correccion'] ? date('Y-m-d H:i:s', strtotime((string)$correccion['fecha_correccion'])) : null];
 
             // La empresa seleccionada sólo filtra el resultado final; no
             // restringe las cuentas, porque el banco puede recibir un depósito
@@ -9003,6 +9008,8 @@ public function stamped_invoices_detail(): void
                     'station'           => $estacion['station'] ?? null,
                     'station_status'    => $estatus,
                     'station_corrected' => $corregida,
+                    'station_corrected_by' => $corregida ? ($estacion['corrected_by'] ?? '') : '',
+                    'station_corrected_at' => $corregida ? ($estacion['corrected_at'] ?? null) : null,
                     'reconciled'        => (bool)$mov['reconciled'],
                     'controlgas_matches' => (string)($mov['controlgas_matches'] ?? ''),
                     'one_goal'          => (int)$mov['one_goal'],
