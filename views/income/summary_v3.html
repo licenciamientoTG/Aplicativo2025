@@ -4,287 +4,228 @@
 
 {% block content %}
 <style>
-:root {
-    --cg-color:   #2563eb;
-    --tes-color:  #059669;
-    --dif-pos:    #2563eb;
-    --dif-neg:    #dc2626;
-    --dif-ok:     #059669;
-    --tran-color: #d97706;
-    --card-radius:14px;
-    --shadow:     0 1px 4px rgba(0,0,0,.08);
-}
-body { background:#f1f5f9; }
-
-/* ── CONTROLES ── */
-.controls-header { background:#fff; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,.06); margin-bottom:14px; border:1px solid #e9ecef; }
-.controls-row { display:flex; align-items:center; gap:10px; padding:10px 16px; flex-wrap:wrap; }
-.controls-divider { width:1px; height:24px; background:#dee2e6; flex-shrink:0; }
-.controls-group { display:flex; align-items:center; gap:8px; }
-.custom-select-pill { border-radius:50px; border:1px solid #ced4da; padding-left:15px; background:#fff; font-weight:600; color:#2c3e50; height:36px; }
-.date-widget-trigger { cursor:pointer; display:flex; align-items:center; gap:8px; font-weight:bold; }
-.date-widget-dropdown { position:absolute; top:100%; left:0; background:white; z-index:2000; border:1px solid #ddd; padding:15px; border-radius:10px; display:none; width:280px; }
-.date-widget-dropdown.active { display:block; }
-.month-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin-top:10px; }
-.month-btn { padding:5px; text-align:center; cursor:pointer; border-radius:5px; font-size:.8rem; }
-.month-btn:hover { background:#eee; }
-.month-btn.selected { background:#059669; color:white; }
-
-/* ── KPI CARDS ── */
-.kpi-card {
-    background:#fff; border-radius:var(--card-radius);
-    box-shadow:var(--shadow); padding:18px 20px;
-    border-left:4px solid transparent;
-}
-.kpi-card.cg    { border-left-color:var(--cg-color); }
-.kpi-card.tes   { border-left-color:var(--tes-color); }
-.kpi-card.dif   { border-left-color:var(--dif-neg); }
-.kpi-card.tran  { border-left-color:var(--tran-color); }
-.kpi-card.cnt   { border-left-color:#7c3aed; }
-.kpi-label { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:#64748b; }
-.kpi-value { font-family:'Consolas',monospace; font-size:1.55rem; font-weight:800; line-height:1.2; }
-.kpi-icon  { width:42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
-.kpi-sub   { font-size:.72rem; color:#94a3b8; margin-top:2px; }
-
-/* ── CHARTS ── */
-.chart-card { background:#fff; border-radius:var(--card-radius); box-shadow:var(--shadow); padding:18px 20px; }
-.chart-title { font-size:.8rem; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#475569; margin-bottom:14px; }
-
-/* ── TABS ── */
-.dash-tabs .nav-link {
-    border-radius:8px; font-weight:600; font-size:.82rem; color:#64748b;
-    padding:7px 16px; border:1px solid transparent; margin-right:4px;
-}
-.dash-tabs .nav-link.active { background:#fff; color:#1e40af; border-color:#bfdbfe; box-shadow:var(--shadow); }
-.dash-tabs .nav-link:hover:not(.active) { background:#f8fafc; }
-
-/* ── TABLES ── */
-.dash-table { width:100%; font-size:.82rem; border-collapse:collapse; }
-.dash-table thead th {
-    background:#f8fafc; font-weight:700; font-size:.72rem;
-    text-transform:uppercase; letter-spacing:.4px; color:#64748b;
-    padding:9px 12px; border-bottom:2px solid #e2e8f0; white-space:nowrap;
-}
-.dash-table tbody tr { border-bottom:1px solid #f1f5f9; }
-.dash-table tbody tr:hover { background:#f8fafc; }
-.dash-table tbody td { padding:8px 12px; }
-.num { font-family:'Consolas',monospace; font-weight:600; text-align:right; }
-.dif-pos { color:var(--dif-pos); } .dif-neg { color:var(--dif-neg); } .dif-ok { color:var(--dif-ok); }
-.badge-rs { font-size:.68rem; font-weight:700; padding:2px 7px; border-radius:20px; }
-.badge-dg { background:#dbeafe; color:#1e40af; }
-.badge-gx { background:#d1fae5; color:#065f46; }
-.badge-fo { background:#fef3c7; color:#92400e; }
-
-/* ── GROUP ROWS ── */
-.group-header td { background:#f8fafc; font-weight:700; font-size:.78rem; text-transform:uppercase; color:#475569; cursor:pointer; }
-.group-header td:first-child { padding-left:20px; }
-.sub-row td:first-child { padding-left:32px; }
-
-/* ── TRÁNSITOS ── */
-.aging-bar { height:6px; border-radius:3px; }
-.age-lt30  { background:#22c55e; } .age-30_60 { background:#f59e0b; } .age-gt60 { background:#ef4444; }
-.aging-pill { font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:20px; white-space:nowrap; }
-.aging-pill.lt30  { background:#dcfce7; color:#15803d; }
-.aging-pill.bt30  { background:#fef9c3; color:#a16207; }
-.aging-pill.gt60  { background:#fee2e2; color:#b91c1c; }
-
-/* ── NOTA CIERRE ── */
-.nota-btn { font-size:.68rem; color:#94a3b8; cursor:pointer; }
-.nota-btn:hover { color:#475569; }
-
-/* ── EMPTY STATE ── */
-.empty-state { text-align:center; padding:60px 20px; color:#94a3b8; }
-.empty-state i { font-size:3rem; display:block; margin-bottom:12px; }
-
-/* ── EXPORT BUTTONS ── */
-.export-group .btn { font-size:.78rem; font-weight:600; border-radius:8px; }
-
-/* ── DONUT LEGEND ── */
-.aging-legend-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:4px; }
+:root{--dif-pos:#126982;--dif-neg:#ae514b;--dif-ok:#147763}
+.summary-page{--ink:#102b3d;--blue:#126982;--teal:#147763;--copper:#ab5c1d;--paper:#eef3f5;--line:#cfdae0;--muted:#526978;max-width:1540px;margin:auto;padding:22px 28px!important;background:var(--paper);color:var(--ink)}
+.summary-page *{box-sizing:border-box}
+.summary-header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;padding:7px 0 18px;border-bottom:1px solid var(--line)}
+.summary-title{margin:0;color:var(--ink);font-size:clamp(1.8rem,3vw,2.5rem);font-weight:750;letter-spacing:-.045em;line-height:1.05}
+.summary-subtitle{margin:8px 0 0;color:var(--muted);font-size:.94rem}
+.summary-status{display:inline-flex;align-items:center;gap:7px;margin-left:10px;padding:5px 9px;border:1px solid #a8cec3;border-radius:4px;background:#e3f1ed;color:#17634f;font-size:.7rem;font-weight:700;letter-spacing:.04em;vertical-align:middle}
+.summary-status:before{width:7px;height:7px;border-radius:50%;background:#21846d;content:""}
+.summary-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+.summary-actions .btn{margin:0;border-radius:5px;font-size:.82rem;font-weight:600}
+.summary-actions .transit-link{border-color:#bd8d5e;color:#89501e}
+.summary-controls{margin:16px 0;background:#fff;border:1px solid var(--line);border-radius:7px}
+.controls-row{display:grid;grid-template-columns:auto minmax(160px,1fr) minmax(150px,auto) minmax(200px,auto) auto;align-items:end;gap:14px;padding:14px 16px}
+.controls-group{display:flex;flex-direction:column;align-items:stretch;gap:5px;min-width:0}
+.controls-label{margin:0;color:#365568;font-size:.77rem;font-weight:650}
+.controls-divider{width:1px;height:35px;align-self:end;background:#d9e3e7}
+.custom-select-pill{height:42px;min-width:0;padding-inline:11px;border:1px solid #b9c9d1;border-radius:5px;background:#fff;color:var(--ink);font-weight:500}
+.controls-row .btn-group{height:42px!important}
+.controls-row .btn-group .btn{min-width:76px;padding:7px 12px!important;border-color:#bdcbd2;color:#365568;font-size:.83rem;font-weight:600;line-height:1.5!important}
+.controls-row .btn-group .btn.active{background:#12364b;color:#fff}
+.controls-row :is(button,a,input,select):focus-visible{outline:3px solid #77b6c9;outline-offset:2px}
+.date-widget-trigger{display:flex;width:100%;height:42px;align-items:center;gap:9px;padding:7px 12px;border:1px solid #b9c9d1;border-radius:5px;background:#fff;color:var(--ink);font-weight:600;text-align:left;cursor:pointer}
+.date-widget-trigger i{color:var(--blue)}
+.date-widget-dropdown{position:absolute;top:calc(100% + 6px);left:0;z-index:2000;display:none;width:280px;padding:15px;border:1px solid #c8d6dc;border-radius:7px;background:#fff;box-shadow:0 14px 32px rgba(15,35,48,.18)}
+.date-widget-dropdown.active{display:block}
+.month-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:10px}
+.month-btn{min-height:38px;border:0;border-radius:4px;background:transparent;color:#365568;font-size:.82rem;cursor:pointer}
+.month-btn:hover{background:#eaf2f5}
+.month-btn.selected{background:#12364b;color:#fff}
+.summary-clear{min-height:42px;margin:0;padding-inline:12px;border-color:#bdcbd2;border-radius:5px;color:#365568}
+.filters-active{min-height:16px;padding:0 16px 10px;color:var(--muted);font-size:.79rem}
+.summary-kpis{display:grid;grid-template-columns:minmax(260px,1.3fr) repeat(4,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.kpi-card{height:100%;min-width:0;padding:16px 17px;border:1px solid var(--line);border-top:3px solid #7d9ba9;border-radius:6px;background:#fff}
+.kpi-card.main-difference{padding:18px 21px;border-top-color:#ae514b;background:#12364b;color:#fff}
+.kpi-card.cg{border-top-color:#126982}.kpi-card.tes{border-top-color:#147763}.kpi-card.tran{border-top-color:#ab6a2d}.kpi-card.cnt{border-top-color:#6d8796}
+.kpi-label{color:#526978;font-size:.77rem;font-weight:650}
+.main-difference .kpi-label{color:#c4d8df}
+.kpi-value{margin-top:8px;color:var(--ink);font:700 clamp(1.25rem,1.75vw,1.65rem)/1.15 ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.025em;overflow-wrap:anywhere}
+.main-difference .kpi-value{color:#fff;font-size:clamp(1.55rem,2.3vw,2.1rem)}
+.kpi-sub{margin-top:7px;color:var(--muted);font-size:.8rem;line-height:1.35}
+.main-difference .kpi-sub{color:#c4d8df}
+.difference-status{display:inline-flex;align-items:center;margin-top:11px;padding:4px 7px;border:1px solid rgba(222,240,244,.3);border-radius:3px;color:#d6e8ec;font-size:.73rem;font-weight:650}
+.difference-status.is-balanced{border-color:rgba(121,202,174,.45);color:#a8e1ca}
+.summary-section{margin-bottom:16px;padding:17px 19px;border:1px solid var(--line);border-radius:7px;background:#fff}
+.summary-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:12px}
+.summary-section-title{margin:0;color:var(--ink);font-size:1.05rem;font-weight:700;letter-spacing:-.015em}
+.summary-section-note{margin:4px 0 0;color:var(--muted);font-size:.84rem}
+.chart-card{min-width:0}
+.chart-title{margin:0 0 12px;color:#345468;font-size:.88rem;font-weight:650}
+#chart-trend{max-height:285px}
+.summary-table-tools{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px}
+.summary-search{width:min(340px,100%);height:40px;padding:8px 11px;border:1px solid #b9c9d1;border-radius:5px;font:inherit;font-size:.86rem}
+.summary-search:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(18,105,130,.16);outline:0}
+.summary-table-wrap{max-height:68vh;overflow:auto;border:1px solid var(--line);border-radius:5px}
+.dash-table{width:100%;font-size:.83rem;border-collapse:collapse}
+.dash-table thead th{position:sticky;top:0;z-index:2;padding:9px 11px;border-bottom:1px solid #cbd8de;background:#e8eff2;color:#355467;font-size:.76rem;font-weight:700;white-space:nowrap}
+.dash-table tbody tr{border-bottom:1px solid #e7edef}
+.dash-table tbody tr:hover{background:#f1f7f8}
+.dash-table tbody td{padding:8px 11px;color:#29485b}
+.dash-table .num{font-family:ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums;font-weight:600;text-align:right;white-space:nowrap}
+.dif-pos{color:var(--dif-pos)}.dif-neg{color:var(--dif-neg)}.dif-ok{color:var(--dif-ok)}
+.badge-rs{display:inline-block;padding:3px 7px;border-radius:3px;font-size:.7rem;font-weight:700;white-space:nowrap}
+.badge-dg{background:#e0edf2;color:#14566d}.badge-gx{background:#dfefe9;color:#17634f}.badge-fo{background:#f8eadc;color:#89501e}
+.group-header td{background:#f1f5f6;color:#24485c;font-size:.8rem;font-weight:700}
+.group-header td:first-child{padding-left:14px}.sub-row td:first-child{padding-left:20px}
+.summary-subtotal td{background:#f8fafb;color:#405d6d;font-size:.79rem;font-weight:650}
+.summary-pagination{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding-top:12px;color:var(--muted);font-size:.82rem}
+.summary-pagination button{min-height:38px;padding-inline:11px;border:1px solid #b9c9d1;border-radius:4px;background:#fff;color:var(--ink)}
+.summary-pagination button:disabled{opacity:.5;cursor:not-allowed}
+.empty-state{text-align:center;padding:42px 20px;color:#627986}.empty-state i{display:block;margin-bottom:10px;font-size:2rem}
+.nota-btn{color:#667f8d;cursor:pointer}.nota-btn:hover{color:#153f54}
+@media(max-width:1120px){.summary-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.kpi-card.main-difference{grid-column:span 3}.controls-row{grid-template-columns:repeat(3,minmax(0,1fr))}.controls-divider{display:none}}
+@media(max-width:700px){.summary-page{padding:16px 12px!important}.summary-header{align-items:flex-start;flex-direction:column}.summary-actions{justify-content:flex-start}.controls-row{grid-template-columns:1fr 1fr;gap:11px}.controls-group.rs-group{grid-column:span 2}.controls-group.period-group{grid-column:span 2}.summary-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi-card.main-difference{grid-column:span 2}.summary-section{padding:14px}.summary-section-head{align-items:flex-start;flex-direction:column}.summary-table-wrap{max-height:60vh}}
+@media(max-width:420px){.summary-kpis{grid-template-columns:1fr}.kpi-card.main-difference{grid-column:auto}.controls-row{grid-template-columns:1fr}.controls-group.rs-group,.controls-group.period-group{grid-column:auto}.summary-actions .btn{flex:1 1 100%}}
 </style>
 
-<div class="container-fluid px-3 py-3">
+<main class="container-fluid px-3 py-3 summary-page">
 
   <!-- ── HEADER ── -->
-  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <header class="summary-header">
     <div>
-      <h5 class="mb-0 font-weight-bold">
-        Dashboard Conciliación <span style="color:#1e40af">V3</span>
-        <span style="font-size:.6rem;background:linear-gradient(135deg,#1e40af,#2563eb);color:#fff;padding:2px 8px;border-radius:20px;font-weight:800;letter-spacing:1px;vertical-align:middle;margin-left:6px;">CERRADO</span>
-      </h5>
-      <p class="mb-0 text-muted" style="font-size:.78rem;">Solo muestra meses con cierre confirmado</p>
+      <h1 class="summary-title">Conciliación <span class="summary-status">Cierre confirmado</span></h1>
+      <p class="summary-subtitle">Vista de control para depósitos, diferencias y tránsitos del periodo.</p>
     </div>
-    <div class="export-group d-flex gap-2 flex-wrap">
-      <a class="btn btn-outline-warning btn-sm" href="/income/transitos_v3">
+    <div class="summary-actions">
+      <a class="btn btn-outline-warning btn-sm transit-link" href="/income/transitos_v3">
         <i class="fas fa-exchange-alt mr-1"></i> Reporte de Tránsitos
       </a>
-      <button class="btn btn-success btn-sm" onclick="exportarResumen()">
+      <button class="btn btn-success btn-sm" type="button" onclick="exportarResumen()">
         <i class="fas fa-file-excel mr-1"></i> Resumen General
       </button>
-      <button class="btn btn-danger btn-sm" onclick="exportarDiferencias()">
+      <button class="btn btn-danger btn-sm" type="button" onclick="exportarDiferencias()">
         <i class="fas fa-file-excel mr-1"></i> Detalle Diferencias
       </button>
     </div>
-  </div>
+  </header>
 
   <!-- ── FILTROS ── -->
-  <div class="controls-header">
+  <section class="summary-controls" aria-label="Filtros del dashboard">
     <div class="controls-row">
 
       <!-- Razón Social -->
-      <div class="controls-group">
-        <span class="small font-weight-bold text-muted" style="white-space:nowrap;">R.S.</span>
-        <div class="btn-group btn-group-toggle rounded-pill overflow-hidden border" data-toggle="buttons" style="height:34px;">
-          <label class="btn btn-outline-dark btn-sm active px-3" style="line-height:22px;" onclick="setRS('DIAZ GAS')">
-            <input type="radio" name="rs_type" autocomplete="off" checked> DIAZ
+      <div class="controls-group rs-group">
+        <span class="controls-label">Empresa</span>
+        <div class="btn-group btn-group-toggle" data-toggle="buttons">
+          <label class="btn btn-outline-dark btn-sm active" onclick="setRS('DIAZ GAS')">
+            <input type="radio" name="rs_type" autocomplete="off" checked> Díaz Gas
           </label>
-          <label class="btn btn-outline-dark btn-sm px-3" style="line-height:22px;" onclick="setRS('FORANEAS')">
-            <input type="radio" name="rs_type" autocomplete="off"> FORA
+          <label class="btn btn-outline-dark btn-sm" onclick="setRS('FORANEAS')">
+            <input type="radio" name="rs_type" autocomplete="off"> Foráneas
           </label>
-          <label class="btn btn-outline-dark btn-sm px-3" style="line-height:22px;" onclick="setRS('GASOMEX')">
-            <input type="radio" name="rs_type" autocomplete="off"> GASO
+          <label class="btn btn-outline-dark btn-sm" onclick="setRS('GASOMEX')">
+            <input type="radio" name="rs_type" autocomplete="off"> Gasomex
           </label>
         </div>
       </div>
 
-      <div class="controls-divider"></div>
-
-      <!-- Estación -->
-      <div class="controls-group flex-grow-1" style="min-width:180px;">
-        <label class="mb-0 small font-weight-bold text-muted text-nowrap">ESTACIÓN</label>
-        <select id="estacionSelect" class="form-control custom-select-pill flex-grow-1" onchange="alCambiarEstacion()">
+      <div class="controls-group">
+        <label for="estacionSelect" class="controls-label">Estación</label>
+        <select id="estacionSelect" class="form-control custom-select-pill" onchange="alCambiarEstacion()">
           <option value="">-- Estación --</option>
         </select>
       </div>
 
-      <!-- Banco -->
       <div class="controls-group">
-        <span class="small font-weight-bold text-muted" style="white-space:nowrap;">BANCO</span>
-        <select id="f-banco" class="form-control custom-select-pill" style="min-width:160px;" onchange="setBanco(this.value)">
+        <label for="f-banco" class="controls-label">Banco</label>
+        <select id="f-banco" class="form-control custom-select-pill" onchange="setBanco(this.value)">
           <option value="">-- Banco --</option>
         </select>
       </div>
 
-      <div class="controls-divider"></div>
-
-      <!-- Período -->
-      <div class="controls-group">
-        <label class="mb-0 small font-weight-bold text-muted text-nowrap">PERÍODO</label>
+      <div class="controls-group period-group">
+        <span class="controls-label">Periodo</span>
         <div class="position-relative">
-          <div class="date-widget-trigger border px-3 py-1 rounded-pill bg-white" style="height:34px;" onclick="toggleDatePicker()">
+          <button class="date-widget-trigger" type="button" onclick="toggleDatePicker()" aria-haspopup="dialog" aria-expanded="false" aria-controls="dateDropdown">
             <i class="far fa-calendar-alt text-success"></i>
             <span id="displayFullDate">Todos los períodos</span>
-          </div>
+          </button>
           <input type="hidden" id="hiddenYear">
           <input type="hidden" id="hiddenMonth">
-          <div class="date-widget-dropdown" id="dateDropdown">
+          <div class="date-widget-dropdown" id="dateDropdown" role="dialog" aria-label="Seleccionar periodo">
             <div class="d-flex justify-content-between align-items-center mb-2">
-              <button class="btn btn-sm btn-light" onclick="changeWidgetYear(-1)">&lt;</button>
+              <button type="button" class="btn btn-sm btn-light" onclick="changeWidgetYear(-1)" aria-label="Año anterior">&lt;</button>
               <strong id="widgetYearDisplay"></strong>
-              <button class="btn btn-sm btn-light" onclick="changeWidgetYear(1)">&gt;</button>
+              <button type="button" class="btn btn-sm btn-light" onclick="changeWidgetYear(1)" aria-label="Año siguiente">&gt;</button>
             </div>
             <div class="month-grid" id="monthGrid"></div>
-            <button class="btn btn-sm btn-outline-secondary btn-block mt-2" onclick="clearPeriod()">
+            <button type="button" class="btn btn-sm btn-outline-secondary btn-block mt-2" onclick="clearPeriod()">
               <i class="fas fa-times mr-1"></i> Todos los períodos
             </button>
           </div>
         </div>
       </div>
 
-      <div class="ml-auto d-flex align-items-center gap-2">
-        <span id="filtros-activos" class="text-muted" style="font-size:.75rem;"></span>
-        <button class="btn btn-outline-secondary btn-sm rounded-pill" onclick="limpiarFiltros()">
+      <div class="controls-group">
+        <span class="controls-label">Acciones</span>
+        <button class="btn btn-outline-secondary btn-sm summary-clear" type="button" onclick="limpiarFiltros()">
           <i class="fas fa-times mr-1"></i> Limpiar
         </button>
       </div>
 
     </div>
-  </div>
+    <div id="filtros-activos" class="filters-active" aria-live="polite"></div>
+  </section>
 
-  <!-- ── KPIs ── -->
-  <div class="row mb-3" id="kpi-row">
-    <div class="col-6 col-md mb-2">
-      <div class="kpi-card cg h-100">
-        <div class="d-flex justify-content-between align-items-start">
-          <div>
-            <div class="kpi-label">CG Total</div>
-            <div class="kpi-value" id="kpi-cg">—</div>
-            <div class="kpi-sub" id="kpi-n-cierres">— cierres</div>
-          </div>
-          <div class="kpi-icon" style="background:#dbeafe;color:#2563eb;"><i class="fas fa-gas-pump"></i></div>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-md mb-2">
-      <div class="kpi-card tes h-100">
-        <div class="d-flex justify-content-between align-items-start">
-          <div>
-            <div class="kpi-label">Depositado</div>
-            <div class="kpi-value" id="kpi-tes">—</div>
-            <div class="kpi-sub">Tesorería acumulado</div>
-          </div>
-          <div class="kpi-icon" style="background:#d1fae5;color:#059669;"><i class="fas fa-university"></i></div>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-md mb-2">
-      <div class="kpi-card dif h-100">
-        <div class="d-flex justify-content-between align-items-start">
-          <div>
-            <div class="kpi-label">Diferencias</div>
-            <div class="kpi-value" id="kpi-dif">—</div>
-            <div class="kpi-sub">CG − Depositado</div>
-          </div>
-          <div class="kpi-icon" style="background:#fee2e2;color:#dc2626;"><i class="fas fa-not-equal"></i></div>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-md mb-2">
-      <div class="kpi-card tran h-100">
-        <div class="d-flex justify-content-between align-items-start">
-          <div>
-            <div class="kpi-label">En Tránsito</div>
-            <div class="kpi-value" id="kpi-tran">—</div>
-            <div class="kpi-sub" id="kpi-tran-n">— registros pendientes</div>
-          </div>
-          <div class="kpi-icon" style="background:#fef3c7;color:#d97706;"><i class="fas fa-clock"></i></div>
-        </div>
-      </div>
-    </div>
-    <div class="col-6 col-md mb-2">
-      <div class="kpi-card dif h-100">
-        <div class="d-flex justify-content-between align-items-start">
-          <div>
-            <div class="kpi-label">Diferencia vs. CG</div>
-            <div class="kpi-value" id="kpi-cnt">—</div>
-            <div class="kpi-sub" id="kpi-dif-pct-detail">del CG en el filtro actual</div>
-          </div>
-          <div class="kpi-icon" style="background:#fee2e2;color:#dc2626;"><i class="fas fa-percentage"></i></div>
-        </div>
-      </div>
-    </div>
-  </div>
+  <section class="summary-kpis" id="kpi-row" aria-label="Indicadores del cierre">
+    <article class="kpi-card main-difference">
+      <div class="kpi-label">Diferencia neta</div>
+      <div class="kpi-value" id="kpi-dif">—</div>
+      <div class="kpi-sub">Control Gas − depositado</div>
+      <div class="difference-status" id="kpi-dif-status">Calculando diferencia</div>
+    </article>
+    <article class="kpi-card cg">
+      <div class="kpi-label">Control Gas</div>
+      <div class="kpi-value" id="kpi-cg">—</div>
+      <div class="kpi-sub" id="kpi-n-cierres">— cierres</div>
+    </article>
+    <article class="kpi-card tes">
+      <div class="kpi-label">Depositado</div>
+      <div class="kpi-value" id="kpi-tes">—</div>
+      <div class="kpi-sub">Acumulado de Tesorería</div>
+    </article>
+    <article class="kpi-card tran">
+      <div class="kpi-label">En tránsito</div>
+      <div class="kpi-value" id="kpi-tran">—</div>
+      <div class="kpi-sub" id="kpi-tran-n">— registros pendientes</div>
+    </article>
+    <article class="kpi-card cnt">
+      <div class="kpi-label">Diferencia / Control Gas</div>
+      <div class="kpi-value" id="kpi-cnt">—</div>
+      <div class="kpi-sub">Porcentaje de diferencia</div>
+    </article>
+  </section>
 
   <!-- ── GRÁFICAS ── -->
-  <div class="row mb-3" id="charts-row">
-    <div class="col-12 mb-3">
-      <div class="chart-card">
-        <div class="chart-title"><i class="fas fa-chart-line mr-1" id="chart-main-title-icon"></i> <span id="chart-main-title">Evolución de Diferencias</span></div>
-        <canvas id="chart-trend" height="80"></canvas>
+  <section class="summary-section chart-card" id="charts-row" aria-labelledby="chart-main-title">
+    <div class="summary-section-head">
+      <div>
+        <h2 class="summary-section-title"><i class="fas fa-chart-line mr-1" id="chart-main-title-icon" aria-hidden="true"></i> <span id="chart-main-title">Evolución de diferencias</span></h2>
+        <p class="summary-section-note">Sigue la variación entre cierres y localiza los periodos que requieren revisión.</p>
       </div>
     </div>
-  </div>
+    <canvas id="chart-trend" height="80" aria-label="Gráfica de evolución de diferencias"></canvas>
+  </section>
 
   <!-- ── RESUMEN GENERAL (todas las combinaciones del catálogo) ── -->
-  <div class="chart-card mb-3">
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <div class="chart-title mb-0">
-        <i class="fas fa-list-alt mr-1"></i> Resumen General — Todas las Estaciones / Afiliaciones
+  <section class="summary-section" aria-labelledby="summaryTableTitle">
+    <div class="summary-section-head">
+      <div>
+        <h2 class="summary-section-title" id="summaryTableTitle">Detalle por estación y afiliación</h2>
+        <p class="summary-section-note">Importes de Control Gas, Tesorería, tránsito y diferencia para cada combinación.</p>
       </div>
       <small class="text-muted" id="resumen-comb-label"></small>
     </div>
-    <div class="table-responsive">
+    <div class="summary-table-tools">
+      <label class="sr-only" for="summarySearch">Buscar estación, banco o afiliación</label>
+      <input id="summarySearch" class="summary-search" type="search" placeholder="Buscar estación, banco o afiliación" autocomplete="off">
+      <div id="summaryPageSummary" class="text-muted" aria-live="polite"></div>
+    </div>
+    <div class="summary-table-wrap">
       <table class="dash-table">
+        <caption class="sr-only">Importes por estación, razón social, banco y afiliación.</caption>
         <thead><tr>
           <th>Estación</th><th>R.S.</th><th>Banco</th><th>Afiliación</th>
           <th class="num">CG ($)</th><th class="num">Depositado ($)</th>
@@ -294,12 +235,19 @@ body { background:#f1f5f9; }
         <tbody id="tbody-combinacion"></tbody>
       </table>
     </div>
+    <nav class="summary-pagination" id="summaryPagination" aria-label="Paginación de estaciones">
+      <span id="summaryPageStatus" aria-live="polite">Página 1 de 1</span>
+      <div class="d-flex" style="gap:8px;">
+        <button id="summaryPrevPage" type="button" aria-label="Estaciones anteriores">Anterior</button>
+        <button id="summaryNextPage" type="button" aria-label="Estaciones siguientes">Siguiente</button>
+      </div>
+    </nav>
     <div id="empty-combinacion" class="empty-state d-none">
-      <i class="fas fa-inbox"></i> Sin combinaciones en el catálogo
+      <i class="fas fa-inbox" aria-hidden="true"></i><span id="empty-combinacion-text">Sin combinaciones en el catálogo</span>
     </div>
-  </div>
+  </section>
 
-</div><!-- /container -->
+</main>
 
 <div id="sumPickerOverlay" onclick="closeDatePicker()" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:1900;display:none;"></div>
 
@@ -326,6 +274,9 @@ const FMT2 = new Intl.NumberFormat('es-MX', { maximumFractionDigits:2 });
 let chartTrend = null, chartRS = null;
 let _data = null, _tran = null;
 let bancosRequest = 0;
+let summaryCombinaciones = [];
+let summaryCurrentPage = 1;
+const summaryStationsPerPage = 5;
 
 // ── ESTADO DE FILTROS ────────────────────────────────────────────────────────
 let widgetState   = { year: new Date().getFullYear(), month: '' };
@@ -351,7 +302,7 @@ function renderWidgetYear() {
     meses.forEach((m, i) => {
         const num = (i + 1).toString().padStart(2, '0');
         const sel = num === widgetState.month ? 'selected' : '';
-        $grid.append(`<div class="month-btn ${sel}" onclick="selectWidgetMonth('${num}')">${m}</div>`);
+        $grid.append(`<button type="button" class="month-btn ${sel}" onclick="selectWidgetMonth('${num}')" aria-pressed="${sel ? 'true' : 'false'}">${m}</button>`);
     });
 }
 function changeWidgetYear(d) { widgetState.year += d; renderWidgetYear(); }
@@ -378,9 +329,11 @@ function updateDisplayDate() {
 }
 function toggleDatePicker() {
     $('#dateDropdown').toggleClass('active');
-    $('#sumPickerOverlay').toggle($('#dateDropdown').hasClass('active'));
+    const isOpen = $('#dateDropdown').hasClass('active');
+    $('#sumPickerOverlay').toggle(isOpen);
+    $('.date-widget-trigger').attr('aria-expanded', isOpen ? 'true' : 'false');
 }
-function closeDatePicker() { $('#dateDropdown').removeClass('active'); $('#sumPickerOverlay').hide(); }
+function closeDatePicker() { $('#dateDropdown').removeClass('active'); $('#sumPickerOverlay').hide(); $('.date-widget-trigger').attr('aria-expanded', 'false'); }
 
 // ── RAZÓN SOCIAL ─────────────────────────────────────────────────────────────
 function setRS(rs) { currentRS = rs; filtrarEstaciones(); aplicarFiltros(); }
@@ -488,15 +441,16 @@ function renderKPIs(k) {
     $('#kpi-cg').text(FMT.format(k.total_cg));
     $('#kpi-tes').text(FMT.format(k.total_depositado));
     const dif = parseFloat(k.total_diferencias);
-    $('#kpi-dif').text(FMT.format(dif))
-        .css('color', Math.abs(dif) < 0.01 ? 'var(--dif-ok)' : dif > 0 ? 'var(--dif-pos)' : 'var(--dif-neg)');
+    const isBalanced = Math.abs(dif) < 0.01;
+    $('#kpi-dif').text(FMT.format(dif)).attr('aria-label', 'Diferencia neta ' + FMT.format(dif));
+    $('#kpi-dif-status').text(isBalanced ? 'Sin diferencia' : 'Diferencia detectada')
+        .toggleClass('is-balanced', isBalanced);
     $('#kpi-tran').text(FMT.format(k.total_transito));
     const pctDiferencia = Math.abs(parseFloat(k.total_cg)) > 0
         ? (Math.abs(dif) / Math.abs(parseFloat(k.total_cg))) * 100
         : null;
     $('#kpi-cnt').text(pctDiferencia === null ? '—' : FMT2.format(pctDiferencia) + '%')
         .css('color', Math.abs(dif) < 0.01 ? 'var(--dif-ok)' : dif > 0 ? 'var(--dif-pos)' : 'var(--dif-neg)');
-    $('#kpi-dif-pct-detail').text('Diferencia neta: ' + FMT.format(dif));
     $('#kpi-n-cierres').text(k.n_cierres + ' cierres');
 }
 
@@ -523,11 +477,11 @@ function renderChartTrend(trend) {
                 { 
                   label: 'Diferencia', 
                   data: dif, 
-                  borderColor: '#ef4444', 
-                  backgroundColor: 'rgba(239,68,68,.1)',
+                  borderColor: '#ae514b',
+                  backgroundColor: 'rgba(174,81,75,.12)',
                   borderWidth: 3,
                   pointRadius: isDaily ? 2 : 4, 
-                  pointBackgroundColor: '#ef4444',
+                  pointBackgroundColor: '#ae514b',
                   tension: 0.3, 
                   fill: true 
                 }
@@ -547,7 +501,7 @@ function renderChartTrend(trend) {
             scales: {
                 y: { 
                     ticks: { callback: v => '$' + FMT2.format(v), font: { size: 10 } }, 
-                    grid: { color: '#f1f5f9' } 
+                    grid: { color: '#e3ebee' }
                 },
                 x: { 
                     ticks: { 
@@ -699,53 +653,73 @@ function renderTabEstacion(data) {
 
 // ── RESUMEN GENERAL (catálogo completo) ───────────────────────────────────────
 function renderResumenCombinacion(rows) {
+    summaryCombinaciones = rows || [];
+    summaryCurrentPage = 1;
+    actualizarResumenCombinacion();
+}
+
+function actualizarResumenCombinacion() {
     const tb = $('#tbody-combinacion').empty();
-    if (!rows.length) { $('#empty-combinacion').removeClass('d-none'); $('#resumen-comb-label').text(''); return; }
-    $('#empty-combinacion').addClass('d-none');
-    $('#resumen-comb-label').text(rows.length + ' combinaciones');
-
-    // Agrupar por estación para mostrar subtotales
-    let curEst = null, grpCG = 0, grpDep = 0, grpTran = 0, grpDif = 0, grpN = 0;
-
-    const flushGrp = () => {
-        if (curEst === null) return;
-        tb.append(`<tr style="background:#f1f5f9;font-size:.75rem;font-weight:700;color:#475569;">
-            <td colspan="4" style="padding-left:24px;">Subtotal ${curEst}</td>
-            <td class="num">${FMT.format(grpCG)}</td>
-            <td class="num">${FMT.format(grpDep)}</td>
-            <td class="num ${grpTran > 0.01 ? 'text-warning' : ''}">${FMT.format(grpTran)}</td>
-            <td class="num ${difClass(grpDif)}">${FMT.format(grpDif)}</td>
-            <td class="num">${grpN}</td>
-        </tr>`);
-        grpCG = grpDep = grpTran = grpDif = grpN = 0;
-    };
-
-    rows.forEach(r => {
-        if (r.estacion !== curEst) {
-            flushGrp();
-            curEst = r.estacion;
-            // Fila de encabezado de estación
-            tb.append(`<tr class="group-header">
-                <td colspan="9"><i class="fas fa-gas-pump mr-1" style="color:#2563eb;"></i>${r.estacion} — ${rsBadge(r.razon_social)}</td>
-            </tr>`);
-        }
-        grpCG += r.total_cg; grpDep += r.total_depositado;
-        grpTran += r.total_transito; grpDif += r.total_diferencias; grpN += r.n_cierres;
-
-        const sinDatos = r.n_cierres === 0;
-        tb.append(`<tr class="sub-row ${sinDatos ? 'text-muted' : ''}">
-            <td></td>
-            <td>${rsBadge(r.razon_social)}</td>
-            <td>${r.banco}</td>
-            <td style="font-family:monospace;font-size:.78rem;">${r.afiliacion || '—'}</td>
-            <td class="num ${sinDatos ? '' : ''}">${sinDatos ? '<span class="text-muted">Sin cierres</span>' : FMT.format(r.total_cg)}</td>
-            <td class="num">${sinDatos ? '—' : FMT.format(r.total_depositado)}</td>
-            <td class="num ${r.total_transito > 0.01 ? 'text-warning' : ''}">${sinDatos ? '—' : FMT.format(r.total_transito)}</td>
-            <td class="num ${sinDatos ? '' : difClass(r.total_diferencias)}">${sinDatos ? '—' : FMT.format(r.total_diferencias)}</td>
-            <td class="num">${r.n_cierres}</td>
-        </tr>`);
+    const normalize = value => String(value ?? '').toLocaleLowerCase('es-MX').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const query = normalize($('#summarySearch').val() || '');
+    const filtered = summaryCombinaciones.filter(row => !query || normalize([row.estacion,row.razon_social,row.banco,row.afiliacion].join(' ')).includes(query));
+    const grouped = new Map();
+    filtered.forEach(row => {
+        const station = row.estacion || 'Estación sin nombre';
+        if (!grouped.has(station)) grouped.set(station, []);
+        grouped.get(station).push(row);
     });
-    flushGrp();
+    const groups = [...grouped.entries()];
+    const pageCount = Math.max(1, Math.ceil(groups.length / summaryStationsPerPage));
+    summaryCurrentPage = Math.min(Math.max(1, summaryCurrentPage), pageCount);
+    const start = (summaryCurrentPage - 1) * summaryStationsPerPage;
+    const pageGroups = groups.slice(start, start + summaryStationsPerPage);
+
+    $('#resumen-comb-label').text(`${filtered.length.toLocaleString('es-MX')} combinaciones · ${groups.length.toLocaleString('es-MX')} estaciones`);
+    $('#summaryPageSummary').text(`Mostrando estaciones ${groups.length ? start + 1 : 0}–${Math.min(start + summaryStationsPerPage, groups.length)} de ${groups.length.toLocaleString('es-MX')}`);
+    $('#summaryPageStatus').text(`Página ${summaryCurrentPage} de ${pageCount}`);
+    $('#summaryPrevPage').prop('disabled', summaryCurrentPage <= 1);
+    $('#summaryNextPage').prop('disabled', summaryCurrentPage >= pageCount);
+
+    if (!filtered.length) {
+        $('#empty-combinacion-text').text(summaryCombinaciones.length ? 'No hay combinaciones que coincidan con la búsqueda.' : 'Sin combinaciones en el catálogo.');
+        $('#empty-combinacion').removeClass('d-none');
+        $('#summaryPagination').addClass('d-none');
+        return;
+    }
+    $('#empty-combinacion').addClass('d-none');
+    $('#summaryPagination').removeClass('d-none');
+
+    const fragment = document.createDocumentFragment();
+    pageGroups.forEach(([station, stationRows]) => {
+        const head = document.createElement('tr');
+        head.className = 'group-header';
+        head.innerHTML = `<td colspan="9"><i class="fas fa-gas-pump mr-1" aria-hidden="true"></i>${station} — ${rsBadge(stationRows[0].razon_social)}</td>`;
+        fragment.appendChild(head);
+        const totals = { cg:0, depositado:0, transito:0, diferencia:0, cierres:0 };
+        stationRows.forEach(row => {
+            totals.cg += Number(row.total_cg || 0);
+            totals.depositado += Number(row.total_depositado || 0);
+            totals.transito += Number(row.total_transito || 0);
+            totals.diferencia += Number(row.total_diferencias || 0);
+            totals.cierres += Number(row.n_cierres || 0);
+            const sinDatos = Number(row.n_cierres) === 0;
+            const tr = document.createElement('tr');
+            tr.className = `sub-row ${sinDatos ? 'text-muted' : ''}`;
+            tr.innerHTML = `<td></td><td>${rsBadge(row.razon_social)}</td><td>${row.banco}</td><td>${row.afiliacion || '—'}</td>
+              <td class="num">${sinDatos ? '<span class="text-muted">Sin cierres</span>' : FMT.format(Number(row.total_cg || 0))}</td>
+              <td class="num">${sinDatos ? '—' : FMT.format(Number(row.total_depositado || 0))}</td>
+              <td class="num ${Number(row.total_transito) > .01 ? 'text-warning' : ''}">${sinDatos ? '—' : FMT.format(Number(row.total_transito || 0))}</td>
+              <td class="num ${sinDatos ? '' : difClass(row.total_diferencias)}">${sinDatos ? '—' : FMT.format(Number(row.total_diferencias || 0))}</td>
+              <td class="num">${Number(row.n_cierres || 0)}</td>`;
+            fragment.appendChild(tr);
+        });
+        const subtotal = document.createElement('tr');
+        subtotal.className = 'summary-subtotal';
+        subtotal.innerHTML = `<td colspan="4">Subtotal ${station}</td><td class="num">${FMT.format(totals.cg)}</td><td class="num">${FMT.format(totals.depositado)}</td><td class="num ${totals.transito > .01 ? 'text-warning' : ''}">${FMT.format(totals.transito)}</td><td class="num ${difClass(totals.diferencia)}">${FMT.format(totals.diferencia)}</td><td class="num">${totals.cierres}</td>`;
+        fragment.appendChild(subtotal);
+    });
+    tb[0].appendChild(fragment);
 }
 
 // ── TAB TRÁNSITOS ─────────────────────────────────────────────────────────────
@@ -821,6 +795,18 @@ function verNota(encoded) {
 // ── INIT ──────────────────────────────────────────────────────────────────────
 $(function() {
     initWidget();
+    $('#summarySearch').on('input', function() {
+        summaryCurrentPage = 1;
+        actualizarResumenCombinacion();
+    });
+    $('#summaryPrevPage').on('click', function() {
+        summaryCurrentPage -= 1;
+        actualizarResumenCombinacion();
+    });
+    $('#summaryNextPage').on('click', function() {
+        summaryCurrentPage += 1;
+        actualizarResumenCombinacion();
+    });
     cargarEstaciones(); // dispara filtrarEstaciones y carga bancos por empresa
     aplicarFiltros();
 });
