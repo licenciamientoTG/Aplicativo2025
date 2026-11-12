@@ -4,28 +4,49 @@
 
 {% block content %}
 <style>
-  body { background:#f1f5f9; }
-  .transit-page { max-width:1500px; margin:auto; }
-  .transit-card { background:#fff; border:1px solid #e2e8f0; border-radius:14px; box-shadow:0 2px 8px rgba(15,23,42,.05); }
-  .transit-filter { display:flex; align-items:end; flex-wrap:wrap; gap:14px; }
-  .transit-filter label { display:block; margin-bottom:5px; color:#64748b; font-size:.72rem; font-weight:700; letter-spacing:.05em; }
-  .transit-filter .form-control { min-width:190px; height:40px; border-radius:9px; }
-  .transit-filter .station-control { min-width:240px; }
-  .transit-filter .period-control { min-width:165px; }
-  .transit-metric { height:100%; padding:18px 20px; border-left:4px solid; }
-  .transit-metric.outgoing { border-color:#d97706; }
-  .transit-metric.incoming { border-color:#2563eb; }
-  .transit-metric-label { color:#64748b; font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
-  .transit-metric-value { margin-top:5px; color:#1e293b; font:800 1.55rem/1.2 Consolas,monospace; }
-  .transit-metric-sub { margin-top:4px; color:#64748b; font-size:.8rem; }
-  .transit-table { min-width:1120px; }
+  .transit-page {
+    --transit-ink:#17324d; --transit-action:#176b87; --transit-out:#9a5510;
+    --transit-paper:#f2f6f8; --transit-line:#d8e2e8; --transit-muted:#526777;
+    max-width:1540px; margin-inline:auto; color:var(--transit-ink); background:var(--transit-paper);
+  }
+  .transit-page .transit-card { background:#fff; border:1px solid var(--transit-line); border-radius:10px; box-shadow:0 2px 5px rgba(23,50,77,.045); }
+  .transit-page .transit-heading { color:var(--transit-ink); font-size:1.55rem; letter-spacing:-.025em; }
+  .transit-page .transit-subtitle { max-width:62ch; color:var(--transit-muted); font-size:.92rem; }
+  .transit-page .transit-filter-card { border-top:3px solid var(--transit-action); }
+  .transit-page .transit-filter { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); align-items:end; gap:12px; }
+  .transit-page .transit-filter > div { min-width:0; grid-column:span 2; }
+  .transit-page .transit-filter > div:nth-child(2) { grid-column:span 3; }
+  .transit-page .transit-filter > div:nth-child(4) { grid-column:span 2; }
+  .transit-page .transit-filter label { display:block; margin-bottom:6px; color:#3e596c; font-size:.76rem; font-weight:650; }
+  .transit-page .transit-filter .form-control { width:100%; min-width:0; height:44px; border:1px solid #bacbd5; border-radius:6px; color:var(--transit-ink); font-size:.92rem; }
+  .transit-page .transit-filter .form-control:focus { border-color:var(--transit-action); box-shadow:0 0 0 3px rgba(23,107,135,.17); }
+  .transit-page .transit-period-control { grid-column:span 2 !important; }
+  .transit-page .transit-search-control { grid-column:span 1; min-height:44px; margin:0; white-space:nowrap; }
+  .transit-page .transit-search-control:focus-visible,
+  .transit-page button:focus-visible,
+  .transit-page a:focus-visible { outline:3px solid #79b9cf; outline-offset:2px; }
+  .transit-page .btn-primary { background-color:var(--transit-action); border-color:var(--transit-action); }
+  .transit-page .transit-metric { position:relative; height:100%; min-height:124px; padding:17px 20px 16px; border-inline-start:4px solid; }
+  .transit-page .transit-metric.outgoing { border-color:var(--transit-out); }
+  .transit-page .transit-metric.incoming { border-color:var(--transit-action); }
+  .transit-page .transit-metric-label { color:#3e596c; font-size:.84rem; font-weight:650; }
+  .transit-page .transit-metric-value { margin-top:7px; color:var(--transit-ink); font:750 clamp(1.45rem,2.1vw,1.9rem)/1.15 ui-monospace,Consolas,monospace; font-variant-numeric:tabular-nums; }
+  .transit-page .transit-metric-sub { margin-top:6px; color:var(--transit-muted); font-size:.85rem; }
+  .transit-page .transit-definition { padding:11px 13px; border-inline-start:3px solid #83a8b8; background:#f3f7f9; color:#334e60; font-size:.88rem; line-height:1.5; }
+  .transit-page .transit-table-wrap { border:1px solid var(--transit-line); border-radius:7px; }
+  .transit-page .transit-table { min-width:1120px; color:#213d50; }
   .transit-table td, .transit-table th { vertical-align:middle; }
-  .transit-table th { white-space:nowrap; }
-  .transit-th-content { display:flex; align-items:center; justify-content:flex-start; gap:6px; }
-  .transit-col-filter { display:inline-flex; align-items:center; justify-content:center; width:27px; height:27px; padding:0; border:1px solid transparent; border-radius:6px; background:transparent; color:#64748b; cursor:pointer; }
-  .transit-col-filter:hover, .transit-col-filter:focus-visible { border-color:#93c5fd; background:#eff6ff; color:#1d4ed8; outline:none; }
-  .transit-col-filter.is-active { border-color:#93c5fd; background:#dbeafe; color:#1d4ed8; }
-  .transit-col-filter:focus-visible { box-shadow:0 0 0 3px rgba(59,130,246,.22); }
+  .transit-page .transit-table th { position:sticky; top:0; z-index:1; white-space:nowrap; background:#eaf1f5; color:#28475b; font-size:.8rem; font-weight:700; }
+  .transit-page .transit-table td { font-size:.86rem; }
+  .transit-page .transit-table tbody tr:hover { background:#f3f8fa; }
+  .transit-page .transit-table th:first-child,
+  .transit-page .transit-table td:first-child { position:sticky; left:0; z-index:2; background:#fff; }
+  .transit-page .transit-table th:first-child { z-index:3; background:#eaf1f5; }
+  .transit-page .transit-th-content { display:flex; align-items:center; justify-content:flex-start; gap:6px; }
+  .transit-page .transit-col-filter { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; flex:0 0 36px; padding:0; border:1px solid transparent; border-radius:6px; background:transparent; color:#425f72; cursor:pointer; }
+  .transit-page .transit-col-filter:hover { border-color:#9bbbc9; background:#dceaf0; color:#104d67; }
+  .transit-page .transit-col-filter.is-active { border-color:#79aabd; background:#cce1e9; color:#104d67; }
+  .transit-page .transit-col-filter:focus-visible { box-shadow:0 0 0 3px rgba(23,107,135,.22); }
   .transit-filter-menu { position:fixed; z-index:3000; width:290px; max-width:calc(100vw - 16px); padding:12px; border:1px solid #cbd5e1; border-radius:10px; background:#fff; box-shadow:0 12px 32px rgba(15,23,42,.2); color:#1e293b; }
   .transit-filter-menu[hidden] { display:none; }
   .transit-filter-menu-title { margin-bottom:8px; font-size:.82rem; font-weight:700; }
@@ -42,28 +63,51 @@
   .transit-filter-menu-actions button:hover { background:#e2e8f0; }
   .transit-filter-menu-actions .apply { background:#2563eb; color:white; }
   .transit-filter-menu-actions .apply:hover { background:#1d4ed8; }
-  .transit-column-filter-summary { min-height:24px; color:#64748b; font-size:.77rem; }
-  .transit-column-filter-summary.active { color:#1d4ed8; }
-  .transit-table td.amount { text-align:right; font-family:Consolas,monospace; font-weight:700; white-space:nowrap; }
-  .transit-definition { color:#475569; font-size:.84rem; }
+  .transit-page .transit-column-filter-summary { min-height:24px; color:#526777; font-size:.82rem; }
+  .transit-page .transit-column-filter-summary.active { color:#125a73; font-weight:600; }
+  .transit-page .transit-table td.amount { text-align:right; font-family:ui-monospace,Consolas,monospace; font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap; }
+  .transit-page .transit-empty-state { padding-block:3rem !important; color:#526777; }
+  @media (max-width:1100px) {
+    .transit-page .transit-filter > div,
+    .transit-page .transit-filter > div:nth-child(2),
+    .transit-page .transit-filter > div:nth-child(4) { grid-column:span 4; }
+    .transit-page .transit-period-control { grid-column:span 4 !important; }
+    .transit-page .transit-search-control { grid-column:span 4; }
+  }
+  @media (max-width:600px) {
+    .transit-page { padding-inline:12px !important; }
+    .transit-page .transit-heading { font-size:1.35rem; }
+    .transit-page .transit-filter > div,
+    .transit-page .transit-filter > div:nth-child(2),
+    .transit-page .transit-filter > div:nth-child(4),
+    .transit-page .transit-period-control,
+    .transit-page .transit-search-control { grid-column:1 / -1 !important; }
+    .transit-page .transit-search-control { width:100%; }
+    .transit-page .transit-metric { min-height:112px; }
+    .transit-page .transit-metric-value { font-size:1.45rem; }
+  }
+  @media (prefers-reduced-motion:reduce) {
+    .transit-page *, .transit-filter-menu { scroll-behavior:auto !important; transition:none !important; animation:none !important; }
+  }
 </style>
 
 <main class="container-fluid px-3 py-3 transit-page">
   <header class="d-flex align-items-center justify-content-between flex-wrap mb-3" style="gap:12px;">
     <div>
-      <h4 class="mb-1 font-weight-bold">Reporte de Tránsitos <span class="text-primary">V3</span></h4>
-      <p class="mb-0 text-muted" style="font-size:.86rem;">Consulta mensual por empresa y banco, considerando todas las estaciones.</p>
+      <h1 class="mb-1 font-weight-bold transit-heading">Reporte de tránsitos</h1>
+      <p class="mb-0 transit-subtitle">Consulta mensual de saldos entre periodos, con desglose por empresa, banco y estación.</p>
     </div>
     <a class="btn btn-outline-secondary btn-sm rounded-pill" href="/income/summary_v3">
       <i class="fas fa-arrow-left mr-1"></i> Volver al dashboard
     </a>
   </header>
 
-  <section class="transit-card p-3 p-md-4 mb-3" aria-label="Filtros del reporte de tránsitos">
-    <div class="transit-filter">
+  <section class="transit-card transit-filter-card p-3 p-md-4 mb-3" aria-labelledby="transitFiltersTitle">
+    <h2 id="transitFiltersTitle" class="sr-only">Filtros del reporte</h2>
+    <form id="transitFilterForm" class="transit-filter" role="search" aria-labelledby="transitFiltersTitle">
       <div>
-        <label for="transitCompany">EMPRESA</label>
-        <select id="transitCompany" class="form-control">
+        <label for="transitCompany">Empresa</label>
+        <select id="transitCompany" name="empresa" class="form-control">
           <option value="">Todas las empresas</option>
           <option value="DIAZ GAS">DIAZ GAS</option>
           <option value="FORANEAS">FORÁNEAS</option>
@@ -71,25 +115,25 @@
         </select>
       </div>
       <div>
-        <label for="transitDenominacion">RAZÓN SOCIAL / DENOMINACIÓN</label>
-        <select id="transitDenominacion" class="form-control"><option value="">Todas</option></select>
+        <label for="transitDenominacion">Razón social / denominación</label>
+        <select id="transitDenominacion" name="denominacion" class="form-control"><option value="">Todas</option></select>
       </div>
       <div>
-        <label for="transitBank">BANCO</label>
-        <select id="transitBank" class="form-control"><option value="">Todos los bancos</option></select>
+        <label for="transitBank">Banco</label>
+        <select id="transitBank" name="banco" class="form-control"><option value="">Todos los bancos</option></select>
       </div>
       <div>
-        <label for="transitStation">ESTACIÓN</label>
-        <select id="transitStation" class="form-control station-control"><option value="">Todas las estaciones</option></select>
+        <label for="transitStation">Estación</label>
+        <select id="transitStation" name="estacion_id" class="form-control station-control"><option value="">Todas las estaciones</option></select>
       </div>
       <div>
-        <label for="transitPeriod">MES A CONSULTAR</label>
-        <input id="transitPeriod" class="form-control period-control" type="month">
+        <label for="transitPeriod">Mes a consultar</label>
+        <input id="transitPeriod" name="periodo" class="form-control transit-period-control" type="month" required>
       </div>
-      <button id="transitSearch" class="btn btn-primary px-4" type="button" onclick="consultarTransitos()">
+      <button id="transitSearch" class="btn btn-primary px-4 transit-search-control" type="submit">
         <i class="fas fa-search mr-1"></i> Consultar
       </button>
-    </div>
+    </form>
   </section>
 
   <section class="row mb-3" aria-label="Totales de tránsitos">
@@ -117,25 +161,26 @@
       <h6 class="mb-0 font-weight-bold">Detalle por estación, banco y afiliación</h6>
       <div class="d-flex align-items-center flex-wrap" style="gap:10px;">
         <small id="transitPeriodLabel" class="text-muted"></small>
-        <button id="exportTransitExcel" class="btn btn-success btn-sm" type="button" onclick="exportarTransitosExcel()" disabled>
+        <button id="exportTransitExcel" class="btn btn-success btn-sm" type="button" disabled>
           <i class="fas fa-file-excel mr-1"></i> Exportar Excel
         </button>
-        <button id="clearTransitColumnFilters" class="btn btn-outline-secondary btn-sm" type="button" onclick="limpiarFiltrosColumnasTransito()" disabled>
+        <button id="clearTransitColumnFilters" class="btn btn-outline-secondary btn-sm" type="button" disabled>
           <i class="fas fa-times mr-1"></i> Limpiar filtros de columnas
         </button>
       </div>
     </div>
     <div class="transit-column-filter-summary mb-2" id="transitColumnFilterSummary" aria-live="polite">Los filtros de encabezado solo afectan el detalle; los totales mantienen los filtros de empresa, banco, estación y mes.</div>
     <div id="transitError" class="alert alert-danger d-none" role="alert"></div>
-    <div id="transitEmpty" class="text-center text-muted py-5">
+    <div id="transitEmpty" class="text-center transit-empty-state" role="status" aria-live="polite">
       <i class="fas fa-calendar-alt d-block mb-2" style="font-size:2rem;"></i>
       Elige empresa, banco y mes para consultar los tránsitos.
     </div>
-    <div id="transitLoading" class="text-center text-muted py-5 d-none">
+    <div id="transitLoading" class="text-center transit-empty-state d-none" role="status" aria-live="polite">
       <i class="fas fa-spinner fa-spin mr-1"></i> Consultando tránsitos…
     </div>
-    <div id="transitResults" class="table-responsive d-none">
+    <div id="transitResults" class="table-responsive transit-table-wrap d-none" tabindex="0" aria-label="Detalle de tránsitos. Desplázate horizontalmente para revisar todas las columnas.">
       <table class="table table-sm table-hover transit-table mb-0">
+        <caption class="sr-only">Detalle de tránsitos por sentido, estación, empresa, denominación, banco y monto.</caption>
         <thead class="thead-light"><tr>
           <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="0" aria-label="Filtrar por Sentido" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Sentido</span></div></th>
           <th><div class="transit-th-content"><button class="transit-col-filter" type="button" data-transit-filter-column="1" aria-label="Filtrar por Estación" aria-pressed="false" aria-expanded="false"><i class="fas fa-filter" aria-hidden="true"></i></button><span>Estación</span></div></th>
@@ -208,6 +253,7 @@ function consultarTransitos() {
   $('#transitEmpty').addClass('d-none');
   $('#transitResults').addClass('d-none');
   $('#transitLoading').removeClass('d-none');
+  $('#transitSearch').prop('disabled', true).attr('aria-busy', 'true');
   transitReportReady = false;
   $('#exportTransitExcel').prop('disabled', true);
   $.getJSON('/income/get_transitos_reporte_v3', params)
@@ -217,7 +263,11 @@ function consultarTransitos() {
       renderReporteTransitos(res.data || [], `${year}-${month}`, res.denominaciones || res.denominaciones_disponibles || []);
     })
     .fail(() => { if (request === transitRequest) mostrarTransitoError('Ocurrió un error al consultar los tránsitos.'); })
-    .always(() => { if (request === transitRequest) $('#transitLoading').addClass('d-none'); });
+    .always(() => {
+      if (request !== transitRequest) return;
+      $('#transitLoading').addClass('d-none');
+      $('#transitSearch').prop('disabled', false).removeAttr('aria-busy');
+    });
 }
 
 function mostrarTransitoError(message) {
@@ -330,7 +380,8 @@ async function exportarTransitosExcel() {
   const button = document.getElementById('exportTransitExcel');
   const originalHtml = button.innerHTML;
   button.disabled = true;
-  button.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Preparando…';
+  button.innerHTML = '<i class="fas fa-spinner fa-spin mr-1" aria-hidden="true"></i> Preparando…';
+  button.setAttribute('aria-busy', 'true');
   $('#transitError').addClass('d-none').text('');
   const stationId = $('#transitStation').val();
   const payload = {
@@ -377,6 +428,7 @@ async function exportarTransitosExcel() {
   } finally {
     button.innerHTML = originalHtml;
     button.disabled = !transitReportReady;
+    button.removeAttribute('aria-busy');
   }
 }
 
@@ -560,6 +612,12 @@ function siguienteMes(period) {
 $(function() {
   const now = new Date();
   $('#transitPeriod').val(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+  $('#transitFilterForm').on('submit', function(event) {
+    event.preventDefault();
+    consultarTransitos();
+  });
+  $('#exportTransitExcel').on('click', exportarTransitosExcel);
+  $('#clearTransitColumnFilters').on('click', limpiarFiltrosColumnasTransito);
   $('#transitCompany').on('change', function() {
     $('#transitDenominacion').val('');
     cargarBancosTransitos();
