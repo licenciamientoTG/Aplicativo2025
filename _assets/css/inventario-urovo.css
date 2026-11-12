@@ -151,3 +151,119 @@
   #urovoInventory .urovo-table-wrap:focus-visible{outline:3px solid #b27618;outline-offset:2px}
 }
 @media(prefers-reduced-motion:reduce){#urovoInventory .urovo-tabs [role="tab"]{scroll-behavior:auto}}
+/* Urovo inventory responsive polish */
+#urovoInventory{--urovo-ink:#18364b;--urovo-blue:#146b70;--urovo-line:#d6e0e2;--urovo-paper:#f2f6f6;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--urovo-ink)}
+#urovoInventory .urovo-dashboard-gap{border-left-color:#146b70;background:linear-gradient(110deg,#eaf3f2,#fff)}
+#urovoInventory .urovo-dashboard-gap-total{border-left-color:#d79531;background:linear-gradient(110deg,#fff7e9,#fff)}
+#urovoInventory .urovo-status.is-repair{background:#fff1d8;color:#704600}
+#urovoInventory button,#urovoInventory .btn,#urovoBatchModal button,#urovoDetailModal button,#urovoSummaryModal button{min-height:40px}
+#urovoInventory .urovo-table .urovo-damage-summary,#urovoInventory .urovo-table .urovo-ticket-summary{display:block}
+#urovoInventory .urovo-detail-fields .urovo-edit-action{grid-column:1/-1}
+#urovoInventory .urovo-move-form{border-color:#d5e0e1;background:#f2f6f6}
+#urovoInventory .urovo-section-heading{margin:0 0 .65rem;color:#18364b;font-size:.95rem;font-weight:700}
+#urovoInventory .urovo-pagination .btn:disabled{opacity:.55;cursor:not-allowed}
+@media(max-width:800px){
+ #urovoInventory .urovo-table-wrap{overflow:visible}
+ #urovoInventory .urovo-table{min-width:0;width:100%}
+ #urovoInventory .urovo-table thead{display:none}
+ #urovoInventory .urovo-table tbody,#urovoInventory .urovo-table tbody tr{display:block;width:100%}
+ #urovoInventory .urovo-table tbody tr{margin:.65rem 0;padding:.5rem .8rem;border:1px solid var(--urovo-line);border-radius:.55rem;background:#fff;box-shadow:0 2px 7px rgba(24,54,75,.05)}
+ #urovoInventory .urovo-table tbody td{display:grid;grid-template-columns:minmax(7rem,34%) minmax(0,1fr);gap:.5rem;width:100%;padding:.5rem 0;border:0;border-bottom:1px solid #edf1f1;overflow-wrap:anywhere}
+ #urovoInventory .urovo-table tbody td::before{content:attr(data-label);display:block;color:#526a73;font-size:.74rem;font-weight:700}
+ #urovoInventory .urovo-table tbody td:first-child{display:block;border-bottom:1px solid #e5ecec;padding:.55rem 0}
+ #urovoInventory .urovo-table tbody td:first-child::before{display:none}
+ #urovoInventory .urovo-table tbody td:last-child{display:flex;justify-content:flex-end;border:0;padding:.55rem 0 .1rem}
+ #urovoInventory .urovo-table tbody td:last-child::before{content:none}
+ #urovoInventory .urovo-table .urovo-damage-summary,#urovoInventory .urovo-table .urovo-ticket-summary{display:block;grid-column:2;font-size:.78rem;line-height:1.4}
+ #urovoInventory .urovo-table tbody td:nth-child(4){align-items:start}
+ #urovoInventory .urovo-table .js-urovo-detail{min-height:44px;min-width:120px}
+ #urovoInventory .urovo-head{align-items:flex-start}
+ #urovoInventory .urovo-head-actions .btn{min-height:44px}
+ #urovoInventory .urovo-tabs [role=tab]{min-height:44px}
+}
+@media(max-width:520px){#urovoInventory .urovo-table tbody td{grid-template-columns:6.5rem minmax(0,1fr)}#urovoInventory .urovo-head h2{font-size:1.4rem}}
+
+/* Consistent controls and visual hierarchy across the complete inventory flow. */
+#urovoInventory .urovo-head{gap:1rem}
+#urovoInventory .urovo-head-actions .btn,
+#urovoInventory .urovo-table-actions .btn{min-height:42px}
+#urovoInventory .urovo-location-bar select,
+#urovoInventory .urovo-side .form-control,
+#urovoInventory .urovo-dashboard-toolbar select{min-height:42px;border-color:#cbd9da;border-radius:.35rem;color:#294856}
+#urovoInventory .urovo-side h3{margin-bottom:.65rem;padding-bottom:.65rem;border-bottom:1px solid #d6e0e2}
+#urovoInventory .urovo-side label{color:#425e68}
+#urovoInventory .urovo-table-heading h3{font-size:1.03rem}
+#urovoInventory .urovo-result-count{font-variant-numeric:tabular-nums}
+#urovoInventory .urovo-table thead th{position:sticky;top:0;z-index:1}
+#urovoInventory .urovo-table tbody tr{transition:background-color .12s ease}
+#urovoInventory .urovo-table tbody tr:focus-within{background:#f2f8f7}
+#urovoInventory .urovo-table .js-urovo-detail{min-height:40px;padding:.4rem .8rem;border-color:#146b70;color:#105e63;font-weight:650}
+#urovoInventory .urovo-table .js-urovo-detail:hover{background:#146b70;color:#fff}
+#urovoInventory .urovo-condition{display:inline-block;padding:.25rem .48rem;border-radius:.25rem;background:#edf1f2;color:#53646b;font-size:.76rem;font-weight:650}
+#urovoInventory .urovo-condition.is-operativa{background:#e8f4eb;color:#28643d}
+#urovoInventory .urovo-condition.is-dañada{background:#fdeceb;color:#982f2a}
+#urovoInventory .urovo-condition.is-extraviada{background:#f1eaf8;color:#694183}
+#urovoInventory .urovo-condition.is-desconocida{background:#edf1f2;color:#53646b}
+#urovoInventory .urovo-damage-summary{color:#8b3f36}
+#urovoInventory .urovo-ticket-summary a{color:#146b70;text-decoration:underline;text-underline-offset:2px}
+#urovoInventory .urovo-pagination{min-height:52px}
+#urovoInventory .urovo-pagination #urovoPageLabel{font-variant-numeric:tabular-nums}
+#urovoInventory .urovo-dashboard-toolbar{border-radius:.35rem}
+#urovoInventory .urovo-dashboard-table-wrap{border-radius:.35rem;overscroll-behavior-x:contain}
+#urovoInventory .urovo-dashboard-table thead th{color:#425e68}
+#urovoInventory .urovo-dashboard-table tbody tr:hover{background:#f4f8f7}
+#urovoInventory .urovo-dashboard-table .is-low{background:#fdeceb;color:#982f2a}
+#urovoInventory .urovo-dashboard-gap{border-radius:.35rem;box-shadow:none}
+#urovoInventory .urovo-dashboard-gap span{text-transform:none;letter-spacing:0}
+#urovoInventory .urovo-modal .modal-content,
+#urovoBatchModal .modal-content,#urovoDetailModal .modal-content,#urovoSummaryModal .modal-content{border:1px solid #d5e0e1;border-radius:.45rem;box-shadow:0 16px 48px rgba(24,54,75,.18)}
+#urovoBatchModal .modal-header,#urovoDetailModal .modal-header,#urovoSummaryModal .modal-header{align-items:flex-start;border-bottom:1px solid #dce5e6;background:#f6f9f9}
+#urovoBatchModal .modal-title,#urovoDetailModal .modal-title,#urovoSummaryModal .modal-title{color:#18364b;font-weight:700}
+#urovoBatchModal .modal-header small,#urovoDetailModal #urovoDetailMeta,#urovoSummaryModal .modal-header small{display:block;margin-top:.2rem;color:#61777e;line-height:1.45}
+#urovoBatchModal .modal-footer,#urovoDetailModal .modal-footer{border-top:1px solid #e1e9e9}
+#urovoBatchModal .urovo-capture-wrap{border-color:#d5e0e1;border-radius:.35rem}
+#urovoBatchModal .urovo-capture th{background:#edf3f3;color:#526a73}
+#urovoBatchModal .urovo-capture-options .btn{min-height:40px}
+#urovoBatchModal .urovo-remove-row{min-width:40px;min-height:40px;border-radius:.3rem}
+#urovoBatchModal .urovo-remove-row:hover{background:#fdeceb;color:#982f2a}
+#urovoBatchModal #urovoAddRow{margin-top:.65rem}
+#urovoBatchModal .urovo-duplicate-report{border-color:#e7c778;background:#fff8e7;color:#70520f}
+#urovoDetailModal .urovo-section-heading{margin:0 0 .65rem;padding-bottom:.55rem;border-bottom:1px solid #dce5e6}
+#urovoDetailModal .urovo-detail-fields>label,
+#urovoDetailModal .urovo-detail-fields>div{border-color:#dce5e6;border-radius:.3rem;background:#f7f9f9}
+#urovoDetailModal .urovo-detail-fields label>small{color:#546d75;font-size:.73rem;font-weight:650}
+#urovoDetailModal .urovo-detail-fields .form-control{min-height:40px;border-color:#cbd9da;background:#fff}
+#urovoDetailModal .urovo-move-form{border-radius:.35rem}
+#urovoDetailModal .urovo-move-form .form-control{min-height:42px;border-color:#cbd9da;background:#fff}
+#urovoDetailModal .urovo-move-form textarea.form-control{min-height:80px}
+#urovoDetailModal .urovo-history-heading{padding-bottom:.55rem;border-bottom:1px solid #dce5e6}
+#urovoDetailModal .urovo-event{padding-bottom:1rem}
+#urovoDetailModal .urovo-event small{display:block;line-height:1.45}
+#urovoSummaryModal .urovo-summary-station{border-color:#d5e0e1;border-radius:.35rem}
+#urovoSummaryModal .urovo-summary-station-head{background:#f4f8f7}
+#urovoSummaryModal .urovo-summary-toggle{min-height:44px;color:#18364b}
+#urovoSummaryModal .urovo-summary-grand-total{border-color:#cadbdc;border-left-color:#146b70;border-radius:.35rem;background:#edf5f4;color:#3d5d64}
+#urovoSummaryModal .urovo-summary-grand-total strong{color:#105e63}
+#urovoInventory :focus-visible,#urovoBatchModal :focus-visible,#urovoDetailModal :focus-visible,#urovoSummaryModal :focus-visible{outline:3px solid #b27618!important;outline-offset:2px;box-shadow:none!important}
+@media(max-width:800px){
+  #urovoInventory .urovo-head{flex-wrap:wrap}
+  #urovoInventory .urovo-head-actions{align-items:flex-start;flex-direction:row}
+  #urovoInventory .urovo-location-bar{gap:.7rem}
+  #urovoInventory .urovo-side{border-radius:.35rem}
+  #urovoInventory .urovo-table-heading .urovo-table-actions{gap:.35rem}
+  #urovoInventory .urovo-table tbody td{align-items:center}
+  #urovoInventory .urovo-table tbody td:first-child strong{font-size:.95rem}
+  #urovoInventory .urovo-table tbody td:first-child small{margin-top:.25rem;color:#60777d}
+  #urovoInventory .urovo-dashboard-table-wrap{scrollbar-gutter:stable}
+  #urovoDetailModal .urovo-detail-fields .urovo-edit-action{position:static;padding:.5rem 0;border:0}
+}
+@media(max-width:520px){
+  #urovoInventory .urovo-table tbody td{grid-template-columns:6.25rem minmax(0,1fr);gap:.45rem}
+  #urovoInventory .urovo-table tbody td:last-child{justify-content:stretch}
+  #urovoInventory .urovo-table .js-urovo-detail{width:100%;min-height:46px}
+  #urovoInventory .urovo-dashboard-filter{flex-wrap:wrap}
+  #urovoInventory .urovo-dashboard-filter select{flex:1 1 100%;width:100%}
+  #urovoBatchModal .modal-footer{display:flex;gap:.5rem}
+  #urovoBatchModal .modal-footer .btn{flex:1;min-height:44px}
+}
+@media(prefers-reduced-motion:reduce){#urovoInventory .urovo-table tbody tr{transition:none}}

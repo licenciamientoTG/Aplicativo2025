@@ -13,6 +13,7 @@
     function escAttr(value) { return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
     function val(obj, keys) { for (var i = 0; i < keys.length; i++) if (obj && obj[keys[i]] != null) return obj[keys[i]]; return ''; }
     function conditionText(value) { return conditionLabels[value] || value || '—'; }
+    function conditionClass(value) { return ({ operativa:'is-operativa', dañada:'is-dañada', desconocida:'is-desconocida', extraviada:'is-extraviada' })[value] || 'is-desconocida'; }
     function terminalType(value) { return String(value || 'urovo').toLowerCase() === 'verifone' ? 'verifone' : 'urovo'; }
     function terminalBadge(value) { var type=terminalType(value); return '<span class="terminal-type-badge is-'+type+'">'+(type==='verifone'?'VERIFONE':'UROVO')+'</span>'; }
     function damageListHtml(name, selected) { selected = Array.isArray(selected) ? selected : []; var other=selected.filter(function(v){return typeof v==='string'&&v.indexOf('otro:')===0;})[0]||'', checked=selected.indexOf('otro')>=0||!!other, description=other?other.slice(5).trim():''; return '<fieldset class="urovo-damage-list" hidden><legend>Daños detectados</legend><div>' + damageTypes.map(function (d) { return '<label><input type="checkbox" data-damage-type="' + escAttr(d[0]) + '" name="' + escAttr(name) + '"' + ((d[0]==='otro'?checked:selected.indexOf(d[0])>=0) ? ' checked' : '') + '> ' + esc(d[1]) + '</label>'; }).join('') + '</div><label class="urovo-damage-other"'+(checked?'':' hidden')+'><span>Describe el otro daño</span><input type="text" class="form-control form-control-sm" data-damage-other maxlength="500" value="'+escAttr(description)+'" placeholder="Escribe el daño" aria-label="Describe el otro daño"></label></fieldset>'; }
@@ -59,7 +60,32 @@
       return (prefix ? prefix + ': ' : '') + details;
     }
     function historyItem(e) { var rawType=val(e,['tipo_evento','event','action','movement','tipo'])||'movimiento'; var names={alta:'Alta',baja:'Baja',traslado:'Traslado',ajuste:'Ajuste',movimiento:'Movimiento'}; var from=historyLocation(e,'origen'), to=historyLocation(e,'destino'); var route=(from||to)?'<p>'+esc(from)+' → '+esc(to)+'</p>':''; return '<article class="urovo-event"><i></i><div><strong>'+esc(names[rawType]||rawType)+'</strong>'+route+'<p>'+esc(historyReason(val(e,['motivo','reason','cambios','descripcion','description'])||''))+'</p><small>'+esc(val(e,['fecha_evento','effective_date','fecha','created_at'])||'')+' · '+esc(val(e,['actor_nombre','actor','user','usuario'])||'Usuario no informado')+'</small></div></article>'; }
-    function renderRows() { var total=rows.length, pages=Math.max(1,Math.ceil(total/pageSize)); currentPage=Math.min(Math.max(1,currentPage),pages); var start=(currentPage-1)*pageSize, shown=rows.slice(start,start+pageSize); $('#urovoPageLabel').text(total ? 'Página '+currentPage+' de '+pages+' · '+total+' terminales' : 'Sin terminales'); $('#urovoPagePrev').prop('disabled',currentPage<=1); $('#urovoPageNext').prop('disabled',currentPage>=pages); if (!shown.length) { $('#urovoRows').html('<tr><td colspan="6" class="urovo-empty">No hay terminales que coincidan con estos filtros.</td></tr>'); return; } $('#urovoRows').html(shown.map(function(r){var id=val(r,['id','Id','terminal_id']),serial=val(r,['numero_serie','serial','Serie','serial_number']),model=val(r,['modelo','model','Modelo']),status=val(r,['ubicacion_tipo','location_type','LocationType','status']),damages=damageValues(r),ticket=val(r,['mojo_ticket_number']);return '<tr><td><strong>'+esc(serial||'Sin serie')+'</strong><small>'+esc(model||'Modelo no indicado')+'</small></td><td>'+terminalBadge(r.tipo_terminal)+'</td><td><span class="urovo-status '+(status==='reparacion'?'is-repair':'')+'">'+esc(locationText(r))+'</span></td><td>'+esc(conditionText(val(r,['condicion','condition','Condicion'])))+damageDetails(damages)+(ticket?'<small class="urovo-ticket-summary">Mojo: '+mojoLink(ticket)+'</small>':'')+'</td><td>'+esc(val(r,['last_movement','actualizado_en','moved_at','updated_at','FechaMovimiento'])||'—')+'</td><td><button class="btn btn-sm btn-outline-primary js-urovo-detail" data-id="'+escAttr(id)+'" aria-label="Ver detalle de '+escAttr(serial||'terminal sin número de serie')+'">Ver detalle</button></td></tr>';}).join('')); }
+    function renderRows() {
+      var total=rows.length, pages=Math.max(1,Math.ceil(total/pageSize));
+      currentPage=Math.min(Math.max(1,currentPage),pages);
+      var start=(currentPage-1)*pageSize, shown=rows.slice(start,start+pageSize);
+      $('#urovoPageLabel').text(total ? 'Página '+currentPage+' de '+pages+' · '+total+' terminales' : 'Sin terminales');
+      $('#urovoPagePrev').prop('disabled',currentPage<=1);
+      $('#urovoPageNext').prop('disabled',currentPage>=pages);
+      if (!shown.length) {
+        $('#urovoRows').html('<tr><td colspan="6" class="urovo-empty">No hay terminales que coincidan con estos filtros.</td></tr>');
+        return;
+      }
+      $('#urovoRows').html(shown.map(function(r){
+        var id=val(r,['id','Id','terminal_id']), serial=val(r,['numero_serie','serial','Serie','serial_number']), model=val(r,['modelo','model','Modelo']);
+        var status=val(r,['ubicacion_tipo','location_type','LocationType','status']), damages=damageValues(r), ticket=val(r,['mojo_ticket_number']);
+        var condition=val(r,['condicion','condition','Condicion']);
+        var movement=val(r,['last_movement','actualizado_en','moved_at','updated_at','FechaMovimiento'])||'—';
+        return '<tr>'+
+          '<td data-label="Serie / modelo"><strong>'+esc(serial||'Sin serie')+'</strong><small>'+esc(model||'Modelo no indicado')+'</small></td>'+
+          '<td data-label="Tipo">'+terminalBadge(r.tipo_terminal)+'</td>'+
+          '<td data-label="Ubicación"><span class="urovo-status '+(status==='reparacion'?'is-repair':'')+'">'+esc(locationText(r))+'</span></td>'+
+          '<td data-label="Condición"><span class="urovo-condition '+conditionClass(condition)+'">'+esc(conditionText(condition))+'</span>'+damageDetails(damages)+(ticket?'<small class="urovo-ticket-summary">Ticket Mojo: '+mojoLink(ticket)+'</small>':'')+'</td>'+
+          '<td data-label="Último movimiento">'+esc(movement)+'</td>'+
+          '<td data-label="Acción"><button type="button" class="btn btn-sm btn-outline-primary js-urovo-detail" data-id="'+escAttr(id)+'" aria-label="Ver detalle de '+escAttr(serial||'terminal sin número de serie')+'">Ver detalle</button></td>'+
+        '</tr>';
+      }).join(''));
+    }
 
     function renderSummaryDetail(detail) {
       var terminals = detail.terminals || [];
