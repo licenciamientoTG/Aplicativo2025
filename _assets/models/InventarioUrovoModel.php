@@ -60,7 +60,7 @@ class InventarioUrovoModel extends Model {
     public function summaryDetail(int $stationId): array {
         $stations=$this->sql->select('SELECT Codigo AS station_id,Nombre AS station_name FROM [TG].[dbo].[Estaciones] WHERE Codigo=? AND activa=1 AND Codigo NOT IN (0,4,20)',[$stationId]);
         if (!$stations) throw new OutOfBoundsException('Estación inválida.');
-        $terminals=$this->sql->select("SELECT t.id,t.numero_serie,t.modelo,t.condicion,t.damage_types_json,t.mojo_ticket_number,
+        $terminals=$this->sql->select("SELECT t.id,t.tipo_terminal,t.numero_serie,t.modelo,t.condicion,t.damage_types_json,t.mojo_ticket_number,
                 t.ubicacion_tipo,t.estacion_codigo,s.Nombre AS estacion_nombre,
                 lm.fecha_evento AS last_movement
             FROM [TG].[dbo].[inv_urovo_terminales] t
@@ -98,7 +98,7 @@ class InventarioUrovoModel extends Model {
                     $this->sql->commit(); $result['skipped'][]=['serial'=>$serial,'reason'=>'duplicate']; continue;
                 }
                 $ticketNumber=$item['mojo_ticket_number']??'';
-                $id=$this->sql->insert('INSERT INTO [TG].[dbo].[inv_urovo_terminales] (numero_serie,numero_serie_normalizado,modelo,ip,mac,imei,fecha_compra,fin_garantia,condicion,damage_types_json,mojo_ticket_number,accesorios,notas,ubicacion_tipo,estacion_codigo,proveedor,creado_por,creado_en,actualizado_por,actualizado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,SYSDATETIME(),?,SYSDATETIME())', [$serial,$normalized,$item['model']?:'I9000S',$item['ip']?:null,$item['mac']?:null,$item['imei']?:null,$item['purchase_date']?:null,$item['warranty_until']?:null,$item['condition']?:'desconocida',!empty($item['damage_types'])?json_encode($item['damage_types'],JSON_UNESCAPED_UNICODE):null,$ticketNumber!==''?$ticketNumber:null,$item['accessories']?:null,$item['notes']?:null,$location['location_type'],$location['station_id'],$location['provider'],$actor,$actor]);
+                $id=$this->sql->insert('INSERT INTO [TG].[dbo].[inv_urovo_terminales] (tipo_terminal,numero_serie,numero_serie_normalizado,modelo,ip,mac,imei,fecha_compra,fin_garantia,condicion,damage_types_json,mojo_ticket_number,accesorios,notas,ubicacion_tipo,estacion_codigo,proveedor,creado_por,creado_en,actualizado_por,actualizado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,SYSDATETIME(),?,SYSDATETIME())', [$item['terminal_type']??'urovo',$serial,$normalized,$item['model']?:'I9000S',$item['ip']?:null,$item['mac']?:null,$item['imei']?:null,$item['purchase_date']?:null,$item['warranty_until']?:null,$item['condition']?:'desconocida',!empty($item['damage_types'])?json_encode($item['damage_types'],JSON_UNESCAPED_UNICODE):null,$ticketNumber!==''?$ticketNumber:null,$item['accessories']?:null,$item['notes']?:null,$location['location_type'],$location['station_id'],$location['provider'],$actor,$actor]);
                 if (!$id) throw new RuntimeException('No se pudo guardar el terminal.');
                 $this->terminalMove((int)$id,null,$location,null,(string)($item['condition']??'desconocida'),'alta','alta',$actor);
                 $this->sql->commit(); $result['inserted'][]=['serial'=>$noSerial?null:$serial,'id'=>(int)$id];
@@ -138,10 +138,10 @@ class InventarioUrovoModel extends Model {
         try {
             $rows=$this->sql->select('SELECT * FROM [TG].[dbo].[inv_urovo_terminales] WITH (UPDLOCK,HOLDLOCK) WHERE id=?',[$id]);
             if (!$rows) throw new OutOfBoundsException('No se encontró el terminal.'); $old=$rows[0];
-            $fields=['modelo'=>'model','ip'=>'ip','mac'=>'mac','imei'=>'imei','fecha_compra'=>'purchase_date','fin_garantia'=>'warranty_until','condicion'=>'condition','accesorios'=>'accessories','notas'=>'notes'];
+            $fields=['tipo_terminal'=>'terminal_type','modelo'=>'model','ip'=>'ip','mac'=>'mac','imei'=>'imei','fecha_compra'=>'purchase_date','fin_garantia'=>'warranty_until','condicion'=>'condition','accesorios'=>'accessories','notas'=>'notes'];
             $set=[]; $params=[]; $diff=[];
             foreach ($fields as $column=>$key) {
-                $value=$changes[$key]; if ($column==='modelo') $value=$value?:'I9000S'; if ($column==='condicion') $value=$value?:'desconocida';
+                $value=$changes[$key]??($column==='tipo_terminal'?($old[$column]??'urovo'):null); if ($column==='tipo_terminal') $value=$value?:'urovo'; if ($column==='modelo') $value=$value?:'I9000S'; if ($column==='condicion') $value=$value?:'desconocida';
                 $prior=$old[$column]??null; if ((string)($prior??'')!==(string)($value??'')) $diff[$column]=['from'=>$prior,'to'=>$value];
                 $set[]="[$column]=?"; $params[]=$value;
             }

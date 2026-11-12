@@ -3,6 +3,7 @@ class inventario_urovo {
     private $twig;
     private InventarioUrovoModel $model;
     private const LOCATIONS = ['estacion','almacen','reparacion','perdida','baja_definitiva'];
+    private const TERMINAL_TYPES = ['urovo','verifone'];
     private const CONDITIONS = ['operativa','dañada','desconocida','extraviada'];
     private const DAMAGE_TYPES = ['pantalla_quebrada','pantalla_negra','carcasa_exterior','puerto_carga_punta','usb_danado','falta_bateria','touch','modo_seguro','impresora','tapa_impresora','boton_encendido','tapa_bateria','lector_tarjetas','otro'];
 
@@ -51,12 +52,14 @@ class inventario_urovo {
             $items=[];
             foreach ($body['items'] as $item) {
                 if (!is_array($item)) throw new InvalidArgumentException('Cada terminal debe ser un objeto.');
+                $type=strtolower(trim((string)($item['terminal_type']??'urovo')));
+                if (!in_array($type,self::TERMINAL_TYPES,true)) throw new InvalidArgumentException('Tipo de terminal inválido.');
                 $noSerial=($item['no_serial']??false)===true;
                 $serial=trim((string)($item['serial']??''));
                 if (($noSerial && $serial!=='') || (!$noSerial && $serial==='') || mb_strlen($serial)>100) throw new InvalidArgumentException($noSerial?'Una terminal sin serie debe tener vacío el número de serie.':'El número de serie es obligatorio y debe tener máximo 100 caracteres.');
                 $condition=trim((string)($item['condition']??'desconocida')); if (!in_array($condition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición inválida.');
                 $purchase=$this->dateValue($item['purchase_date']??null,false); $warranty=$this->dateValue($item['warranty_until']??null,true);
-                $row=['serial'=>$noSerial?null:$serial,'no_serial'=>$noSerial,'model'=>$this->text($item,'model',100)??'I9000S','ip'=>$this->text($item,'ip',45),'mac'=>$this->text($item,'mac',17),'imei'=>$this->text($item,'imei',32),'purchase_date'=>$purchase,'warranty_until'=>$warranty,'condition'=>$condition,'damage_types'=>$this->damageTypes($item['damage_types']??[],$condition),'mojo_ticket_number'=>$this->ticketNumber($item['mojo_ticket_number']??''),'accessories'=>$this->text($item,'accessories',1000),'notes'=>$this->text($item,'notes',2000)];
+                $row=['terminal_type'=>$type,'serial'=>$noSerial?null:$serial,'no_serial'=>$noSerial,'model'=>$this->text($item,'model',100)??'I9000S','ip'=>$this->text($item,'ip',45),'mac'=>$this->text($item,'mac',17),'imei'=>$this->text($item,'imei',32),'purchase_date'=>$purchase,'warranty_until'=>$warranty,'condition'=>$condition,'damage_types'=>$this->damageTypes($item['damage_types']??[],$condition),'mojo_ticket_number'=>$this->ticketNumber($item['mojo_ticket_number']??''),'accessories'=>$this->text($item,'accessories',1000),'notes'=>$this->text($item,'notes',2000)];
                 $this->validateIdentifiers($row); $items[]=$row;
             }
             $this->respond(['success'=>true]+$this->model->addBatch($items,$location,$this->actor()));
@@ -84,7 +87,8 @@ class inventario_urovo {
         try {
             $this->authorize(); $body=$this->jsonPost(); $this->csrf();
             $condition=(string)($body['condition']??'desconocida'); if (!in_array($condition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición inválida.');
-            $changes=['model'=>$this->text($body,'model',100)??'I9000S','ip'=>$this->text($body,'ip',45),'mac'=>$this->text($body,'mac',17),'imei'=>$this->text($body,'imei',32),'purchase_date'=>$this->dateValue($body['purchase_date']??null,false),'warranty_until'=>$this->dateValue($body['warranty_until']??null,true),'condition'=>$condition,'damage_types'=>$this->damageTypes($body['damage_types']??[],$condition),'mojo_ticket_number'=>$this->ticketNumber($body['mojo_ticket_number']??''),'accessories'=>$this->text($body,'accessories',1000),'notes'=>$this->text($body,'notes',2000)];
+            $type=array_key_exists('terminal_type',$body)?strtolower(trim((string)$body['terminal_type'])):null; if ($type!==null && !in_array($type,self::TERMINAL_TYPES,true)) throw new InvalidArgumentException('Tipo de terminal inválido.');
+            $changes=['terminal_type'=>$type,'model'=>$this->text($body,'model',100)??'I9000S','ip'=>$this->text($body,'ip',45),'mac'=>$this->text($body,'mac',17),'imei'=>$this->text($body,'imei',32),'purchase_date'=>$this->dateValue($body['purchase_date']??null,false),'warranty_until'=>$this->dateValue($body['warranty_until']??null,true),'condition'=>$condition,'damage_types'=>$this->damageTypes($body['damage_types']??[],$condition),'mojo_ticket_number'=>$this->ticketNumber($body['mojo_ticket_number']??''),'accessories'=>$this->text($body,'accessories',1000),'notes'=>$this->text($body,'notes',2000)];
             $this->validateIdentifiers($changes);
             $this->respond(['success'=>true,'row'=>$this->model->editTerminal($id,$changes,$this->actor())]);
         } catch (Throwable $e) { $this->error($e); }

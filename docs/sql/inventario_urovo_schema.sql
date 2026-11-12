@@ -10,6 +10,7 @@ BEGIN
         [numero_serie] NVARCHAR(100) NULL,
         [numero_serie_normalizado] NVARCHAR(100) NULL,
         [modelo] NVARCHAR(100) NOT NULL,
+        [tipo_terminal] VARCHAR(20) NOT NULL CONSTRAINT [DF_inv_urovo_terminales_tipo_terminal] DEFAULT ('urovo'),
         [ip] VARCHAR(45) NULL,
         [mac] VARCHAR(17) NULL,
         [imei] NVARCHAR(32) NULL,
@@ -37,6 +38,7 @@ BEGIN
                 AND LEN(LTRIM(RTRIM([numero_serie_normalizado]))) > 0
             )
         ),
+        CONSTRAINT [CK_inv_urovo_terminales_tipo_terminal] CHECK ([tipo_terminal] IN ('urovo','verifone')),
         CONSTRAINT [CK_inv_urovo_terminales_ubicacion] CHECK ([ubicacion_tipo] IN ('estacion','almacen','reparacion','perdida','baja_definitiva')),
         CONSTRAINT [CK_inv_urovo_terminales_damage_types_json] CHECK ([damage_types_json] IS NULL OR ISJSON([damage_types_json]) = 1),
         CONSTRAINT [CK_inv_urovo_terminales_estacion] CHECK (([ubicacion_tipo] = 'estacion' AND [estacion_codigo] IS NOT NULL) OR ([ubicacion_tipo] <> 'estacion' AND [estacion_codigo] IS NULL)),

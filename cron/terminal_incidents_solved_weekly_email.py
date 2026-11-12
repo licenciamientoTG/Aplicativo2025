@@ -182,8 +182,8 @@ def send_email(to: list[str], stations: list[dict[str, object]], sent_at: dateti
     message["From"] = env_first("SMTP_FROM", "EMAIL_FROM", default="no-reply@totalgas.com")
     message["To"] = ", ".join(to)
     message["Subject"] = f"Incidencias de terminales resueltas — {sent_at:%d/%m/%Y}"
-    message.set_content(plain)
-    message.add_alternative(html, subtype="html")
+    message.set_content(plain, charset="utf-8")
+    message.add_alternative(html, subtype="html", charset="utf-8")
     if dry_run:
         print(f"DRY-RUN: {message['Subject']} -> {message['To']} ({total} tickets Solved)")
         return
