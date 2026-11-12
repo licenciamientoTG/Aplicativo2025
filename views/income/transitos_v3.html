@@ -67,6 +67,11 @@
   .transit-page .transit-column-filter-summary.active { color:#125a73; font-weight:600; }
   .transit-page .transit-table td.amount { text-align:right; font-family:ui-monospace,Consolas,monospace; font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap; }
   .transit-page .transit-empty-state { padding-block:3rem !important; color:#526777; }
+  .transit-page .transit-pagination { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:10px; color:#405b6e; font-size:.86rem; }
+  .transit-page .transit-pagination-controls { display:flex; align-items:center; gap:8px; }
+  .transit-page .transit-pagination button,
+  .transit-page .transit-pagination select { min-height:40px; border:1px solid #b9cbd5; border-radius:5px; background:#fff; color:var(--transit-ink); padding-inline:10px; }
+  .transit-page .transit-pagination button:disabled { opacity:.5; cursor:not-allowed; }
   @media (max-width:1100px) {
     .transit-page .transit-filter > div,
     .transit-page .transit-filter > div:nth-child(2),
@@ -178,6 +183,18 @@
     <div id="transitLoading" class="text-center transit-empty-state d-none" role="status" aria-live="polite">
       <i class="fas fa-spinner fa-spin mr-1"></i> Consultando tránsitos…
     </div>
+    <nav id="transitPagination" class="transit-pagination d-none" aria-label="Paginación de resultados">
+      <div id="transitPageSummary" aria-live="polite">0 registros</div>
+      <div class="transit-pagination-controls">
+        <label for="transitPageSize" class="mb-0">Filas por página</label>
+        <select id="transitPageSize" aria-label="Filas por página">
+          <option value="50">50</option><option value="100" selected>100</option><option value="200">200</option>
+        </select>
+        <button id="transitPreviousPage" type="button" aria-label="Página anterior">Anterior</button>
+        <span id="transitPageStatus" aria-live="polite">Página 1 de 1</span>
+        <button id="transitNextPage" type="button" aria-label="Página siguiente">Siguiente</button>
+      </div>
+    </nav>
     <div id="transitResults" class="table-responsive transit-table-wrap d-none" tabindex="0" aria-label="Detalle de tránsitos. Desplázate horizontalmente para revisar todas las columnas.">
       <table class="table table-sm table-hover transit-table mb-0">
         <caption class="sr-only">Detalle de tránsitos por sentido, estación, empresa, denominación, banco y monto.</caption>
@@ -210,6 +227,7 @@ let transitReportRawRows = [];
 let visibleTransitReportRows = [];
 let transitReportPeriod = '';
 let transitReportReady = false;
+let transitCurrentPage = 1;
 const transitColumnFilters = new Map();
 let activeTransitMenu = null;
 const transitColumnNames = ['Sentido','Estación','Empresa','Razón social / Denominación','Banco','Afiliación','Mes origen','Mes destino','Conciliación','Monto'];
@@ -330,29 +348,8 @@ function renderTransitosFiltrados() {
     return true;
   });
   visibleTransitReportRows = visibleRows;
-  const body = document.getElementById('transitRows');
-  body.replaceChildren();
-  visibleRows.forEach(row => {
-    const tr = document.createElement('tr');
-    const sentido = sentidoTransito(row);
-    const values = [sentido || 'Sin sentido',row.estacion,row.razon_social,row.denominacion,row.banco,row.afiliacion || '—',row.mes_origen,row.mes_destino,row.conciliacion || '—'];
-    values.forEach((value, index) => {
-      const td = document.createElement('td');
-      if (index === 0) {
-        const badge = document.createElement('span');
-        badge.className = `badge ${sentido === 'SALIENTE' ? 'badge-warning' : 'badge-primary'}`;
-        badge.style.cssText = `display:inline-block;padding:4px 7px;border-radius:12px;font-size:.72rem;font-weight:700;color:${sentido === 'SALIENTE' ? '#92400e' : '#1e40af'};background:${sentido === 'SALIENTE' ? '#fef3c7' : '#dbeafe'};white-space:nowrap;`;
-        badge.textContent = value == null ? 'Sin sentido' : String(value);
-        td.appendChild(badge);
-      } else td.textContent = value == null ? '' : String(value);
-      tr.appendChild(td);
-    });
-    const amount = document.createElement('td');
-    amount.className = 'amount';
-    amount.textContent = TRANSIT_FMT.format(Number(row.monto_transito || 0));
-    tr.appendChild(amount);
-    body.appendChild(tr);
-  });
+  transitCurrentPage = 1;
+  renderTransitosPagina();
 
   const activeCount = transitColumnFilters.size;
   $('#clearTransitColumnFilters').prop('disabled', activeCount === 0);
@@ -373,6 +370,47 @@ function renderTransitosFiltrados() {
     const message = transitReportRows.length ? 'Ningún tránsito coincide con los filtros de columna.' : 'No hay tránsitos salientes ni entrantes aplicados para estos filtros.';
     $('#transitEmpty').removeClass('d-none').text(message);
   }
+}
+
+function renderTransitosPagina() {
+  const pageSize = Number(document.getElementById('transitPageSize').value) || 100;
+  const totalRows = visibleTransitReportRows.length;
+  const pageCount = Math.max(1, Math.ceil(totalRows / pageSize));
+  transitCurrentPage = Math.min(Math.max(1, transitCurrentPage), pageCount);
+  const start = (transitCurrentPage - 1) * pageSize;
+  const pageRows = visibleTransitReportRows.slice(start, start + pageSize);
+  const body = document.getElementById('transitRows');
+  body.replaceChildren();
+  const fragment = document.createDocumentFragment();
+  pageRows.forEach(row => {
+    const tr = document.createElement('tr');
+    const sentido = sentidoTransito(row);
+    const values = [sentido || 'Sin sentido',row.estacion,row.razon_social,row.denominacion,row.banco,row.afiliacion || '—',row.mes_origen,row.mes_destino,row.conciliacion || '—'];
+    values.forEach((value, index) => {
+      const td = document.createElement('td');
+      if (index === 0) {
+        const badge = document.createElement('span');
+        badge.className = `badge ${sentido === 'SALIENTE' ? 'badge-warning' : 'badge-primary'}`;
+        badge.style.cssText = `display:inline-block;padding:4px 7px;border-radius:12px;font-size:.72rem;font-weight:700;color:${sentido === 'SALIENTE' ? '#92400e' : '#1e40af'};background:${sentido === 'SALIENTE' ? '#fef3c7' : '#dbeafe'};white-space:nowrap;`;
+        badge.textContent = value == null ? 'Sin sentido' : String(value);
+        td.appendChild(badge);
+      } else td.textContent = value == null ? '' : String(value);
+      tr.appendChild(td);
+    });
+    const amount = document.createElement('td');
+    amount.className = 'amount';
+    amount.textContent = TRANSIT_FMT.format(Number(row.monto_transito || 0));
+    tr.appendChild(amount);
+    fragment.appendChild(tr);
+  });
+  body.appendChild(fragment);
+  const rangeStart = totalRows ? start + 1 : 0;
+  const rangeEnd = Math.min(start + pageSize, totalRows);
+  $('#transitPageSummary').text(`Mostrando ${rangeStart}–${rangeEnd} de ${totalRows.toLocaleString('es-MX')} registros`);
+  $('#transitPageStatus').text(`Página ${transitCurrentPage} de ${pageCount}`);
+  $('#transitPreviousPage').prop('disabled', transitCurrentPage <= 1);
+  $('#transitNextPage').prop('disabled', transitCurrentPage >= pageCount);
+  $('#transitPagination').toggleClass('d-none', totalRows === 0);
 }
 
 async function exportarTransitosExcel() {
@@ -618,6 +656,18 @@ $(function() {
   });
   $('#exportTransitExcel').on('click', exportarTransitosExcel);
   $('#clearTransitColumnFilters').on('click', limpiarFiltrosColumnasTransito);
+  $('#transitPageSize').on('change', function() {
+    transitCurrentPage = 1;
+    renderTransitosPagina();
+  });
+  $('#transitPreviousPage').on('click', function() {
+    transitCurrentPage -= 1;
+    renderTransitosPagina();
+  });
+  $('#transitNextPage').on('click', function() {
+    transitCurrentPage += 1;
+    renderTransitosPagina();
+  });
   $('#transitCompany').on('change', function() {
     $('#transitDenominacion').val('');
     cargarBancosTransitos();
