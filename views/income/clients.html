@@ -95,6 +95,9 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     <li class="nav-item" role="presentation">
         <button class="nav-link {{ ver_debito or ver_credito ? '' : 'active' }}" data-bs-toggle="tab" data-bs-target="#edo_debit_foto" type="button">Estado de Cuenta Foto</button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edo_credit_foto" type="button">Estado de Cuenta Foto Crédito</button>
+    </li>
     {% endif %}
 </ul>
 
@@ -1046,6 +1049,63 @@ table.dataTable tfoot th, table.dataTable tfoot td {
             </div>
         </div>
     </div>
+
+    {# ── TAB 8: ESTADO DE CUENTA FOTO CRÉDITO ── #}
+    <div class="tab-pane" id="edo_credit_foto" role="tabpanel">
+        <div class="card">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-auto">
+                        <label class="col-form-label-sm mb-0" for="credit_snapshot_dia">Día</label>
+                        <input type="date" class="form-control form-control-sm" id="credit_snapshot_dia"
+                               value="{{ 'now'|date_modify('-1 day')|date('Y-m-d') }}" max="{{ 'now'|date_modify('-1 day')|date('Y-m-d') }}">
+                    </div>
+                    <div class="col-auto align-self-end">
+                        <button id="btn_credit_snapshot" class="btn btn-sm btn-primary">
+                            <i class="fas fa-search"></i> Consultar Foto
+                        </button>
+                    </div>
+                    <div class="col-auto align-self-end">
+                        <span class="text-muted">
+                            Cierre del día: <strong id="credit_snapshot_fecha">—</strong>
+                            · Última corrida: <strong id="credit_snapshot_ultima">—</strong>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">
+                    Estado de Cuenta Foto — Todos los Clientes Crédito
+                    <a href="#" class="ms-1" data-bs-toggle="modal" data-bs-target="#modal_info_credit_snapshot" title="¿De dónde viene esta información?">
+                        <i class="fas fa-question-circle"></i>
+                    </a>
+                </h5>
+            </div>
+            <div class="card-body table-responsive">
+                <table id="credit_snapshot_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Código</th><th>Cliente</th><th>Límite</th>
+                            <th>Saldo ini. sistema</th><th>Saldo ini. calc. (desp.)</th>
+                            <th>Consumos despachos</th><th>Consumos cortes</th><th>Desfase</th>
+                            <th>Cobros</th><th>Notas crédito</th><th>Facturado</th>
+                            <th>Saldo fin calc. (desp.)</th><th>Saldo fin calc. (cortes)</th>
+                            <th>Saldo fin sistema</th><th>Dif. sistema − calc.</th><th>Disponible</th>
+                            <th>Saldo ini. calc. (cortes)</th><th>Contador vehículos</th><th>Bolsa global</th><th>Vigente desde</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th></th><th>Total</th>{% for i in 1..18 %}<th></th>{% endfor %}
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
     {% endif %}
 
 </div>
@@ -1305,6 +1365,72 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     </div>
 </div>
 
+{# ── Modal: origen de la foto diaria de clientes crédito ── #}
+<div class="modal fade" id="modal_info_credit_snapshot" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-question-circle"></i> ¿De dónde viene esta información?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2">
+                    Es una <strong>foto guardada</strong>, no un cálculo en vivo. Cada día a las <strong>8:00 AM</strong>,
+                    después de la de débito, la tarea programada guarda el <strong>cierre del día anterior</strong> de cada
+                    cliente crédito en <code>TG.dbo.credit_clients_cierre</code>. Saldo positivo = lo que el cliente debe.
+                </p>
+                <p class="mb-3">
+                    Solo se guarda un renglón cuando algo cambia; en un día sin movimientos se muestra el último renglón con
+                    los movimientos en $0. El saldo calculado va <strong>encadenado</strong>: el primer día arranca igual al
+                    saldo de ControlGas y de ahí suma consumos y resta cobros y notas. Si el sistema se mueve por algo más
+                    (un cobro capturado con fecha atrasada, un ajuste), aparece en <strong>Dif. sistema − calc.</strong>
+                </p>
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr><th style="width:26%">Columna</th><th>Origen</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>Límite</strong></td>
+                            <td>Límite de crédito en ControlGas (<code>Clientes.mtoasg</code>).</td></tr>
+                        <tr><td><strong>Saldo ini. sistema</strong></td>
+                            <td>El <em>Saldo fin sistema</em> de la foto anterior. Vacío en la primera foto.</td></tr>
+                        <tr><td><strong>Saldo ini. calc. (desp.) / (cortes)</strong></td>
+                            <td>Saldo final calculado de la foto anterior. En la primera foto, el saldo de ControlGas al inicio del día.</td></tr>
+                        <tr><td><strong>Consumos despachos</strong></td>
+                            <td>Despachos del cliente con fecha del día (<code>Despachos</code>).</td></tr>
+                        <tr><td><strong>Consumos cortes</strong></td>
+                            <td>Vales crédito de los cortes con fecha del día (<code>ValesR</code>, <code>codval</code> 28).</td></tr>
+                        <tr><td><strong>Desfase</strong></td>
+                            <td>Consumos despachos − Consumos cortes.</td></tr>
+                        <tr><td><strong>Cobros / Notas crédito</strong></td>
+                            <td>Pagos y notas de crédito del día en la cartera (<code>MovimientosAnl</code>, <code>tipope</code> 4 y 6).</td></tr>
+                        <tr><td><strong>Facturado</strong></td>
+                            <td>Facturas del día (<code>DocumentosC</code> tipo 3, sin canceladas). Solo informativo:
+                                facturar no cambia lo que el cliente debe.</td></tr>
+                        <tr><td><strong>Saldo fin calc. (desp.) / (cortes)</strong></td>
+                            <td>Saldo inicial calculado + Consumos (despachos o cortes) − Cobros − Notas.</td></tr>
+                        <tr><td><strong>Saldo fin sistema</strong></td>
+                            <td>Saldo de ControlGas (<code>cresdo</code>) al cierre: la lectura de las 8:00 AM menos lo despachado
+                                después del día, más lo cobrado con fecha posterior. Vacío en días recuperados.</td></tr>
+                        <tr><td><strong>Dif. sistema − calc.</strong></td>
+                            <td>Saldo fin sistema − Saldo fin calc. (desp.).</td></tr>
+                        <tr><td><strong>Disponible</strong></td>
+                            <td>Límite − Saldo fin sistema (solo clientes con límite).</td></tr>
+                        <tr><td><strong>Contador vehículos</strong></td>
+                            <td>Suma de <code>ClientesVehiculos.debsdo</code>. En crédito es un acumulado de consumo, no un saldo:
+                                sirve para ver que baje lo mismo que los despachos.</td></tr>
+                        <tr><td><strong>Bolsa global</strong></td>
+                            <td><code>Clientes.debglo</code> (casi ningún cliente crédito lo usa).</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {# ── Modal: Cortes que no cuadran (Consumos Débito/Crédito) — mismos tabs que el modal de Conciliación crédito ── #}
 <div class="modal fade" id="modal_cortes_cli" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
@@ -1463,6 +1589,9 @@ $('#btn_anticipos_cli').on('click', function () {
 // ── Estado de Cuenta Foto ──
 $('#btn_debit_snapshot').on('click', function () {
     debit_snapshot_table();
+});
+$('#btn_credit_snapshot').on('click', function () {
+    credit_snapshot_table();
 });
 
 </script>

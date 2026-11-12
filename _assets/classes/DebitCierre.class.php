@@ -97,14 +97,15 @@ class DebitCierre
         if ((int)$vigente['debglo'] !== (int)$nueva['debglo']) {
             return true;
         }
-        foreach (self::MONTOS as $col) {
+        // static:: para que CreditCierre compare sus propias columnas
+        foreach (static::MONTOS as $col) {
             $a = $vigente[$col] ?? null;
             $b = $nueva[$col] ?? null;
             if ($a === null || $b === null) {
                 if ($a !== $b) return true;
                 continue;
             }
-            if (abs((float)$a - (float)$b) >= self::TOLERANCIA) {
+            if (abs((float)$a - (float)$b) >= static::TOLERANCIA) {
                 return true;
             }
         }
@@ -124,7 +125,7 @@ class DebitCierre
         $fila['saldo_ini_sistema']     = $fila['saldo_fin_sistema'];
         $fila['saldo_ini_calc_desp']   = $fila['saldo_fin_calc_desp'];
         $fila['saldo_ini_calc_cortes'] = $fila['saldo_fin_calc_cortes'];
-        foreach (self::MOVIMIENTOS as $col) {
+        foreach (static::MOVIMIENTOS as $col) {
             $fila[$col] = 0.0;
         }
         return $fila;

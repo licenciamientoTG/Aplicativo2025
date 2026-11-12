@@ -52,7 +52,7 @@
 {% set por_pagar = solicitudes|filter(s => s.status == 3) %}
 {% set por_atender = solicitudes|filter(s => s.accion)|length %}
 {% set mias = solicitudes|filter(s => s.es_propia)|length %}
-{% set tabs = {1: 'VoBo CxP', 2: 'Autorización', 3: 'Autorizadas', 4: 'Pagadas', 9: 'Rechazadas', 5: 'Borradores', 8: 'Canceladas'} %}
+{% set tabs = {1: 'Pendiente VoBo CxP', 2: 'Autorización Admón', 3: 'Autorizadas', 4: 'Pagadas', 9: 'Rechazadas', 5: 'Borradores', 8: 'Canceladas'} %}
 
 <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
     <div>

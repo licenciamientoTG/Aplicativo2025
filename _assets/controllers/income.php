@@ -1418,8 +1418,8 @@ public function balance_age()
     }
 
     /**
-     * Genera/actualiza la foto del día en TG.dbo.debit_clients_snapshot para
-     * todos los clientes débito activos. Solo ejecutable por CLI (Tarea
+     * Genera el cierre de ayer de clientes débito (TG.dbo.debit_clients_cierre)
+     * y crédito (TG.dbo.credit_clients_cierre). Solo ejecutable por CLI (Tarea
      * Programada) con cron_token válido — nunca por HTTP/sesión, para que
      * el token nunca viaje en una request ni quede en logs de IIS, y para
      * que ningún usuario autenticado dispare esta transacción de ~100s
@@ -1436,7 +1436,17 @@ public function balance_age()
         // lectura de esta mañana); los días que falten los recupera procesar().
         // La v1 (ClientesModel::refresh_debit_snapshot) ya no se llena.
         // Spec: docs/superpowers/specs/2026-11-11-debit-clients-cierre-diario-design.md
-        $resumen = (new DebitClientsCierreModel)->procesar(date('Y-m-d', strtotime('-1 day')));
+        $ayer = date('Y-m-d', strtotime('-1 day'));
+        $debito = (new DebitClientsCierreModel)->procesar($ayer);
+        // Crédito en la misma tarea, después de débito y en su propia
+        // transacción: si uno falla el otro igual se guarda.
+        // Spec: docs/superpowers/specs/2026-11-12-credit-clients-cierre-diario-design.md
+        try {
+            $credito = (new CreditClientsCierreModel)->procesar($ayer);
+        } catch (Throwable $e) {
+            $credito = ['success' => false, 'mensaje' => mb_substr($e->getMessage(), 0, 1000)];
+        }
+        $resumen = ['success' => $debito['success'] && $credito['success'], 'debito' => $debito, 'credito' => $credito];
         if (PHP_SAPI === 'cli') {
             // Corrida por Task Scheduler: evita el warning "headers already
             // sent" de json_output() (ya hubo un echo previo) — mismo criterio
@@ -1459,7 +1469,27 @@ public function balance_age()
             json_output(['data' => [], 'fecha' => null, 'message' => 'Fecha inválida']);
             return;
         }
-        $model  = new DebitClientsCierreModel;
+        $this->snapshot_table_output(new DebitClientsCierreModel, $fecha);
+    }
+
+    /**
+     * Foto de clientes crédito (TG.dbo.credit_clients_cierre) en el día pedido
+     * (default ayer). Tab "Estado de Cuenta Foto Crédito" de /income/clients.
+     * POST /income/credit_snapshot_table
+     */
+    public function credit_snapshot_table(): void
+    {
+        $fecha = $_POST['fecha'] ?? date('Y-m-d', strtotime('-1 day'));
+        if (!is_string($fecha) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $fecha)) {
+            json_output(['data' => [], 'fecha' => null, 'message' => 'Fecha inválida']);
+            return;
+        }
+        $this->snapshot_table_output(new CreditClientsCierreModel, $fecha);
+    }
+
+    /** Respuesta común de las dos fotos: filas del día + última corrida + aviso si no está procesado. */
+    private function snapshot_table_output(DebitClientsCierreModel $model, string $fecha): void
+    {
         $ultima = $model->ultimaCorridaOk();
         $salida = ['data' => $model->fotoDelDia($fecha), 'fecha' => $fecha, 'ultima_corrida' => $ultima];
         if (!$salida['data'] && !$model->diaProcesado($fecha)) {

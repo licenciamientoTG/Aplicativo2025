@@ -10,6 +10,15 @@
     .ep-timeline { list-style:none; padding-left:0; margin:0; }
     .ep-timeline li { border-left:3px solid #e2e8f0; padding:.25rem 0 .75rem .9rem; }
     .ep-timeline li.ok { border-color:#198754; } .ep-timeline li.no { border-color:#dc3545; }
+    .ep-acciones .btn { display:inline-flex; align-items:center; gap:.45rem; padding:.45rem 1rem; font-size:.875rem;
+        font-weight:600; border-radius:.5rem; border-width:1.5px; transition:transform .1s, box-shadow .15s; }
+    .ep-acciones .btn:hover { transform:translateY(-1px); box-shadow:0 3px 8px rgba(15,23,42,.15); }
+    .ep-acciones .btn-volver { background:#f1f5f9; border-color:#cbd5e1; color:#334155; }
+    .ep-acciones .btn-volver:hover { background:#e2e8f0; color:#0f172a; }
+    .ep-acciones .btn-imprimir { background:#fff; border-color:#1C4587; color:#1C4587; }
+    .ep-acciones .btn-imprimir:hover { background:#1C4587; color:#fff; }
+    .ep-acciones .btn-cancelar { background:#fff; border-color:#dc3545; color:#dc3545; }
+    .ep-acciones .btn-cancelar:hover { background:#dc3545; color:#fff; }
 </style>
 {% endblock %}
 {% block content %}
@@ -21,11 +30,11 @@
                 <h6 class="mb-1">Solicitud #{{ solicitud.id }} <span class="badge-estatus st-{{ solicitud.status }} ms-2">{{ estatus[solicitud.status] ?? solicitud.status }}</span></h6>
                 <small class="text-muted">{{ solicitud.tipo == 'individual' ? 'Individual' : 'Múltiple' }} · {{ solicitud.fecha|date('d/m/Y') }}</small>
             </div>
-            <div class="d-flex gap-2">
-                <a href="{{ url('extrapayments.index') }}" class="btn btn-sm btn-outline-secondary">Solicitudes</a>
-                <a href="{{ url('extrapayments.print', {id: solicitud.id}) }}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="fas fa-print"></i> Imprimir</a>
-                {% if puede_editar %}<a href="{{ url('extrapayments.edit', {id: solicitud.id}) }}" class="btn btn-sm btn-warning"><i class="fas fa-edit"></i> {{ solicitud.status == 5 ? 'Continuar borrador' : 'Corregir y reenviar' }}</a>{% endif %}
-                {% if puede_cancelar %}<button type="button" class="btn btn-sm btn-outline-danger btn-cancelar" data-url="{{ url('extrapayments.cancel', {id: solicitud.id}) }}" data-redirect="{{ url('extrapayments.index') }}"><i class="fas fa-ban"></i> Cancelar</button>{% endif %}
+            <div class="d-flex gap-2 flex-wrap ep-acciones">
+                <a href="{{ url('extrapayments.index') }}" class="btn btn-volver"><i class="fas fa-arrow-left"></i> Solicitudes</a>
+                <a href="{{ url('extrapayments.print', {id: solicitud.id}) }}" target="_blank" class="btn btn-imprimir"><i class="fas fa-print"></i> Imprimir</a>
+                {% if puede_editar %}<a href="{{ url('extrapayments.edit', {id: solicitud.id}) }}" class="btn btn-warning"><i class="fas fa-edit"></i> {{ solicitud.status == 5 ? 'Continuar borrador' : 'Corregir y reenviar' }}</a>{% endif %}
+                {% if puede_cancelar %}<button type="button" class="btn btn-cancelar" data-url="{{ url('extrapayments.cancel', {id: solicitud.id}) }}" data-redirect="{{ url('extrapayments.index') }}"><i class="fas fa-ban"></i> Cancelar</button>{% endif %}
             </div>
         </div>
         <hr>

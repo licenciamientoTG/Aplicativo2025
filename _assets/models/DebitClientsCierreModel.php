@@ -14,6 +14,19 @@ require_once __DIR__ . '/../classes/DebitCierre.class.php';
 
 class DebitClientsCierreModel extends Model
 {
+    /** Tablas y lógica pura; CreditClientsCierreModel las redefine. */
+    const TABLA      = '[TG].dbo.debit_clients_cierre';
+    const TABLA_RUNS = '[TG].dbo.debit_clients_cierre_runs';
+    const LOGICA     = 'DebitCierre';
+
+    /** Columnas que regresa fotoDelDia (además de codcli, cliente, debglo y fechas). */
+    const COLUMNAS_FOTO = [
+        'saldo_ini_sistema', 'saldo_ini_calc_desp', 'saldo_ini_calc_cortes',
+        'ajuste_retro_desp', 'ajuste_retro_cortes',
+        'anticipos_dia', 'consumos_desp_dia', 'consumos_cortes_dia', 'desfase_dia',
+        'saldo_fin_calc_desp', 'saldo_fin_calc_cortes', 'saldo_fin_sistema', 'saldo_fin_vehiculos',
+    ];
+
     /** Columnas de datos que se insertan/actualizan (sin id, fechas ni updated_at). */
     const COLUMNAS = [
         'codcli', 'cliente', 'debglo',
@@ -125,23 +138,21 @@ class DebitClientsCierreModel extends Model
             "SELECT codcli, cliente, debglo,
                     CONVERT(varchar(10), fecha_desde, 23) AS fecha_desde,
                     CONVERT(varchar(10), fecha_hasta, 23) AS fecha_hasta,
-                    saldo_ini_sistema, saldo_ini_calc_desp, saldo_ini_calc_cortes,
-                    ajuste_retro_desp, ajuste_retro_cortes,
-                    anticipos_dia, consumos_desp_dia, consumos_cortes_dia, desfase_dia,
-                    saldo_fin_calc_desp, saldo_fin_calc_cortes, saldo_fin_sistema, saldo_fin_vehiculos
-               FROM [TG].dbo.debit_clients_cierre
+                    " . implode(', ', static::COLUMNAS_FOTO) . "
+               FROM " . static::TABLA . "
               WHERE fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
               ORDER BY cliente",
             [$dia, $dia]
         ) ?: [];
-        return array_map(fn($r) => DebitCierre::filaParaDia($r, $dia), $rows);
+        $l = static::LOGICA;
+        return array_map(fn($r) => $l::filaParaDia($r, $dia), $rows);
     }
 
     /** ¿El día tiene corrida OK en la bitácora? */
     public function diaProcesado(string $dia): bool
     {
         return (bool)$this->sql->select(
-            "SELECT 1 AS x FROM [TG].dbo.debit_clients_cierre_runs WHERE fecha_dia = ? AND ok = 1", [$dia]
+            "SELECT 1 AS x FROM " . static::TABLA_RUNS . " WHERE fecha_dia = ? AND ok = 1", [$dia]
         );
     }
 
@@ -149,7 +160,7 @@ class DebitClientsCierreModel extends Model
     public function ultimaCorridaOk(): ?string
     {
         $r = $this->sql->select(
-            "SELECT CONVERT(varchar(10), MAX(fecha_dia), 23) AS f FROM [TG].dbo.debit_clients_cierre_runs WHERE ok = 1"
+            "SELECT CONVERT(varchar(10), MAX(fecha_dia), 23) AS f FROM " . static::TABLA_RUNS . " WHERE ok = 1"
         );
         return $r[0]['f'] ?? null;
     }
@@ -203,13 +214,13 @@ class DebitClientsCierreModel extends Model
         $res = ['fecha' => $dia, 'nuevos' => 0, 'actualizados' => 0, 'sin_cambio' => 0, 'cerrados' => 0, 'ok' => false, 'mensaje' => null];
 
         try {
-            if ($this->sql->select("SELECT id FROM [TG].dbo.debit_clients_cierre_runs WHERE fecha_dia = ?", [$dia])) {
+            if ($this->sql->select("SELECT id FROM " . static::TABLA_RUNS . " WHERE fecha_dia = ?", [$dia])) {
                 $this->sql->updateSafe(
-                    "UPDATE [TG].dbo.debit_clients_cierre_runs SET inicio = GETDATE(), fin = NULL, ok = 0, mensaje = NULL WHERE fecha_dia = ?",
+                    "UPDATE " . static::TABLA_RUNS . " SET inicio = GETDATE(), fin = NULL, ok = 0, mensaje = NULL WHERE fecha_dia = ?",
                     [$dia]
                 );
             } else {
-                $this->sql->insert("INSERT INTO [TG].dbo.debit_clients_cierre_runs (fecha_dia) VALUES (?)", [$dia]);
+                $this->sql->insert("INSERT INTO " . static::TABLA_RUNS . " (fecha_dia) VALUES (?)", [$dia]);
             }
         } catch (Throwable $e) {
             $res['mensaje'] = 'No se pudo abrir la bitácora: ' . mb_substr($e->getMessage(), 0, 900);
@@ -222,13 +233,14 @@ class DebitClientsCierreModel extends Model
                 throw new Exception("La consulta del día $dia no regresó clientes");
             }
             $vigentes = array_column($this->sql->select(
-                "SELECT *, CONVERT(varchar(10), fecha_desde, 23) AS fd FROM [TG].dbo.debit_clients_cierre WHERE fecha_hasta IS NULL"
+                "SELECT *, CONVERT(varchar(10), fecha_desde, 23) AS fd FROM " . static::TABLA . " WHERE fecha_hasta IS NULL"
             ) ?: [], null, 'codcli');
             // Para re-correr un día: la "anterior" de una fila abierta ese mismo día es la que cerró el día previo
             $cerradasAyer = array_column($this->sql->select(
-                "SELECT * FROM [TG].dbo.debit_clients_cierre WHERE fecha_hasta = ?", [$diaAnterior]
+                "SELECT * FROM " . static::TABLA . " WHERE fecha_hasta = ?", [$diaAnterior]
             ) ?: [], null, 'codcli');
 
+            $l = static::LOGICA;
             $this->sql->beginTransaction();
             $vistos = [];
             foreach ($calculado as $calc) {
@@ -237,16 +249,16 @@ class DebitClientsCierreModel extends Model
                 $vig = $vigentes[$codcli] ?? null;
 
                 if ($vig !== null && $vig['fd'] === $dia) {
-                    $fila = DebitCierre::armarFila($calc, $cerradasAyer[$codcli] ?? null);
+                    $fila = $l::armarFila($calc, $cerradasAyer[$codcli] ?? null);
                     $this->actualizar((int)$vig['id'], $fila);
                     $res['actualizados']++;
                     continue;
                 }
-                $fila = DebitCierre::armarFila($calc, $vig);
+                $fila = $l::armarFila($calc, $vig);
                 if ($vig === null) {
                     $this->insertar($fila, $dia);
                     $res['nuevos']++;
-                } elseif (!DebitCierre::hayCambio($vig, $fila)) {
+                } elseif (!$l::hayCambio($vig, $fila)) {
                     $res['sin_cambio']++;
                 } else {
                     $this->cerrar((int)$vig['id'], $diaAnterior);
@@ -282,7 +294,7 @@ class DebitClientsCierreModel extends Model
     private function marcarCorrida(string $dia, array $res, bool $ok, ?string $mensaje): int|false
     {
         return $this->sql->updateSafe(
-            "UPDATE [TG].dbo.debit_clients_cierre_runs
+            "UPDATE " . static::TABLA_RUNS . "
                 SET fin = GETDATE(), nuevos = ?, actualizados = ?, sin_cambio = ?, cerrados = ?, ok = ?, mensaje = ?
               WHERE fecha_dia = ?",
             [$res['nuevos'], $res['actualizados'], $res['sin_cambio'], $res['cerrados'], $ok ? 1 : 0, $mensaje, $dia]
@@ -291,11 +303,11 @@ class DebitClientsCierreModel extends Model
 
     private function insertar(array $fila, string $dia): void
     {
-        $cols = self::COLUMNAS;
+        $cols = static::COLUMNAS;
         $params = array_map(fn($c) => $fila[$c], $cols);
         $params[] = $dia;
         $this->sql->insert(
-            "INSERT INTO [TG].dbo.debit_clients_cierre (" . implode(', ', $cols) . ", fecha_desde)
+            "INSERT INTO " . static::TABLA . " (" . implode(', ', $cols) . ", fecha_desde)
              VALUES (" . implode(', ', array_fill(0, count($cols) + 1, '?')) . ")",
             $params
         );
@@ -303,11 +315,11 @@ class DebitClientsCierreModel extends Model
 
     private function actualizar(int $id, array $fila): void
     {
-        $cols = array_values(array_diff(self::COLUMNAS, ['codcli']));
+        $cols = array_values(array_diff(static::COLUMNAS, ['codcli']));
         $params = array_map(fn($c) => $fila[$c], $cols);
         $params[] = $id;
         $ok = $this->sql->updateSafe(
-            "UPDATE [TG].dbo.debit_clients_cierre SET " . implode(', ', array_map(fn($c) => "$c = ?", $cols)) . ", updated_at = GETDATE()
+            "UPDATE " . static::TABLA . " SET " . implode(', ', array_map(fn($c) => "$c = ?", $cols)) . ", updated_at = GETDATE()
               WHERE id = ?",
             $params
         );
@@ -319,7 +331,7 @@ class DebitClientsCierreModel extends Model
     private function cerrar(int $id, string $fechaHasta): void
     {
         $ok = $this->sql->updateSafe(
-            "UPDATE [TG].dbo.debit_clients_cierre SET fecha_hasta = ?, updated_at = GETDATE() WHERE id = ?",
+            "UPDATE " . static::TABLA . " SET fecha_hasta = ?, updated_at = GETDATE() WHERE id = ?",
             [$fechaHasta, $id]
         );
         if ($ok === false) {

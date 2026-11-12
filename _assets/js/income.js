@@ -3727,6 +3727,104 @@ function debit_snapshot_table() {
     });
 }
 
+function credit_snapshot_table() {
+    // Foto diaria de crédito: cierre del día elegido por cliente (TG.dbo.credit_clients_cierre).
+    // Spec: docs/superpowers/specs/2026-11-12-credit-clients-cierre-diario-design.md
+    var $t = $('#credit_snapshot_table');
+    if ($.fn.DataTable.isDataTable($t)) {
+        $t.DataTable().destroy();
+        $t.find('thead .filter').remove();
+    }
+
+    $t.find('thead').prepend($t.find('thead tr').clone().addClass('filter'));
+    $t.find('thead tr.filter th').each(function () {
+        $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + $(this).text() + '" />');
+    });
+    $t.find('thead tr.filter th input').on('keyup change', function () {
+        $t.DataTable().column($(this).parent().index()).search(this.value).draw();
+    });
+
+    var numFmt = $.fn.dataTable.render.number(',', '.', 2, '$');
+    var money = function (d, type) {
+        if (d === null || d === undefined || d === '') return type === 'display' ? '<span class="text-muted">—</span>' : '';
+        return type === 'display' ? numFmt.display(d) : d;
+    };
+    var m = function (key, visible) {
+        return { data: key, render: money, className: 'text-nowrap text-end', visible: visible !== false };
+    };
+    // Índices de las columnas de monto (de Límite a Contador vehículos)
+    var moneyCols = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+
+    $t.DataTable({
+        ordering: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        buttons: [
+            { extend: 'excel', className: 'btn btn-success', text: ' Excel', exportOptions: { columns: ':visible' } },
+            { extend: 'colvis', className: 'btn btn-secondary', text: 'Columnas' }
+        ],
+        ajax: {
+            method: 'POST',
+            url: '/income/credit_snapshot_table',
+            data: { fecha: $('#credit_snapshot_dia').val() },
+            timeout: 60000,
+            dataSrc: function (json) {
+                $('#credit_snapshot_fecha').text(json.fecha || '—');
+                $('#credit_snapshot_ultima').text(json.ultima_corrida || '—');
+                if (json.message) {
+                    alertify.myAlert('<div class="text-center text-warning"><h5>' + json.message + '</h5></div>');
+                }
+                return json.data || [];
+            },
+            error: function () {
+                $('.table-responsive').removeClass('loading');
+                alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No se pudo consultar la foto.</p></div>');
+            },
+            beforeSend: function () { $('.table-responsive').addClass('loading'); }
+        },
+        columns: [
+            { data: 'codcli' },
+            // El nombre viene de ControlGas (captura libre): se escapa para no inyectar HTML
+            { data: 'cliente', className: 'text-nowrap', render: $.fn.dataTable.render.text() },
+            m('limite'),
+            m('saldo_ini_sistema'),
+            m('saldo_ini_calc_desp'),
+            m('consumos_desp_dia'),
+            m('consumos_cortes_dia'),
+            m('desfase_dia'),
+            m('cobros_dia'),
+            m('notas_dia'),
+            m('facturado_dia'),
+            m('saldo_fin_calc_desp'),
+            m('saldo_fin_calc_cortes'),
+            m('saldo_fin_sistema'),
+            {   // Diferencia entre ControlGas y el calculado por despachos (vacía sin saldo sistema)
+                data: function (r) {
+                    if (r.saldo_fin_sistema === null || r.saldo_fin_sistema === undefined) return null;
+                    return Math.round((parseFloat(r.saldo_fin_sistema) - parseFloat(r.saldo_fin_calc_desp)) * 100) / 100;
+                },
+                render: money, className: 'text-nowrap text-end'
+            },
+            m('disponible'),
+            m('saldo_ini_calc_cortes', false),
+            m('saldo_fin_vehiculos', false),
+            { data: 'debglo', className: 'text-center', visible: false, render: function (d) { return parseInt(d, 10) === 1 ? 'Sí' : 'No'; } },
+            { data: 'fecha_desde', className: 'text-center', visible: false },
+        ],
+        deferRender: true,
+        initComplete: function () { $('.table-responsive').removeClass('loading'); },
+        footerCallback: function () {
+            var api = this.api();
+            moneyCols.forEach(function (idx) {
+                var total = api.column(idx, { search: 'applied' }).data()
+                    .reduce(function (a, b) { return a + (parseFloat(b) || 0); }, 0);
+                $(api.column(idx).footer()).html('$' + total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            });
+        }
+    });
+}
+
 // cargarGraficaDesdeController();
 
 /* =====================================================================

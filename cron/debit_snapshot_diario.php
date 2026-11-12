@@ -1,7 +1,9 @@
 <?php
 /**
  * Tarea programada: foto diaria v2 de clientes débito — cierre del DÍA DE
- * AYER en TG.dbo.debit_clients_cierre (bitácora en debit_clients_cierre_runs).
+ * AYER en TG.dbo.debit_clients_cierre (bitácora en debit_clients_cierre_runs)
+ * y, después, la de clientes crédito en TG.dbo.credit_clients_cierre
+ * (bitácora en credit_clients_cierre_runs; spec 2026-11-12-credit-...).
  * Recupera solos los días que no se procesaron (hasta 31).
  * Spec: docs/superpowers/specs/2026-11-11-debit-clients-cierre-diario-design.md
  *
@@ -33,7 +35,7 @@ spl_autoload_register(function ($class) {
     }
 });
 
-echo "[" . date('Y-m-d H:i:s') . "] Iniciando snapshot diario de clientes débito\n";
+echo "[" . date('Y-m-d H:i:s') . "] Iniciando snapshot diario de clientes débito y crédito\n";
 
 // El controlador autoriza el cron por token; en CLI lo pasamos por $_GET.
 $_GET['cron_token'] = CRON_SECRET;
