@@ -78,11 +78,13 @@
 #urovoInventory .urovo-dashboard-heading h3{margin:0;color:#183a5a;font-size:1.25rem;font-weight:700}
 #urovoInventory .urovo-dashboard-heading .urovo-intro{margin:0 0 .2rem}
 #urovoInventory .urovo-dashboard-heading .urovo-subtitle{margin:.25rem 0 0;font-size:.88rem}
+#urovoInventory .urovo-dashboard-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}
 #urovoInventory .urovo-dashboard-gap{display:flex;align-items:center;min-height:112px;padding:1rem 1.25rem;border:1px solid #b9d5e9;border-left:5px solid #176eb3;border-radius:.55rem;background:linear-gradient(110deg,#eef7fc,#fff);color:#244860}
+#urovoInventory .urovo-dashboard-gap-total{border-left-color:#6b4aa1;background:linear-gradient(110deg,#f5f1fa,#fff)}
 #urovoInventory .urovo-dashboard-gap>div{display:grid;gap:.15rem}
 #urovoInventory .urovo-dashboard-gap span{color:#536e82;font-size:.84rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
 #urovoInventory .urovo-dashboard-gap strong{color:#173f5c;font-size:2rem;font-variant-numeric:tabular-nums;line-height:1.1}
-#urovoInventory .urovo-dashboard-gap small{color:#718494;font-size:.82rem}
+#urovoInventory .urovo-dashboard-gap small{color:#718494;font-size:.82rem;line-height:1.45}
 #urovoInventory .urovo-dashboard-table-wrap{overflow-x:auto;border:1px solid #dce5ed;border-radius:.55rem;background:#fff}
 #urovoInventory .urovo-dashboard-table{min-width:560px;margin:0}
 #urovoInventory .urovo-dashboard-table th,#urovoInventory .urovo-dashboard-table td{padding:.72rem .85rem;vertical-align:middle}
@@ -94,4 +96,4 @@
 #urovoInventory .urovo-dashboard-table .is-short{color:#9a4039;font-weight:700}
 #urovoInventory .urovo-dashboard-table .is-surplus{color:#28643d;font-weight:700}
 #urovoInventory .urovo-dashboard-table tfoot th,#urovoInventory .urovo-dashboard-table tfoot td{border-top:2px solid #ccdce7;background:#f7fafc;font-weight:750}
-@media(max-width:600px){#urovoInventory .urovo-dashboard-heading{align-items:flex-start}#urovoInventory .urovo-dashboard-heading .btn{flex:none;padding:.35rem}#urovoInventory .urovo-dashboard-gap{min-height:98px;padding:.85rem 1rem}}
+@media(max-width:600px){#urovoInventory .urovo-dashboard-heading{align-items:flex-start}#urovoInventory .urovo-dashboard-heading .btn{flex:none;padding:.35rem}#urovoInventory .urovo-dashboard-cards{grid-template-columns:1fr}#urovoInventory .urovo-dashboard-gap{min-height:98px;padding:.85rem 1rem}}

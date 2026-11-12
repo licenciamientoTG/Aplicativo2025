@@ -116,9 +116,11 @@
       var entries=data.rows||[];
       if(!entries.length){$('#urovoDashboardRows').html('<tr><td colspan="4" class="urovo-empty">No hay objetivos para mostrar.</td></tr>');return;}
       $('#urovoDashboardRows').html(entries.map(function(row){var objective=Number(row.objetivo)||0,functioning=Number(row.funcionando)||0,difference=Number(row.diferencia)||0,low=functioning*2<=objective;return '<tr><th scope="row">'+esc(row.station_name)+'</th><td class="text-right">'+esc(objective)+'</td><td class="text-right'+(low?' is-low':'')+'"><span>'+esc(functioning)+'</span>'+(low?'<small class="urovo-dashboard-risk"><i class="fas fa-exclamation-circle" aria-hidden="true"></i> Bajo el mínimo</small>':'')+'</td><td class="text-right '+(difference>0?'is-short':(difference<0?'is-surplus':''))+'">'+(difference>0?'+':'')+esc(difference)+'</td></tr>';}).join(''));
-      var objectiveTotal=Number(data.total_objetivo)||0,functioningTotal=Number(data.total_funcionando)||0,differenceTotal=objectiveTotal-functioningTotal;
-      $('#urovoDashboardMissing').text(Number(data.faltantes)||0);
-      $('#urovoDashboardTotals').text('Objetivo '+objectiveTotal+' · Funcionando '+functioningTotal);
+      var objectiveTotal=Number(data.total_objetivo)||0,functioningTotal=Number(data.total_funcionando)||0,stockTotal=Number(data.total_stock)||0,repairTotal=Number(data.total_reparacion)||0,differenceTotal=objectiveTotal-functioningTotal;
+      $('#urovoDashboardStationMissing').text(Number(data.faltante_en_estacion)||0);
+      $('#urovoDashboardStationBreakdown').text('Objetivo (suma de estaciones): '+objectiveTotal+' · Funcionando (Urovo Operativas en estaciones): '+functioningTotal);
+      $('#urovoDashboardTotalMissing').text(Number(data.faltante_total)||0);
+      $('#urovoDashboardTotalBreakdown').text('Objetivo: '+objectiveTotal+' − (Funcionando: '+functioningTotal+' + Stock Urovo: '+stockTotal+' + Reparación Urovo: '+repairTotal+')');
       $('#urovoDashboardTotalsRow').html('<tr><th scope="row">Total</th><td class="text-right">'+esc(objectiveTotal)+'</td><td class="text-right">'+esc(functioningTotal)+'</td><td class="text-right '+(differenceTotal>0?'is-short':(differenceTotal<0?'is-surplus':''))+'">'+(differenceTotal>0?'+':'')+esc(differenceTotal)+'</td></tr>');
     }
     function loadDashboard() {

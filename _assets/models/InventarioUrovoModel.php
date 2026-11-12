@@ -41,7 +41,19 @@ class InventarioUrovoModel extends Model {
             $rows[]=['station_id'=>$stationId,'station_name'=>$name,'objetivo'=>$objective,'funcionando'=>$functioning,'diferencia'=>$objective-$functioning];
             $totalObjective+=$objective; $totalFunctioning+=$functioning;
         }
-        return ['rows'=>$rows,'total_objetivo'=>$totalObjective,'total_funcionando'=>$totalFunctioning,'faltantes'=>max(0,$totalObjective-$totalFunctioning)];
+          $inventoryTotals=$this->sql->select("SELECT
+                  SUM(CASE WHEN ubicacion_tipo='almacen' THEN 1 ELSE 0 END) AS stock,
+                  SUM(CASE WHEN ubicacion_tipo='reparacion' THEN 1 ELSE 0 END) AS reparacion
+              FROM [TG].[dbo].[inv_urovo_terminales]
+              WHERE tipo_terminal=? AND ubicacion_tipo IN (?,?)",['urovo','almacen','reparacion']);
+          $stock=(int)($inventoryTotals[0]['stock']??0);
+          $repair=(int)($inventoryTotals[0]['reparacion']??0);
+          $stationMissing=max(0,$totalObjective-$totalFunctioning);
+          $totalMissing=max(0,$totalObjective-($totalFunctioning+$stock+$repair));
+          return ['rows'=>$rows,'total_objetivo'=>$totalObjective,'total_funcionando'=>$totalFunctioning,
+              'total_stock'=>$stock,'total_reparacion'=>$repair,
+              'faltante_en_estacion'=>$stationMissing,'faltante_total'=>$totalMissing,
+              'faltantes'=>$stationMissing];
     }
 
     /** Resumen por estación, agregando cada fuente antes de unirla para evitar multiplicar conteos. */

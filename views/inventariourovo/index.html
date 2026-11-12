@@ -36,7 +36,10 @@
   <div class="tab-pane fade" id="dashboardPanel" role="tabpanel" aria-labelledby="dashboardTab" tabindex="-1" hidden>
     <div class="urovo-dashboard">
       <div class="urovo-dashboard-heading"><div><p class="urovo-intro">Cobertura por estación</p><h3>Terminales operativas</h3><p class="urovo-subtitle">Conteo de terminales Urovo con condición Operativa frente al objetivo.</p></div><button type="button" class="btn btn-link" id="urovoDashboardRefresh"><i class="fas fa-sync-alt" aria-hidden="true"></i> Actualizar</button></div>
-      <article class="urovo-dashboard-gap" aria-label="Faltantes de terminales"><div><span>Faltantes</span><strong id="urovoDashboardMissing">—</strong><small id="urovoDashboardTotals">Cargando objetivos y terminales operativas…</small></div></article>
+      <div class="urovo-dashboard-cards">
+        <article class="urovo-dashboard-gap" aria-label="Faltante en estación"><div><span>Faltante en estación</span><strong id="urovoDashboardStationMissing">—</strong><small id="urovoDashboardStationBreakdown">Cargando objetivo y terminales operativas…</small></div></article>
+        <article class="urovo-dashboard-gap urovo-dashboard-gap-total" aria-label="Faltante total"><div><span>Faltante total</span><strong id="urovoDashboardTotalMissing">—</strong><small id="urovoDashboardTotalBreakdown">Cargando objetivo, funcionando, stock y reparación…</small></div></article>
+      </div>
       <div class="urovo-dashboard-table-wrap"><table class="table urovo-dashboard-table"><thead><tr><th>Estación</th><th class="text-right">Objetivo</th><th class="text-right">Funcionando</th><th class="text-right">Diferencia</th></tr></thead><tbody id="urovoDashboardRows"><tr><td colspan="4" class="urovo-empty">Cargando dashboard…</td></tr></tbody><tfoot id="urovoDashboardTotalsRow"></tfoot></table></div>
     </div>
   </div>
