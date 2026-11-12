@@ -67,3 +67,31 @@
 #urovoInventory .terminal-type-badge.is-urovo{background:#1684d2}
 #urovoInventory .terminal-type-badge.is-verifone{background:#63328a}
 @media(max-width:800px){#urovoInventory .urovo-table tbody td:nth-child(2)::before{content:'Tipo de terminal: ';font-weight:700;color:#70818f}#urovoInventory .urovo-table tbody td:nth-child(3)::before{content:'Ubicación: ';font-weight:700;color:#70818f}#urovoInventory .urovo-table tbody td:nth-child(4)::before{content:'Condición: ';font-weight:700;color:#70818f}#urovoInventory .urovo-table tbody td:nth-child(5)::before{content:'Último movimiento: ';font-weight:700;color:#70818f}}
+#urovoInventory .urovo-tabs{display:flex;flex-wrap:nowrap;gap:.25rem;overflow-x:auto;margin:.35rem 0 0;border-bottom:1px solid #dce5ed;scroll-snap-type:inline proximity}
+#urovoInventory .urovo-tabs .nav-item{flex:none;scroll-snap-align:start}
+#urovoInventory .urovo-tabs [role="tab"]{position:relative;padding:.72rem 1.05rem;border:0;background:transparent;color:#63798a;font-weight:650;white-space:nowrap}
+#urovoInventory .urovo-tabs [role="tab"][aria-selected="true"]{color:#176eb3}
+#urovoInventory .urovo-tabs [role="tab"][aria-selected="true"]::after{position:absolute;inset:auto .25rem 0;border-block-end:3px solid #176eb3;content:""}
+#urovoInventory .urovo-tab-content{padding-top:.65rem}
+#urovoInventory .urovo-dashboard{display:grid;gap:1rem;min-width:0}
+#urovoInventory .urovo-dashboard-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.65rem .15rem .15rem}
+#urovoInventory .urovo-dashboard-heading h3{margin:0;color:#183a5a;font-size:1.25rem;font-weight:700}
+#urovoInventory .urovo-dashboard-heading .urovo-intro{margin:0 0 .2rem}
+#urovoInventory .urovo-dashboard-heading .urovo-subtitle{margin:.25rem 0 0;font-size:.88rem}
+#urovoInventory .urovo-dashboard-gap{display:flex;align-items:center;min-height:112px;padding:1rem 1.25rem;border:1px solid #b9d5e9;border-left:5px solid #176eb3;border-radius:.55rem;background:linear-gradient(110deg,#eef7fc,#fff);color:#244860}
+#urovoInventory .urovo-dashboard-gap>div{display:grid;gap:.15rem}
+#urovoInventory .urovo-dashboard-gap span{color:#536e82;font-size:.84rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+#urovoInventory .urovo-dashboard-gap strong{color:#173f5c;font-size:2rem;font-variant-numeric:tabular-nums;line-height:1.1}
+#urovoInventory .urovo-dashboard-gap small{color:#718494;font-size:.82rem}
+#urovoInventory .urovo-dashboard-table-wrap{overflow-x:auto;border:1px solid #dce5ed;border-radius:.55rem;background:#fff}
+#urovoInventory .urovo-dashboard-table{min-width:560px;margin:0}
+#urovoInventory .urovo-dashboard-table th,#urovoInventory .urovo-dashboard-table td{padding:.72rem .85rem;vertical-align:middle}
+#urovoInventory .urovo-dashboard-table thead th{background:#f4f8fb;border:0;border-bottom:1px solid #dce5ed;color:#63798a;font-size:.74rem;text-transform:uppercase;letter-spacing:.035em}
+#urovoInventory .urovo-dashboard-table tbody th{color:#2e495f;font-weight:650}
+#urovoInventory .urovo-dashboard-table tbody td,#urovoInventory .urovo-dashboard-table tfoot td{font-variant-numeric:tabular-nums}
+#urovoInventory .urovo-dashboard-table .is-low{background:#fdeceb;color:#982f2a;font-weight:750}
+#urovoInventory .urovo-dashboard-risk{display:block;margin-top:.12rem;color:#982f2a;font-size:.68rem;font-weight:650;white-space:nowrap}
+#urovoInventory .urovo-dashboard-table .is-short{color:#9a4039;font-weight:700}
+#urovoInventory .urovo-dashboard-table .is-surplus{color:#28643d;font-weight:700}
+#urovoInventory .urovo-dashboard-table tfoot th,#urovoInventory .urovo-dashboard-table tfoot td{border-top:2px solid #ccdce7;background:#f7fafc;font-weight:750}
+@media(max-width:600px){#urovoInventory .urovo-dashboard-heading{align-items:flex-start}#urovoInventory .urovo-dashboard-heading .btn{flex:none;padding:.35rem}#urovoInventory .urovo-dashboard-gap{min-height:98px;padding:.85rem 1rem}}

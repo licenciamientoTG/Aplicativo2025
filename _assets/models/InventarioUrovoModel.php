@@ -1,6 +1,19 @@
 <?php
 class InventarioUrovoModel extends Model {
     private const LOCATIONS = ['estacion', 'almacen', 'reparacion', 'perdida', 'baja_definitiva'];
+    /* First value is TG.dbo.Estaciones.Codigo; names and goals come from the user's table.
+       The user's 11007 / Independencia row maps to TG Codigo 3, named "19 Aguascalientes". */
+    private const DASHBOARD_OBJECTIVES = [
+        [31,'VILLA AHUMADA',6],[19,'DELICIAS',5],[18,'PARRAL',5],[11,'PUERTO DE PALOS',8],
+        [12,'MIGUEL DE LA MADRID',6],[13,'PERMUTA',6],[14,'ELECTROLUX',6],[15,'AERONAUTICA',6],
+        [16,'CUSTODIA',5],[33,'TRAVEL CENTER ESTACIÓN',7],[5,'LERDO',3],[6,'LOPEZ MATEOS',4],
+        [7,'GEMELA CHICA',6],[2,'GEMELA GRANDE',7],[21,'PLUTARCO',6],[8,'MUNICIPIO LIBRE',8],
+        [9,'AZTECAS',8],[17,'ANAPRA',6],[30,'HERMANOS ESCOBAR',6],[29,'JARUDO',5],
+        [26,'CLARA',3],[25,'FUENTES',4],[22,'TECNOLOGICO',6],[24,'SATELITE',7],[10,'MISIONES',8],
+        [23,'EJERCITO',6],[27,'SOLIS',5],[28,'STGO TRONCOSO',5],[40,'PRAXEDIS',5],[3,'19 AGUASCALIENTES',7],
+        [32,'EL CASTAÑO',5],[37,'PUERTECITO',4],[38,'JESUS MARIA',4],[36,'SAN RAFAEL',5],
+        [34,'PICACHOS',8],[35,'VENTANAS',8],[39,'GABRIELA MISTRAL',5],
+    ];
     public static function locationTypes(): array { return self::LOCATIONS; }
 
     public function hasAccess(): bool {
@@ -12,6 +25,23 @@ class InventarioUrovoModel extends Model {
 
     public function stations(): array {
         return $this->sql->select('SELECT Codigo,Nombre FROM [TG].[dbo].[Estaciones] WHERE activa=1 AND Codigo NOT IN (0,4,20) ORDER BY Nombre');
+    }
+
+    /** Objetivos fijos del usuario contra terminales Urovo operativas por código interno de TG. */
+    public function dashboard(): array {
+        $counts=$this->sql->select("SELECT estacion_codigo AS station_id,COUNT(*) AS funcionando
+            FROM [TG].[dbo].[inv_urovo_terminales]
+            WHERE tipo_terminal=? AND ubicacion_tipo=? AND condicion=? AND estacion_codigo IS NOT NULL
+            GROUP BY estacion_codigo",['urovo','estacion','operativa']);
+        $byStation=[];
+        foreach ($counts as $row) $byStation[(int)$row['station_id']]=(int)$row['funcionando'];
+        $rows=[]; $totalObjective=0; $totalFunctioning=0;
+        foreach (self::DASHBOARD_OBJECTIVES as [$stationId,$name,$objective]) {
+            $functioning=$byStation[$stationId]??0;
+            $rows[]=['station_id'=>$stationId,'station_name'=>$name,'objetivo'=>$objective,'funcionando'=>$functioning,'diferencia'=>$objective-$functioning];
+            $totalObjective+=$objective; $totalFunctioning+=$functioning;
+        }
+        return ['rows'=>$rows,'total_objetivo'=>$totalObjective,'total_funcionando'=>$totalFunctioning,'faltantes'=>max(0,$totalObjective-$totalFunctioning)];
     }
 
     /** Resumen por estación, agregando cada fuente antes de unirla para evitar multiplicar conteos. */
