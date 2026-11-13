@@ -144,13 +144,58 @@
 #urovoDetailModal .urovo-detail-fields>label, #urovoDetailModal .urovo-detail-fields>div { display:block; min-width:0; margin:0; padding:.6rem; border:1px solid var(--urovo-line); border-radius:.3rem; background:#f7f9f9; }
 #urovoDetailModal .urovo-detail-fields label>small { display:block; margin-bottom:.25rem; color:#546d75; font-size:.73rem; font-weight:650; }
 #urovoDetailModal .urovo-detail-fields .urovo-edit-action { display:flex; grid-column:1/-1; justify-content:flex-end; padding:0; border:0; background:transparent; }
-#urovoDetailModal .urovo-damage-list { margin-top:.6rem; padding:.6rem; border:1px solid #e4c6c3; border-radius:.3rem; background:#fff6f5; }
-#urovoDetailModal .urovo-damage-list[hidden] { display:none; }
-#urovoDetailModal .urovo-damage-list legend { float:none; width:auto; margin:0 0 .35rem; color:#763c37; font-size:.76rem; font-weight:700; }
-#urovoDetailModal .urovo-damage-list>div { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.3rem .6rem; }
-#urovoDetailModal .urovo-damage-list label { display:flex; align-items:center; gap:.4rem; margin:0; font-weight:500; }
-#urovoDetailModal .urovo-damage-list .urovo-damage-other { display:block; margin-top:.45rem; }
-#urovoDetailModal .urovo-damage-list .urovo-damage-other[hidden] { display:none; }
+#urovoBatchModal .urovo-damage-list, #urovoDetailModal .urovo-damage-list {
+  display:block;
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  margin:.55rem 0 0;
+  padding:.65rem;
+  border:1px solid #e4c6c3;
+  border-radius:.4rem;
+  background:#fff6f5;
+}
+#urovoBatchModal .urovo-damage-list[hidden], #urovoDetailModal .urovo-damage-list[hidden] { display:none; }
+#urovoBatchModal .urovo-damage-list legend, #urovoDetailModal .urovo-damage-list legend {
+  float:none;
+  width:auto;
+  margin:0 0 .45rem;
+  color:#763c37;
+  font-size:.78rem;
+  font-weight:700;
+}
+#urovoBatchModal .urovo-damage-list>div, #urovoDetailModal .urovo-damage-list>div {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:.25rem .45rem;
+  min-width:0;
+}
+#urovoBatchModal .urovo-damage-list label, #urovoDetailModal .urovo-damage-list label {
+  display:flex;
+  align-items:flex-start;
+  gap:.45rem;
+  min-width:0;
+  min-height:2rem;
+  margin:0;
+  padding:.25rem .3rem;
+  border-radius:.25rem;
+  color:#514a49;
+  font-size:.76rem;
+  font-weight:550;
+  line-height:1.35;
+  overflow-wrap:anywhere;
+}
+#urovoBatchModal .urovo-damage-list input[type="checkbox"], #urovoDetailModal .urovo-damage-list input[type="checkbox"] {
+  flex:0 0 auto;
+  width:1rem;
+  height:1rem;
+  margin:.08rem 0 0;
+  accent-color:#9b3732;
+}
+#urovoBatchModal .urovo-damage-list .urovo-damage-other, #urovoDetailModal .urovo-damage-list .urovo-damage-other { display:block; margin-top:.45rem; padding:.4rem 0 0; border-top:1px solid #ecd6d3; }
+#urovoBatchModal .urovo-damage-list .urovo-damage-other[hidden], #urovoDetailModal .urovo-damage-list .urovo-damage-other[hidden] { display:none; }
+#urovoBatchModal .urovo-damage-list .urovo-damage-other span, #urovoDetailModal .urovo-damage-list .urovo-damage-other span { display:block; margin-bottom:.2rem; color:#763c37; font-size:.73rem; font-weight:650; }
+#urovoBatchModal .urovo-damage-list .urovo-damage-other .form-control, #urovoDetailModal .urovo-damage-list .urovo-damage-other .form-control { width:100%; min-width:0; }
 #urovoDetailModal .urovo-ticket-link { display:block; margin-top:.3rem; font-size:.78rem; }
 #urovoDetailModal .urovo-move-form { margin:1rem 0 1.2rem; padding:1rem; border:1px solid #cbd9da; border-left:4px solid var(--urovo-teal); border-radius:.35rem; background:var(--urovo-surface); }
 #urovoDetailModal .urovo-move-form h6 { margin:0 0 .75rem; color:var(--urovo-ink); font-weight:700; }
@@ -279,12 +324,15 @@
   #urovoInventory .urovo-dashboard-cards { grid-template-columns:1fr; }
   #urovoInventory .urovo-dashboard-gap { min-height:96px; }
   #urovoDetailModal .urovo-detail-fields { grid-template-columns:1fr; }
-  #urovoDetailModal .urovo-damage-list>div { grid-template-columns:1fr; }
+  #urovoBatchModal .urovo-damage-list>div, #urovoDetailModal .urovo-damage-list>div { grid-template-columns:1fr; }
   #urovoSummaryModal .urovo-summary-condition-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   #urovoSummaryModal .urovo-summary-grand-total strong { font-size:1.7rem; }
   #urovoSummaryModal .urovo-summary-condition-counts { gap:.25rem; }
   #urovoBatchModal .modal-footer { display:flex; gap:.45rem; }
   #urovoBatchModal .modal-footer .btn { flex:1; }
+}
+@media (pointer: coarse) {
+  #urovoBatchModal .urovo-damage-list label, #urovoDetailModal .urovo-damage-list label { min-height:44px; align-items:center; }
 }
 @media (prefers-reduced-motion: reduce) {
   #urovoInventory *, #urovoBatchModal *, #urovoDetailModal *, #urovoSummaryModal * { scroll-behavior:auto!important; transition:none!important; animation:none!important; }
