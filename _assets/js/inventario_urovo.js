@@ -120,7 +120,7 @@
     $('#urovoSummaryOpen').on('click', function () { showModal('urovoSummaryModal'); loadSummary(); });
     $('#dashboardTab').on('shown.bs.tab',function(){ $('#inventoryPanel').prop('hidden',true).attr('tabindex','-1'); $('#dashboardPanel').prop('hidden',false).attr('tabindex','0'); loadDashboard(); });
     $('#inventoryTab').on('shown.bs.tab',function(){ $('#dashboardPanel').prop('hidden',true).attr('tabindex','-1'); $('#inventoryPanel').prop('hidden',false).attr('tabindex','0'); });
-    $('#urovoDashboardRefresh').on('click',loadDashboard); $('#urovoDashboardType').on('change',applyDashboardTypeFilter); applyDashboardTypeFilter();
+    $('#urovoDashboardRefresh').on('click',loadDashboard); $('#urovoDashboardType').on('change',applyDashboardTypeFilter); $('#urovoDashboardExport').on('click',function(){window.location.href='/inventario-urovo/dashboard/export/?'+$.param({terminal_type:$('#urovoDashboardType').val()||'all'});}); applyDashboardTypeFilter();
     $('#urovoSummaryRows').on('click', '.urovo-summary-toggle', function () {
       var $button = $(this), $detail = $('#' + $button.attr('aria-controls'));
       if ($button.attr('aria-expanded') === 'true') { $button.attr('aria-expanded', 'false'); $detail.prop('hidden', true); return; }

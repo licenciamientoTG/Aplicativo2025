@@ -46,6 +46,48 @@ class inventario_urovo {
         } catch (Throwable $e) { $this->error($e); }
     }
 
+    public function export_dashboard(): void {
+        try {
+            $this->authorize(); $this->requireMethod('GET');
+            $type=strtolower(trim((string)($_GET['terminal_type']??'all')));
+            if (!in_array($type,['all','urovo','verifone'],true)) throw new InvalidArgumentException('Tipo de terminal inválido.');
+            $data=$this->model->dashboard();
+            $spreadsheet=new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet=$spreadsheet->getActiveSheet(); $sheet->setTitle('Dashboard');
+            $headers=['Estación'];
+            foreach (['urovo'=>'Urovo','verifone'=>'Verifone'] as $key=>$label) {
+                if ($type!=='all' && $type!==$key) continue;
+                array_push($headers,$label.' objetivo',$label.' funcionando',$label.' diferencia');
+            }
+            $sheet->fromArray($headers,null,'A1');
+            $line=2;
+            foreach ($data['rows'] as $row) {
+                $values=[(string)$row['station_name']];
+                foreach (['urovo','verifone'] as $key) {
+                    if ($type!=='all' && $type!==$key) continue;
+                    $values[]=(int)$row[$key]['objetivo']; $values[]=(int)$row[$key]['funcionando']; $values[]=(int)$row[$key]['diferencia'];
+                }
+                $sheet->fromArray($values,null,'A'.$line++);
+            }
+            $totals=$data['totals']; $values=['Total'];
+            foreach (['urovo','verifone'] as $key) {
+                if ($type!=='all' && $type!==$key) continue;
+                $objective=(int)$totals[$key]['total_objetivo']; $functioning=(int)$totals[$key]['total_funcionando'];
+                array_push($values,$objective,$functioning,$functioning-$objective);
+            }
+            $sheet->fromArray($values,null,'A'.$line);
+            $sheet->getStyle('A1:'.$sheet->getHighestColumn().'1')->getFont()->setBold(true);
+            $sheet->getStyle('A'.$line.':'.$sheet->getHighestColumn().$line)->getFont()->setBold(true);
+            foreach (range('A',$sheet->getHighestColumn()) as $column) $sheet->getColumnDimension($column)->setAutoSize(true);
+            $filename='dashboard_inventario_urovo_'.date('Y-m-d').'.xlsx';
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="'.$filename.'"');
+            header('Cache-Control: max-age=0');
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save('php://output');
+            exit;
+        } catch (Throwable $e) { $this->error($e); }
+    }
+
     public function summary_detail(int $station_id): void {
         try {
             $this->authorize(); $this->requireMethod('GET');
