@@ -25,9 +25,11 @@ class inventario_urovo {
             if ($station===false || ($station!==null && !$this->model->activeStation((int)$station))) throw new InvalidArgumentException('Estación inválida.');
             $status=(string)($_GET['status']??'');
             if ($status!=='' && $status!=='sin_serie' && !in_array($status,self::LOCATIONS,true)) throw new InvalidArgumentException('Estado inválido.');
+            $condition=strtolower(trim((string)($_GET['condition']??'')));
+            if ($condition!=='' && !in_array($condition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición inválida.');
             $terminalType=strtolower(trim((string)($_GET['terminal_type']??'')));
             if ($terminalType!=='' && !in_array($terminalType,self::TERMINAL_TYPES,true)) throw new InvalidArgumentException('Tipo de terminal inválido.');
-            $payload=$this->model->data(['station_id'=>$station,'status'=>$status,'terminal_type'=>$terminalType,'q'=>mb_substr(trim((string)($_GET['q']??'')),0,120)]);
+            $payload=$this->model->data(['station_id'=>$station,'status'=>$status,'condition'=>$condition,'terminal_type'=>$terminalType,'q'=>mb_substr(trim((string)($_GET['q']??'')),0,120)]);
             $this->respond(['success'=>true]+$payload);
         } catch (Throwable $e) { $this->error($e); }
     }
