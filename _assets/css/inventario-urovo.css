@@ -155,6 +155,9 @@
   border-radius:.4rem;
   background:#fff6f5;
 }
+/* The batch form is a horizontally scrollable table: reserve readable room for
+   this panel so its checklist does not inherit the narrow select column width. */
+#urovoBatchModal .urovo-capture td[data-label="Condición"] .urovo-damage-list { width:22rem; max-width:none; }
 #urovoBatchModal .urovo-damage-list[hidden], #urovoDetailModal .urovo-damage-list[hidden] { display:none; }
 #urovoBatchModal .urovo-damage-list legend, #urovoDetailModal .urovo-damage-list legend {
   float:none;
@@ -303,6 +306,7 @@
   #urovoBatchModal .urovo-capture td.urovo-advanced-cell { display:none; }
   #urovoBatchModal .urovo-capture tbody tr.show-advanced td.urovo-advanced-cell { display:block; }
   #urovoBatchModal .urovo-capture .form-control { width:100%; min-width:0; }
+  #urovoBatchModal .urovo-capture td[data-label="Condición"] .urovo-damage-list { width:100%; max-width:100%; }
   #urovoBatchModal .urovo-capture-options { display:flex!important; justify-content:flex-start; }
   #urovoBatchModal .urovo-capture-remove { text-align:right; }
   #urovoBatchModal .urovo-capture-remove::before { content:none; }
