@@ -191,6 +191,24 @@ class tableros_api {
         });
     }
 
+    public function edit_comment(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $commentId = $this->positiveInt($input['comment_id'] ?? null, 'comment_id');
+            $boardId = $this->model->getItemCommentBoardId($commentId);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
+            return $this->model->editComment($commentId, $userId, $input['body'] ?? null);
+        });
+    }
+
+    public function delete_comment(): void {
+        $this->handle('POST', function (int $userId, array $input): array {
+            $commentId = $this->positiveInt($input['comment_id'] ?? null, 'comment_id');
+            $boardId = $this->model->getItemCommentBoardId($commentId);
+            $this->requireBoardRole($boardId, ['owner', 'designer', 'editor', 'contributor']);
+            return $this->model->deleteComment($commentId, $userId);
+        });
+    }
+
     public function attach_item_comment_file(): void {
         $this->handle('POST', function (int $userId, array $input): array {
             $commentId = $this->positiveInt($input['comment_id'] ?? null, 'comment_id');

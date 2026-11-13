@@ -27,6 +27,8 @@ return [
         route('activity/', [tableros_api::class, 'activity'], name: 'tableros_api.activity', methods: [], alias: ['tableros_api/activity']),
         route('comments/', [tableros_api::class, 'comments'], name: 'tableros_api.comments', methods: [], alias: ['tableros_api/comments']),
         route('add-comment/', [tableros_api::class, 'add_comment'], name: 'tableros_api.add_comment', methods: [], alias: ['tableros_api/add_comment']),
+        route('edit-comment/', [tableros_api::class, 'edit_comment'], name: 'tableros_api.edit_comment', methods: [], alias: ['tableros_api/edit_comment']),
+        route('delete-comment/', [tableros_api::class, 'delete_comment'], name: 'tableros_api.delete_comment', methods: [], alias: ['tableros_api/delete_comment']),
         route('file-comments/<str:id>/', [tableros_api::class, 'file_comments'], name: 'tableros_api.file_comments', methods: [], alias: ['tableros_api/file_comments/<str:id>']),
         route('add-file-comment/', [tableros_api::class, 'add_file_comment'], name: 'tableros_api.add_file_comment', methods: [], alias: ['tableros_api/add_file_comment']),
         route('stickers/', [tableros_api::class, 'stickers'], name: 'tableros_api.stickers', methods: [], alias: ['tableros_api/stickers']),

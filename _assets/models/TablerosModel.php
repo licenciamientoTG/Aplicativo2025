@@ -1267,6 +1267,34 @@ class TablerosModel {
         }, $body) ?? '';
     }
 
+    public function editComment(int $commentId, int $userId, $rawBody): array {
+        if (!is_string($rawBody)) throw new TablerosApiException('validation', 'El campo body debe ser texto.', 422);
+        $body = $this->sanitizeCommentBody(trim($rawBody));
+        if (trim(strip_tags($body)) === '') throw new TablerosApiException('validation', 'Escribe un comentario.', 422);
+        if (mb_strlen($body, 'UTF-8') > 10000) throw new TablerosApiException('validation', 'El comentario excede el límite de 10000 caracteres.', 422);
+
+        return $this->transaction(function () use ($commentId, $userId, $body): array {
+            $comment = $this->one('SELECT board_id, item_id, created_by FROM tb_comment WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND deleted_at IS NULL', [$commentId]);
+            if (!$comment) throw new TablerosApiException('not_found', 'No se encontró el comentario.', 404);
+            if ((int)$comment['created_by'] !== $userId) throw new TablerosApiException('forbidden', 'Solo puedes editar tus propios comentarios.', 403);
+            $this->execute('UPDATE tb_comment SET body = ?, updated_by = ?, updated_at = GETDATE() WHERE id = ? AND deleted_at IS NULL', [$body, $userId, $commentId]);
+            $this->writeActivity((int)$comment['board_id'], (int)$comment['item_id'], $userId, 'comment.updated', ['comment_id' => $commentId]);
+            $updated = $this->one('SELECT id, board_id, item_id, parent_comment_id, body, created_by, updated_by, created_at, updated_at FROM tb_comment WHERE id = ? AND deleted_at IS NULL', [$commentId]);
+            return $updated ?? [];
+        });
+    }
+
+    public function deleteComment(int $commentId, int $userId): array {
+        return $this->transaction(function () use ($commentId, $userId): array {
+            $comment = $this->one('SELECT board_id, item_id, created_by FROM tb_comment WITH (UPDLOCK, HOLDLOCK) WHERE id = ? AND deleted_at IS NULL', [$commentId]);
+            if (!$comment) throw new TablerosApiException('not_found', 'No se encontró el comentario.', 404);
+            if ((int)$comment['created_by'] !== $userId) throw new TablerosApiException('forbidden', 'Solo puedes eliminar tus propios comentarios.', 403);
+            $this->execute('UPDATE tb_comment SET deleted_at = GETDATE(), updated_by = ?, updated_at = GETDATE() WHERE id = ? AND deleted_at IS NULL', [$userId, $commentId]);
+            $this->writeActivity((int)$comment['board_id'], (int)$comment['item_id'], $userId, 'comment.deleted', ['comment_id' => $commentId]);
+            return ['id' => $commentId, 'deleted' => true];
+        });
+    }
+
     public function attachItemCommentFile(int $commentId, int $fileId): int {
         return $this->transaction(function () use ($commentId, $fileId): int {
             $comment = $this->one('SELECT board_id, item_id FROM tb_comment WHERE id = ? AND deleted_at IS NULL', [$commentId]);

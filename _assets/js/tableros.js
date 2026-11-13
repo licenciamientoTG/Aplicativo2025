@@ -56,6 +56,7 @@
   }
 
   const csrfToken = app.dataset.csrfToken || '';
+  const currentUserId = String(app.dataset.userId || '');
   const canCreateBoard = app.dataset.canCreate === '1';
   const canAdmin = app.dataset.canAdmin === '1';
   const pageMode = app.dataset.pageMode || 'boards';
@@ -3731,6 +3732,37 @@
         const body = makeElement('div', 'boards-comment-body');
         appendSafeCommentHtml(body, comment.body || '');
         article.append(meta, body);
+        if (currentUserId && String(comment.created_by) === currentUserId) {
+          const actions = makeElement('div', 'boards-comment-actions');
+          const edit = makeElement('button', 'boards-comment-action', 'Editar');
+          edit.type = 'button'; edit.addEventListener('click', () => {
+            body.contentEditable = 'true'; body.classList.add('is-editing'); body.focus();
+            actions.replaceChildren();
+            const save = makeElement('button', 'boards-comment-action is-primary', 'Guardar'); save.type = 'button';
+            const cancel = makeElement('button', 'boards-comment-action', 'Cancelar'); cancel.type = 'button';
+            save.addEventListener('click', async () => {
+              save.disabled = true;
+              try {
+                await post(apiUrl('edit_comment'), { comment_id: comment.id, body: body.innerHTML });
+                await refreshItemComments();
+                setNotice('Comentario actualizado.', 'success');
+              } catch (error) { setNotice(errorMessage(error, 'No se pudo actualizar el comentario.'), 'error'); save.disabled = false; }
+            });
+            cancel.addEventListener('click', () => renderComments());
+            actions.append(save, cancel);
+          });
+          const remove = makeElement('button', 'boards-comment-action is-danger', 'Eliminar');
+          remove.type = 'button'; remove.addEventListener('click', async () => {
+            if (!window.confirm('¿Eliminar este comentario?')) return;
+            remove.disabled = true;
+            try {
+              await post(apiUrl('delete_comment'), { comment_id: comment.id });
+              await refreshItemComments();
+              setNotice('Comentario eliminado.', 'success');
+            } catch (error) { setNotice(errorMessage(error, 'No se pudo eliminar el comentario.'), 'error'); remove.disabled = false; }
+          });
+          actions.append(edit, remove); article.append(actions);
+        }
         if (Array.isArray(comment.stickers) && comment.stickers.length) {
           const stickers = makeElement('div', 'boards-comment-stickers');
           comment.stickers.forEach((sticker) => {
@@ -3764,6 +3796,13 @@
     if (editor) editor.contentEditable = String(canEditBoard());
     setItemCommentPendingUi(itemCommentPendingByItem.has(String(state.detailItemId)));
     setDetailStatus('itemCommentStatus', `${state.itemComments.length} ${state.itemComments.length === 1 ? 'comentario' : 'comentarios'}`);
+  }
+
+  async function refreshItemComments() {
+    const params = new URLSearchParams({ board_id: String(state.board.id), item_id: String(state.detailItemId) });
+    const result = await request(`${apiUrl('comments')}?${params.toString()}`);
+    state.itemComments = Array.isArray(result.data) ? result.data : [];
+    renderComments();
   }
 
   function renderActivity() {
