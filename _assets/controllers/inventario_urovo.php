@@ -24,7 +24,7 @@ class inventario_urovo {
             $station=isset($_GET['station_id']) && $_GET['station_id']!=='' ? filter_var($_GET['station_id'],FILTER_VALIDATE_INT) : null;
             if ($station===false || ($station!==null && !$this->model->activeStation((int)$station))) throw new InvalidArgumentException('Estación inválida.');
             $status=(string)($_GET['status']??'');
-            if ($status!=='' && $status!=='sin_serie' && !in_array($status,self::LOCATIONS,true)) throw new InvalidArgumentException('Estado inválido.');
+            if ($status!=='' && !in_array($status,['sin_serie','sin_bajas_definitivas'],true) && !in_array($status,self::LOCATIONS,true)) throw new InvalidArgumentException('Estado inválido.');
             $condition=strtolower(trim((string)($_GET['condition']??'')));
             if ($condition!=='' && !in_array($condition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición inválida.');
             $terminalType=strtolower(trim((string)($_GET['terminal_type']??'')));
