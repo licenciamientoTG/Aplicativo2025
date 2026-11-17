@@ -444,6 +444,69 @@ class MovimientosTarModel extends Model{
         return $this->sql->select($query, [$codgas, $fromInt, $untilInt]) ?: false;
     }
 
+    /**
+     * Valeras tomadas directo de Despachos, clasificadas por el texto de `rut`.
+     * `rut` trae el medio de pago en todos los tiptrn (viene con espacio inicial, por eso LTRIM):
+     *   - tiptrn 53 (integrados): 'Efectivale <tarjeta>', 'Tarjeta TicketCar [+]', 'Tarjeta EfectiCard',
+     *     'GASNGO <n>', 'Monedero (M.Externo)'
+     *   - capturas manuales (0/49): 'M-TIC:', 'M-TEFEC:', 'M-INB:', 'M-EFE:', 'M-ULT', 'M-SOD:', 'M-MOBIL:'
+     *   - terminal SmartBT: 'SBT:<emisor> <n>'; aquí solo los emisores de vales (en MovimientosTar
+     *     quedan como 'SMARTBT - Bancarias' y el reporte de valeras normal no los cuenta)
+     * Lo que no casa (bancarias M-SAN/M-BANO/SBT:BBVA..., rutas de clientes, NULL) se descarta.
+     * Solo combustibles: 179/180/181 y 192/193.
+     */
+    function get_valeras_despachos_report(int $fromInt, int $untilInt, int $codgas = 0) : array|false {
+        $query = "
+            DECLARE @codgas INT = ?; -- 0 = todas las estaciones
+            WITH c AS (
+                SELECT d.codgas, d.fchtrn, d.can, d.mto,
+                    CASE
+                        WHEN r LIKE 'Efectivale %'                                 THEN 'Efectivale (monedero)'
+                        WHEN r LIKE 'Tarjeta TicketCar +%' OR r LIKE 'M-TCAR+%'    THEN 'TicketCar +'
+                        WHEN r LIKE 'Tarjeta TicketCar%'   OR r LIKE 'M-TIC:%'     THEN 'TicketCar'
+                        WHEN r LIKE 'Tarjeta EfectiCard%'  OR r LIKE 'M-TEFE%'     THEN 'EfectiCard'
+                        WHEN r LIKE 'Tarjeta Inburgas%'    OR r LIKE 'M-INB:%'     THEN 'Inburgas'
+                        WHEN r LIKE 'M-EFE:%'                                      THEN 'Vale Efectivale'
+                        WHEN r LIKE 'M-ULT%'                                       THEN 'Ultra Gas'
+                        WHEN r LIKE 'M-SOD:%'                                      THEN 'Sodexo (Pluxee)'
+                        WHEN r LIKE 'M-MOBIL:%'                                    THEN 'Mobil FleetPro'
+                        WHEN r LIKE 'GASNGO%'                                      THEN 'GASnGO'
+                        WHEN r LIKE 'Monedero (M.Externo)%'                        THEN 'Monedero externo'
+                        WHEN r LIKE 'SBT:SODEXO%' OR r LIKE 'SBT:PLUXEE%'          THEN 'SBT Sodexo / Pluxee'
+                        WHEN r LIKE 'SBT:EFECTIVALE%'                              THEN 'SBT Efectivale'
+                        WHEN r LIKE 'SBT:EDENRED%'                                 THEN 'SBT Edenred'
+                        WHEN r LIKE 'SBT:SI VALE%'                                 THEN 'SBT Si Vale'
+                        WHEN r LIKE 'SBT:TOKA%'                                    THEN 'SBT Toka'
+                        WHEN r LIKE 'SBT:PRESTACIONES%'                            THEN 'SBT Prestaciones'
+                        WHEN r LIKE 'SBT:TOTALVALE%'                               THEN 'SBT TotalVale'
+                        WHEN r LIKE 'SBT:VALE%'                                    THEN 'SBT Vale'
+                    END AS valera
+                FROM [SG12].[dbo].[Despachos] d
+                CROSS APPLY (SELECT LTRIM(d.rut) AS r) x
+                WHERE d.fchtrn BETWEEN ? AND ?
+                    AND (@codgas = 0 OR d.codgas = @codgas)
+                    AND d.mto <> 0
+                    AND d.rut IS NOT NULL
+                    AND d.codprd IN (179, 180, 181, 192, 193)
+            )
+            SELECT
+                g.abr,
+                c.valera,
+                YEAR(DATEADD(DAY, c.fchtrn - 1, 0))  AS anio,
+                MONTH(DATEADD(DAY, c.fchtrn - 1, 0)) AS mes,
+                COUNT(*)               AS despachos,
+                ROUND(SUM(c.can), 2)   AS litros,
+                ROUND(SUM(c.mto), 2)   AS monto
+            FROM c
+            INNER JOIN [SG12].[dbo].[gasolineras] g ON c.codgas = g.cod
+            WHERE c.valera IS NOT NULL
+            GROUP BY g.abr, c.valera, YEAR(DATEADD(DAY, c.fchtrn - 1, 0)), MONTH(DATEADD(DAY, c.fchtrn - 1, 0))
+            ORDER BY g.abr, c.valera, anio, mes
+            OPTION (RECOMPILE);
+        ";
+        return $this->sql->select($query, [$codgas, $fromInt, $untilInt]) ?: false;
+    }
+
     function monthly_dollar_sales_report_table(){
         $query = "SELECT * FROM [TG].[dbo].VTGPivotDolaresMontos ORDER BY estacion, año;";
         return $this->sql->select($query, []) ?: false;

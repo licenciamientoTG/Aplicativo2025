@@ -207,6 +207,62 @@ class Direction{
         echo json_encode(['columns' => $columns, 'data' => array_values($data), 'base' => $base]);
     }
 
+    // Tab "Despachos": valeras clasificadas por el rut de Despachos (ver get_valeras_despachos_report).
+    // Devuelve litros y monto por mes; el JS elige cuál pivotear.
+    function valeras_despachos_table() {
+        $from  = DateTime::createFromFormat('!Y-m-d', $_POST['fromDate'] ?? '');
+        $until = DateTime::createFromFormat('!Y-m-d', $_POST['untilDate'] ?? '');
+        $codgas = (int)($_POST['codgas'] ?? 0); // 0 = todas las estaciones
+        if (!$from || !$until || $from > $until) {
+            echo json_encode(['columns' => [], 'data' => []]);
+            return;
+        }
+
+        $months_in_spanish = [
+            1 => 'Ene', 2 => 'Feb', 3 => 'Mar', 4 => 'Abr', 5 => 'May', 6 => 'Jun',
+            7 => 'Jul', 8 => 'Ago', 9 => 'Sep', 10 => 'Oct', 11 => 'Nov', 12 => 'Dic'
+        ];
+        $columns = [];
+        $cursor = new DateTime($from->format('Y-m-01'));
+        $end    = new DateTime($until->format('Y-m-01'));
+        while ($cursor <= $end) {
+            $month = (int)$cursor->format('n');
+            $columns[] = [
+                'key'   => $cursor->format('Y') . '_' . $month,
+                'label' => $months_in_spanish[$month] . ' ' . $cursor->format('Y')
+            ];
+            $cursor->modify('first day of next month');
+        }
+
+        $rows = $this->movimientosTarModel->get_valeras_despachos_report(
+            dateToInt($from->format('Y-m-d')),
+            dateToInt($until->format('Y-m-d')),
+            $codgas
+        );
+
+        // Una fila por estación + valera; por mes guarda {litros, monto}
+        $data = [];
+        foreach ($rows ?: [] as $row) {
+            $key = $row['abr'] . '|' . $row['valera'];
+            if (!isset($data[$key])) {
+                $data[$key] = [
+                    'estacion'  => trim($row['abr']),
+                    'valera'    => $row['valera'],
+                    'despachos' => 0,
+                    'litros'    => 0,
+                    'monto'     => 0,
+                    'meses'     => []
+                ];
+            }
+            $colKey = $row['anio'] . '_' . $row['mes'];
+            $data[$key]['meses'][$colKey] = ['litros' => (float)$row['litros'], 'monto' => (float)$row['monto']];
+            $data[$key]['despachos'] += (int)$row['despachos'];
+            $data[$key]['litros'] = round($data[$key]['litros'] + (float)$row['litros'], 2);
+            $data[$key]['monto']  = round($data[$key]['monto'] + (float)$row['monto'], 2);
+        }
+        echo json_encode(['columns' => $columns, 'data' => array_values($data)]);
+    }
+
     public function credit_debit_product_table() {
 
         if ($rows = $this->valesr->GetCreditoProduct($_POST['fromDate'], $_POST['untilDate'], $_POST['tipo'])) {

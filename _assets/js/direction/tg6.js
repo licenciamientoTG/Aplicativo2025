@@ -747,6 +747,123 @@ async function valeras_table() {
     });
 }
 
+// ---- Tab Despachos: valeras clasificadas desde el rut de Despachos ----
+var valeras_desp_cache = null; // { response, fromDate, untilDate }
+
+async function valeras_desp_table() {
+    var fromDate = document.getElementById('from_desp').value;
+    var untilDate = document.getElementById('until_desp').value;
+    var codgas = document.getElementById('codgas_desp').value;
+
+    if (!valeras_valid_range(fromDate, untilDate)) return;
+
+    $('#card_table_desp .table-responsive').removeClass('d-none');
+    $('#alert_valeras_desp_table').addClass('d-none');
+    $('#card_table_desp').addClass('loading');
+    $('#search_valeras_desp_table').prop('disabled', true)
+        .html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Consultando...');
+
+    $.ajax({
+        method: 'POST',
+        url: routeUrl('direction.valeras_despachos_table'),
+        data: { 'fromDate': fromDate, 'untilDate': untilDate, 'codgas': codgas },
+        dataType: 'json',
+        timeout: 600000
+    })
+    .done(function (response) {
+        valeras_desp_cache = { response: response, fromDate: fromDate, untilDate: untilDate };
+        render_valeras_desp_table();
+        if (!response.data.length) {
+            alertify.myAlert(
+                `<div class="container text-center text-danger">
+                    <h4 class="mt-2 text-danger">¡Atención!</h4>
+                </div>
+                <div class="text-dark">
+                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                </div>`
+            );
+        }
+    })
+    .fail(function () {
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+            </div>`
+        );
+    })
+    .always(function () {
+        $('#card_table_desp').removeClass('loading');
+        $('#search_valeras_desp_table').prop('disabled', false).html('Generar Reporte');
+    });
+}
+
+function render_valeras_desp_table() {
+    if (!valeras_desp_cache) return;
+    var response = valeras_desp_cache.response;
+    var medida = document.getElementById('medida_desp').value; // 'litros' | 'monto'
+    var num = $.fn.dataTable.render.number(',', '.', 2, medida === 'monto' ? '$' : '');
+
+    if ($.fn.DataTable.isDataTable('#valeras_desp_table')) {
+        $('#valeras_desp_table').DataTable().destroy();
+    }
+    $('#valeras_desp_table thead tr').empty();
+    $('#valeras_desp_table tfoot tr').empty();
+    $('#valeras_desp_table tbody').empty();
+
+    var columns = [
+        { data: 'estacion', title: 'Estación', className: 'text-nowrap' },
+        { data: 'valera', title: 'Valera', className: 'text-nowrap' }
+    ];
+    response.columns.forEach(function (col) {
+        columns.push({
+            data: function (row) { return row.meses[col.key] ? row.meses[col.key][medida] : 0; },
+            title: col.label,
+            className: 'text-end',
+            render: num
+        });
+    });
+    columns.push({ data: medida, title: 'Total', className: 'text-end fw-bold', render: num });
+    columns.push({ data: 'despachos', title: 'Despachos', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 0) });
+
+    columns.forEach(function (col) {
+        $('#valeras_desp_table thead tr').append('<th>' + col.title + '</th>');
+        $('#valeras_desp_table tfoot tr').append('<th></th>');
+    });
+
+    var titulo = 'Valeras_Despachos_' + (medida === 'monto' ? 'Monto_' : 'LTS_') + valeras_desp_cache.fromDate + '_' + valeras_desp_cache.untilDate;
+    $('#valeras_desp_table').DataTable({
+        data: response.data,
+        columns: columns,
+        order: [],
+        scrollY: '700px',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        buttons: [
+            { extend: 'excel', className: 'btn btn-success', text: ' Excel', title: titulo },
+        ],
+        deferRender: true,
+        footerCallback: function () {
+            var api = this.api();
+            var nf = new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            var nf0 = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 0 });
+            var last = api.columns().count() - 1;
+            $(api.column(1).footer()).html('Suma');
+            api.columns().every(function (index) {
+                if (index > 1) {
+                    var total = api.column(index, { search: 'applied' }).data()
+                        .reduce(function (a, b) { return a + (Number(b) || 0); }, 0);
+                    $(api.column(index).footer()).html(index === last ? nf0.format(total) : nf.format(total));
+                }
+            });
+        }
+    });
+}
+
 async function valeras_base_table() {
     var fromDate = document.getElementById('from_base').value;
     var untilDate = document.getElementById('until_base').value;

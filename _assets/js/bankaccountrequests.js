@@ -46,26 +46,49 @@
     // En el detalle el botón de subir solo se habilita con un archivo elegido
     $('#ba_archivo').on('change', function () { $('#ba_subir').prop('disabled', !(this.files && this.files.length)); });
 
-    // ---------------- Index: filtros (al detalle se entra con el botón Ver, no con clic en la fila) ----------------
+    // ---------------- Index: DataTable con filtros propios (al detalle se entra con el botón Ver) ----------------
     var $tabla = $('#tabla_altas');
     if ($tabla.length) {
         var status = '';
-        var aplicar = function () {
-            var q = ($('#ba_filtro_texto').val() || '').toLowerCase().trim();
-            $tabla.find('tbody tr.ba-fila').each(function () {
-                var $tr = $(this);
-                var ok = (status === '' || String($tr.data('status')) === status)
-                    && (q === '' || String($tr.data('busqueda')).indexOf(q) !== -1);
-                $tr.toggle(ok);
-            });
-        };
+        var q = '';
+        // Filtro por estatus (pestañas) y texto (data-busqueda trae también CLABE y razones sociales); solo para esta tabla
+        $.fn.dataTable.ext.search.push(function (settings, data, idx) {
+            if (settings.nTable !== $tabla[0]) { return true; }
+            var tr = settings.aoData[idx].nTr;
+            return (status === '' || String(tr.getAttribute('data-status')) === status)
+                && (q === '' || String(tr.getAttribute('data-busqueda') || '').indexOf(q) !== -1);
+        });
+        var dt = $tabla.DataTable({
+            dom: 'rt<"ba-pie-dt d-flex flex-column flex-md-row align-items-md-center gap-2 w-100"l<"me-md-auto ms-md-3"i>p>',
+            order: [[1, 'desc'], [0, 'desc']],   // más nuevas primero: fecha de solicitud y, el mismo día, folio
+            pageLength: 25,
+            lengthMenu: [[25, 50, 100, -1], [25, 50, 100, 'Todas']],
+            autoWidth: false,
+            columnDefs: [{ targets: [2, 8], orderable: false }],
+            language: {
+                lengthMenu: 'Ver _MENU_ por página',
+                info: '_START_–_END_ de _TOTAL_ solicitudes',
+                infoEmpty: 'Sin solicitudes',
+                infoFiltered: '(filtradas de _MAX_)',
+                zeroRecords: 'Ninguna solicitud coincide con el filtro.',
+                emptyTable: 'Aún no hay solicitudes.',
+                paginate: { first: '«', last: '»', next: '›', previous: '‹' }
+            },
+            pagingType: 'simple_numbers',
+            initComplete: function () { $('#ba_pie').append($('.ba-pie-dt')); }
+        });
+        var timer = null;
         $('#ba_tabs').on('click', 'button', function () {
             status = String($(this).data('status'));
             $('#ba_tabs button').removeClass('activo');
             $(this).addClass('activo');
-            aplicar();
+            dt.draw();
         });
-        $('#ba_filtro_texto').on('input', aplicar);
+        $('#ba_filtro_texto').on('input', function () {
+            var v = (this.value || '').toLowerCase().trim();
+            clearTimeout(timer);
+            timer = setTimeout(function () { q = v; dt.draw(); }, 200);
+        });
 
         // Tesorería: modal Aprobar / Rechazar desde la lista (vista parcial del servidor)
         $tabla.on('click', '.btn-ba-modal', function () {

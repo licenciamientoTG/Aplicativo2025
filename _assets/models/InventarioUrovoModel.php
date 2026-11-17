@@ -36,8 +36,8 @@ class InventarioUrovoModel extends Model {
         $byStation=['urovo'=>[],'verifone'=>[]];
         foreach ($counts as $row) $byStation[(string)$row['tipo_terminal']][(int)$row['station_id']]=(int)$row['funcionando'];
         $totals=[
-            'urovo'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_reparacion'=>0],
-            'verifone'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_reparacion'=>0],
+            'urovo'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_reparacion'=>0,'total_danadas_estacion'=>0],
+            'verifone'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_reparacion'=>0,'total_danadas_estacion'=>0],
         ];
         $rows=[];
         foreach (self::DASHBOARD_OBJECTIVES as [$stationId,$name,$objective]) {
@@ -62,9 +62,18 @@ class InventarioUrovoModel extends Model {
             $totals[$type]['total_stock']=(int)($row['stock']??0);
             $totals[$type]['total_reparacion']=(int)($row['reparacion']??0);
         }
+        $damagedStations=$this->sql->select("SELECT tipo_terminal,COUNT(*) AS danadas
+            FROM [TG].[dbo].[inv_urovo_terminales]
+            WHERE tipo_terminal IN (?,?) AND ubicacion_tipo=? AND condicion=?
+            GROUP BY tipo_terminal",['urovo','verifone','estacion','dañada']);
+        foreach ($damagedStations as $row) {
+            $type=(string)$row['tipo_terminal'];
+            if (!isset($totals[$type])) continue;
+            $totals[$type]['total_danadas_estacion']=(int)($row['danadas']??0);
+        }
         foreach ($totals as $type=>&$total) {
             $total['faltante_en_estacion']=max(0,$total['total_objetivo']-$total['total_funcionando']);
-            $total['faltante_total']=max(0,$total['total_objetivo']-($total['total_funcionando']+$total['total_stock']+$total['total_reparacion']));
+            $total['faltante_total']=max(0,$total['total_objetivo']-($total['total_funcionando']+$total['total_danadas_estacion']+$total['total_stock']+$total['total_reparacion']));
         }
         unset($total);
         return ['rows'=>$rows,'totals'=>$totals];

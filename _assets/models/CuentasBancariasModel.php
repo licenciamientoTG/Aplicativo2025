@@ -288,10 +288,12 @@ class CuentasBancariasModel extends Model {
                 c.Activo,
                 c.FechaModificacion,
                 c.UsuarioModificacion,
+                e.den         AS empresa_den,   -- razón social dueña (cuentas Propias)
                 -- Alta de cuenta que la originó (el proveedor vive en la solicitud, no en ControlGas)
                 sol.id        AS solicitud_id,
                 sol.proveedor AS solicitud_proveedor
             FROM [TG].[dbo].[CatalogosCuentasBancarias] c
+            LEFT JOIN [TG].[dbo].[razones_sociales_pago] e ON e.cod = c.emp_cod
             OUTER APPLY (
                 SELECT TOP 1 r.id, r.proveedor
                 FROM [TG].[dbo].[bank_account_requests] r

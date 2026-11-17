@@ -1,11 +1,30 @@
-{# views/bankaccountrequests/index.html — Solicitudes de alta de cuenta bancaria (propias o, con Tesorería, todas) #}
+{# views/bankaccountrequests/index.html — Solicitudes de alta de cuenta bancaria (todas; DataTable con paginación) #}
 {% extends "views/layouts/base.html" %}
 {% block title %}Alta de cuenta bancaria{% endblock %}
 {% block menutitle %}Alta de cuenta bancaria{% endblock %}
 {% block mycss %}
 <style>
-    #tabla_altas thead th { text-transform:uppercase; font-size:.7rem; letter-spacing:.05em; color:#64748b; white-space:nowrap; background:#f8fafc; }
-    #tabla_altas tbody td { vertical-align:middle; }
+    #tabla_altas { border-collapse:separate; border-spacing:0; width:100% !important; }
+    #tabla_altas thead th { text-transform:uppercase; font-size:.68rem; letter-spacing:.06em; color:#64748b; white-space:nowrap;
+        background:#f8fafc; border-top:0; border-bottom:1px solid #e2e8f0; padding:.65rem .75rem; position:sticky; top:0; z-index:1; }
+    #tabla_altas thead th.sorting, #tabla_altas thead th.sorting_asc, #tabla_altas thead th.sorting_desc { cursor:pointer; }
+    #tabla_altas thead th.sorting_asc, #tabla_altas thead th.sorting_desc { color:#1C4587; }
+    #tabla_altas tbody td { vertical-align:middle; padding:.55rem .75rem; border-top:0; border-bottom:1px solid #f1f5f9; font-size:.85rem; color:#334155; }
+    #tabla_altas tbody tr:nth-child(even) td { background:#fcfdfe; }
+    #tabla_altas tbody tr:hover td { background:#f1f6fd; }
+    #tabla_altas tbody tr:last-child td { border-bottom:0; }
+    .ba-pagan { max-width:16rem; color:#64748b; font-size:.78rem !important; }
+    .ba-proveedor { font-weight:600; color:#0f172a !important; max-width:22rem; }
+    .ba-fecha { white-space:nowrap; color:#475569; }
+    .ba-pie { border-top:1px solid #e2e8f0; padding:.6rem .9rem; font-size:.8rem; color:#64748b; }
+    .ba-pie .dataTables_length select { width:auto; display:inline-block; padding:.15rem 1.6rem .15rem .5rem; font-size:.8rem; }
+    .ba-pie .dataTables_info { padding-top:0 !important; }
+    .ba-pie .pagination { margin:0; gap:.2rem; }
+    .ba-pie .page-link { border:1px solid #e2e8f0; border-radius:.4rem !important; color:#334155; font-size:.78rem; padding:.25rem .6rem; min-width:2rem; text-align:center; }
+    .ba-pie .page-item.active .page-link { background:#1C4587; border-color:#1C4587; color:#fff; }
+    .ba-pie .page-item.disabled .page-link { color:#cbd5e1; }
+    .ba-seg .ba-n { display:inline-block; margin-left:.35rem; padding:0 .4rem; border-radius:1rem; background:#e2e8f0; color:#475569; font-size:.68rem; font-weight:600; }
+    .ba-seg button.activo .ba-n { background:#1C4587; color:#fff; }
     .ba-acciones { white-space:nowrap; }
     .ba-folio { font-family:Consolas, monospace; font-weight:700; color:#1C4587; white-space:nowrap; }
     .ba-cuenta { font-family:Consolas, monospace; white-space:nowrap; }
@@ -32,24 +51,24 @@
 <div class="card border-0 shadow-sm">
     <div class="card-body py-2 px-3 d-flex align-items-center flex-wrap gap-2">
         <div class="ba-seg" id="ba_tabs">
-            <button type="button" data-status="" class="activo">Todas</button>
-            {% for k, t in estatus %}<button type="button" data-status="{{ k }}">{{ t }}</button>{% endfor %}
+            <button type="button" data-status="" class="activo">Todas<span class="ba-n">{{ solicitudes|length }}</span></button>
+            {% for k, t in estatus %}<button type="button" data-status="{{ k }}">{{ t }}<span class="ba-n">{{ conteo[k] ?? 0 }}</span></button>{% endfor %}
         </div>
-        <input type="search" id="ba_filtro_texto" class="form-control form-control-sm w-auto" placeholder="Buscar folio, proveedor, cuenta, banco..." style="min-width:20rem;">
-        <span class="ms-auto small text-muted">{{ es_tesoreria ? 'Mostrando todas las solicitudes' : 'Mostrando sus solicitudes' }}</span>
+        <input type="search" id="ba_filtro_texto" class="form-control form-control-sm w-auto" placeholder="Buscar folio, proveedor, cuenta, CLABE, banco..." style="min-width:20rem;">
+        <span class="ms-auto small text-muted">Más nuevas primero</span>
     </div>
     <div class="table-responsive">
-        <table class="table table-hover mb-0" id="tabla_altas">
+        <table class="table mb-0" id="tabla_altas">
             <thead><tr>
                 <th>Folio</th><th>Fecha</th><th>Pueden pagar</th><th>Proveedor</th><th>Banco</th><th>Cuenta</th><th>Solicitante</th><th>Estatus</th><th class="text-end">Acciones</th>
             </tr></thead>
             <tbody>
             {% for s in solicitudes %}
                 <tr class="ba-fila" data-status="{{ s.status }}" data-busqueda="{{ s.busqueda }}">
-                    <td class="ba-folio">#{{ s.id }}</td>
-                    <td>{{ s.fecha_solicitud|date('d/m/Y') }}</td>
-                    <td class="small">{{ s.pagadores|map(p => p.den)|join(', ') }}</td>
-                    <td class="fw-semibold">{{ s.proveedor }}</td>
+                    <td class="ba-folio" data-order="{{ s.id }}">#{{ s.id }}</td>
+                    <td class="ba-fecha" data-order="{{ s.fecha_solicitud|date('Y-m-d') }}">{{ s.fecha_solicitud|date('d/m/Y') }}</td>
+                    <td class="ba-pagan">{{ s.pagadores|map(p => p.den)|join(', ') }}</td>
+                    <td class="ba-proveedor">{{ s.proveedor }}</td>
                     <td>{{ s.banco }}</td>
                     <td class="ba-cuenta">{{ s.num_cuenta }}</td>
                     <td>{{ s.solicitante }}</td>
@@ -59,12 +78,11 @@
                         <a href="{{ url('bankaccounts.detail', {id: s.id}) }}" class="btn btn-sm btn-outline-secondary" title="Ver detalle de la solicitud #{{ s.id }}"><i class="fas fa-eye"></i> {{ s.status == 4 and s.es_propia ? 'Subir carátula' : 'Ver' }}</a>
                     </td>
                 </tr>
-            {% else %}
-                <tr><td colspan="9" class="text-center text-muted py-4">Aún no hay solicitudes.</td></tr>
             {% endfor %}
             </tbody>
         </table>
     </div>
+    <div class="ba-pie d-flex flex-column flex-md-row align-items-md-center gap-2" id="ba_pie"></div>
 </div>
 
 <div class="modal fade" id="modal_ba" tabindex="-1" aria-hidden="true">

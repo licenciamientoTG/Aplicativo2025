@@ -73,13 +73,13 @@ class BankAccountRequests
         return (int) $req['user_id'] === $this->user_id();
     }
 
-    /** Un borrador (sin carátula) es privado de su dueño, incluso para Tesorería. */
+    /** Todos ven todas las solicitudes; solo el borrador (sin carátula) es privado de su dueño. */
     private function puede_ver(array $req): bool
     {
         if ((int) $req['status'] === BankAccountRequestsModel::ST_BORRADOR) {
             return $this->es_propia($req);
         }
-        return $this->es_tesoreria() || $this->es_propia($req);
+        return true;
     }
 
     /** Respuesta de error: JSON (AJAX/POST) o texto plano (vistas). */
@@ -121,11 +121,11 @@ class BankAccountRequests
     /* Vistas                                                                */
     /* ===================================================================== */
 
-    /** Lista: las propias o, con Tesorería, todas. Los filtros corren en el navegador. */
+    /** Lista: todas (los borradores, solo los propios). Los filtros corren en el navegador. */
     public function index(): void
     {
         $es_tesoreria = $this->es_tesoreria();
-        $solicitudes  = $this->model->list_visible($this->user_id(), $es_tesoreria);
+        $solicitudes  = $this->model->list_visible($this->user_id());
         $pagadores    = $this->pagadores_seguro(array_column($solicitudes, 'id'));
         foreach ($solicitudes as &$s) {
             $s['es_propia'] = $this->es_propia($s);
@@ -135,7 +135,8 @@ class BankAccountRequests
         }
         unset($s);
         $estatus = self::ESTATUS;
-        echo $this->twig->render($this->route . 'index.html', compact('solicitudes', 'es_tesoreria', 'estatus'));
+        $conteo  = array_count_values(array_map('intval', array_column($solicitudes, 'status')));  // contador de cada pestaña
+        echo $this->twig->render($this->route . 'index.html', compact('solicitudes', 'es_tesoreria', 'estatus', 'conteo'));
     }
 
     /** Formulario de nueva solicitud. */

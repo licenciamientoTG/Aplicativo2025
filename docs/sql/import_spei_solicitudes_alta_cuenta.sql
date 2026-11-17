@@ -1,14 +1,13 @@
 ﻿-- Importación de la hoja SPEI de 'SOLICITUD ALTA DE CUENTA BANCARIA 2.xlsx' a TG.dbo.bank_account_requests.
 -- Generado 2026-11-17: 3379 solicitudes (2815 aprobadas ligadas al catálogo, 564 pendientes), 4 renglones no se importan.
--- Se puede correr dos veces: no vuelve a insertar cuentas ya importadas por el usuario IMPORTACION EXCEL.
+-- Solicitante y quien aprueba: usuario alejandro.martinez (Id 6296).
+-- Se puede correr dos veces: no vuelve a insertar cuentas que ya tengan una solicitud importada de este Excel.
 SET NOCOUNT ON; SET XACT_ABORT ON;
 USE [TG];
 BEGIN TRAN;
 
-IF NOT EXISTS (SELECT 1 FROM dbo.Usuario WHERE Usuario = 'importacion.excel')
-    INSERT INTO dbo.Usuario (Usuario, Nombre, Password, Estatus, FechaRegistro)
-    VALUES ('importacion.excel', 'IMPORTACION EXCEL', CRYPT_GEN_RANDOM(32), 0, GETDATE());  -- inactivo: no puede entrar
-DECLARE @uid INT = (SELECT Id FROM dbo.Usuario WHERE Usuario = 'importacion.excel');
+DECLARE @uid INT = (SELECT Id FROM dbo.Usuario WHERE Id = 6296 AND Usuario = 'alejandro.martinez');
+IF @uid IS NULL THROW 50001, 'No existe el usuario alejandro.martinez (Id 6296).', 1;
 
 CREATE TABLE #imp (num_cuenta VARCHAR(50) PRIMARY KEY, clabe VARCHAR(18), empresa_cod INT, banco VARCHAR(100),
   clave_banco VARCHAR(20), moneda VARCHAR(10), proveedor NVARCHAR(200), direccion NVARCHAR(300), departamento VARCHAR(40),
@@ -3417,7 +3416,8 @@ SELECT @uid, i.empresa_cod, i.banco, ISNULL(i.clave_banco, ''), i.moneda, 'EXTRN
        '40', i.proveedor, i.direccion, 'MEXICO', i.departamento, i.fecha_solicitud, i.fecha_alta, i.status,
        i.catalogo_cuenta_id, CASE WHEN i.status = 2 THEN @uid END, CASE WHEN i.status = 2 THEN CAST(i.fecha_alta AS DATETIME) END, i.comentario
   FROM #imp i
- WHERE NOT EXISTS (SELECT 1 FROM dbo.bank_account_requests r WHERE r.user_id = @uid AND r.num_cuenta = i.num_cuenta);
+ WHERE NOT EXISTS (SELECT 1 FROM dbo.bank_account_requests r WHERE r.num_cuenta = i.num_cuenta
+                     AND r.comentario LIKE N'Importada de SOLICITUD ALTA DE CUENTA BANCARIA 2.xlsx%');
 
 INSERT INTO dbo.bank_account_request_payers (request_id, emp_cod)
 SELECT n.id, p.emp_cod FROM @nuevas n JOIN #pag p ON p.num_cuenta = n.num_cuenta;
@@ -3430,4 +3430,4 @@ SELECT DISTINCT n.catalogo_cuenta_id, p.emp_cod, @uid FROM @nuevas n JOIN #pag p
 
 SELECT status, COUNT(*) AS solicitudes FROM @nuevas GROUP BY status;
 -- Revise los conteos y cambie a COMMIT cuando estén bien:
-ROLLBACK;  -- COMMIT;
+COMMIT;
