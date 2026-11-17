@@ -95,6 +95,18 @@ class ConciliacionCobrosManual {
         return $out;
     }
 
+    /**
+     * Meses ('Y-m') cuyo candado toma el guardado manual: el del POST, los de los items elegidos y los de los
+     * items del grupo que se edita (otro guardado de esos meses podría tomar los mismos cobros). Ordenados y sin repetir.
+     */
+    public static function mesesABloquear(string $mes, array $items, ?array $editado): array {
+        $meses = [$mes];
+        foreach (array_merge($items, $editado['items'] ?? []) as $it) $meses[] = (string)($it['mes'] ?? '');
+        $meses = array_values(array_unique(array_filter($meses, fn($m) => preg_match('/^\d{4}-\d{2}$/', $m) === 1)));
+        sort($meses);
+        return $meses;
+    }
+
     /** Grupo manual listo para guardarGrupos. */
     public static function grupo(array $items, ?string $comentario): array {
         return ['origen' => 'manual', 'estatus' => self::ESTATUS, 'comentario' => $comentario, 'items' => $items];

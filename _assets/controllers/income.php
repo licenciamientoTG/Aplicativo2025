@@ -845,28 +845,34 @@ class Income{
             if ($grupo === null) $error = 'Esta conciliación ya no está activa (otro usuario la cambió). Recarga el tab.';
             else $items = $grupo['items'];
         } elseif ($movId > 0) {
-            $items = [['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => $movId, 'monto' => 0]];
+            $items = [['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => $movId, 'monto' => 0, 'ocupa' => 1]];
         }
-        $filas = [];
+        // Seleccionados = items con ocupa = 1. La referencia de una Diferencia (ocupa = 0) va aparte como sugerida:
+        // ese depósito puede ocuparlo un Cuadra y no debe tomarse sin que el usuario lo elija.
+        $filas = $sugeridos = [];
         if ($items) {
             [$cobros, $movs, $facturas] = $this->conciliationManualDatos($guardado, $items);
             foreach ($items as $it) {
                 $k = $it['tipo'] === 'M' ? (int)$it['movimiento_id'] : ConciliacionCobrosGuardado::claveDoc((int)$it['codgas'], (int)$it['nro']);
                 $r = ['C' => $cobros, 'M' => $movs, 'F' => $facturas][$it['tipo']][$k] ?? null;
                 // lo que ya no existe se muestra con el monto guardado, para que se pueda quitar
-                $filas[] = $r !== null ? $this->conciliationManualFila($it['tipo'], $r) : [
+                $fila = $r !== null ? $this->conciliationManualFila($it['tipo'], $r) : [
                     'tipo' => $it['tipo'], 'codgas' => $it['codgas'], 'nro' => $it['nro'], 'movimiento_id' => $it['movimiento_id'],
                     'monto' => round((float)$it['monto'], 2), 'existe' => false,
                 ];
+                if ((int)$it['ocupa'] === 1) $filas[] = $fila;
+                else $sugeridos[] = $fila;
             }
         }
+        $flags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE;
         echo $this->twig->render($this->route . 'modals/conciliation_manual.html', [
-            'mes'        => $mes,
-            'desde'      => $desde,
-            'hasta'      => $hasta,
-            'grupo'      => $grupo,
-            'error'      => $error,
-            'items_json' => json_encode($filas, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE),
+            'mes'            => $mes,
+            'desde'          => $desde,
+            'hasta'          => $hasta,
+            'grupo'          => $grupo,
+            'error'          => $error,
+            'items_json'     => json_encode($filas, $flags),
+            'sugeridos_json' => json_encode($sugeridos, $flags),
         ]);
     }
 
@@ -982,16 +988,26 @@ class Income{
             $this->conciliationManualError($e->getMessage());
             return;
         }
+        // El grupo que se edita solo cuenta si sigue activo (puede ser de otro mes); sus meses entran al candado
+        $editado = $guardado->grupoPorId($grupoId);
+        if ($editado !== null && !$editado['activo']) $editado = null;
+        $meses = ConciliacionCobrosManual::mesesABloquear($mes, $grupo['items'], $editado);
         $cl = ConciliacionCobrosManual::claves($items);
         $usuario = $this->conciliationUsuario();
         $nuevoId = 0;
-        $this->conciliationTransaccion($guardado, $mes, function () use ($guardado, $cl, $grupoId, $grupo, $mes, $usuario, &$nuevoId) {
+        $ok = $this->conciliationTransaccion($guardado, $meses, function () use ($guardado, $cl, $editado, $grupo, $mes, $usuario, &$nuevoId) {
             $bajas = $guardado->gruposQueOcupan($cl['C'], $cl['M'], $cl['F']);
-            if ($grupoId > 0) $bajas[] = $grupoId;
-            $guardado->darDeBaja($bajas, $usuario);
+            if ($editado !== null && ($guardado->grupoPorId($editado['id'])['activo'] ?? false)) $bajas[] = $editado['id'];
+            $bajas = array_values(array_unique($bajas));
+            if ($guardado->darDeBaja($bajas, $usuario) !== count($bajas)) return false;
             $nuevoId = $guardado->guardarGrupos([$grupo], $mes, $usuario)[0];
             return true;
         });
+        if (!$ok) {
+            http_response_code(409);
+            json_output(['error' => 'La conciliación cambió mientras la editabas; vuelve a abrirla']);
+            return;
+        }
         $grupo['id'] = $nuevoId;
         $porMes = $this->conciliationManualGrupos($guardado, [$mes]);
         json_output([
@@ -1001,22 +1017,21 @@ class Income{
         ]);
     }
 
-    /** POST (mes, grupo_id): deshace una conciliación manual activa (activo = 0). Sus cobros vuelven al cruce automático. */
+    /**
+     * POST (grupo_id): deshace una conciliación manual activa (activo = 0), con el candado de los meses de sus
+     * items. Sus cobros vuelven al cruce automático.
+     */
     public function conciliation_manual_undo() : void {
-        [, , $desde] = $this->conciliationRange();
-        $mes      = substr($desde, 0, 7);
         $grupoId  = (int)($_POST['grupo_id'] ?? 0);
         $guardado = new ConciliacionCobrosGuardadoModel;
-        $grupo = null;
-        foreach ($grupoId > 0 ? $guardado->gruposActivos($mes) : [] as $g) {
-            if ($g['id'] === $grupoId) { $grupo = $g; break; }
-        }
-        if ($grupo === null || $grupo['origen'] !== 'manual') {
+        $grupo = $guardado->grupoPorId($grupoId);
+        if ($grupo === null || !$grupo['activo'] || $grupo['origen'] !== 'manual') {
             $this->conciliationManualError('Solo se puede deshacer una conciliación manual activa');
             return;
         }
         $usuario = $this->conciliationUsuario();
-        $ok = $this->conciliationTransaccion($guardado, (string)$grupo['mes'], fn() => $guardado->darDeBaja([$grupoId], $usuario) === 1);
+        $meses = ConciliacionCobrosManual::mesesABloquear((string)$grupo['mes'], $grupo['items'], null);
+        $ok = $this->conciliationTransaccion($guardado, $meses, fn() => $guardado->darDeBaja([$grupoId], $usuario) === 1);
         if (!$ok) {
             $this->conciliationManualError('La conciliación ya se había deshecho');
             return;
@@ -1201,13 +1216,15 @@ class Income{
     }
 
     /**
-     * Corre $fn en una transacción con el candado del mes (bloquearMes): commit si regresa true,
-     * rollBack si regresa false o lanza.
+     * Corre $fn en una transacción con el candado del mes o de varios meses (bloquearMes, en orden para
+     * no cruzarse con otra sesión): commit si regresa true, rollBack si regresa false o lanza.
      */
-    private function conciliationTransaccion(ConciliacionCobrosGuardadoModel $guardado, string $mes, callable $fn) : bool {
+    private function conciliationTransaccion(ConciliacionCobrosGuardadoModel $guardado, string|array $meses, callable $fn) : bool {
+        $meses = array_values(array_unique((array)$meses));
+        sort($meses);
         $guardado->sql->beginTransaction();
         try {
-            $guardado->bloquearMes($mes);
+            foreach ($meses as $mes) $guardado->bloquearMes($mes);
             $ok = (bool)$fn();
             if ($ok) $guardado->sql->commit();
             else $guardado->sql->rollBack();

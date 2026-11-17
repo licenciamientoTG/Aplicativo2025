@@ -173,6 +173,13 @@ try {
     check('manual: cobrosSinGrupo devuelve el otro cobro', count($sin) === 1 && $sin[0]['nro'] === 990012);
     check('manual: el movimiento lo ocupa el manual', $m->movimientosOcupadosEntre([987654331], [$manualId]) === []
         && $m->movimientosOcupadosEntre([987654331]) === [987654331 => true]);
+    $gp = $m->grupoPorId($manualId);
+    check('grupoPorId: activo con sus items', $gp !== null && $gp['activo'] === true && $gp['origen'] === 'manual' && count($gp['items']) === 2);
+    $ga = $m->grupoPorId($autoId);
+    check('grupoPorId: el auto dado de baja sale inactivo', $ga !== null && $ga['activo'] === false && count($ga['items']) === 3);
+    check('grupoPorId: inexistente / 0 → null', $m->grupoPorId(2147483000) === null && $m->grupoPorId(0) === null);
+    $m->bloquearMes('1999-02');
+    check('bloquearMes de un segundo mes en la misma transacción', true);
     // deshacer: el manual se da de baja y los dos cobros quedan sin grupo
     check('deshacer: darDeBaja del manual', $m->darDeBaja([$manualId], 'test') === 1);
     check('deshacer: segunda vez = 0', $m->darDeBaja([$manualId], 'test') === 0);

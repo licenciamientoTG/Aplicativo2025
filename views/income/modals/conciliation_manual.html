@@ -1,6 +1,7 @@
 {# Modal: conciliación manual de cobros (Ingresos > Conciliación > Cobros). Vista parcial cargada por fetch
    desde Income::conciliation_manual_modal; el JS (_assets/js/conciliation_manual.js) usa los ids cm*.
-   Items precargados en #cmItems: [{tipo:'C'|'M'|'F', codgas, nro, movimiento_id, monto, existe, …datos a mostrar}] #}
+   Items precargados en #cmItems (ocupa = 1): [{tipo:'C'|'M'|'F', codgas, nro, movimiento_id, monto, existe, …datos a mostrar}];
+   #cmSugeridos: misma forma, referencias con ocupa = 0 que el usuario puede agregar. #}
 <style>
 #cmRoot .cm-tabla { max-height: 220px; overflow-y: auto; }
 #cmRoot .cm-tabla table { font-size: .8rem; margin-bottom: 0; }
@@ -122,4 +123,6 @@
   </div>
 
   <script type="application/json" id="cmItems">{{ items_json|raw }}</script>
+  {# Referencias del grupo con ocupa = 0 (depósito de una Diferencia): sugeridas, no seleccionadas #}
+  <script type="application/json" id="cmSugeridos">{{ sugeridos_json|raw }}</script>
 </div>

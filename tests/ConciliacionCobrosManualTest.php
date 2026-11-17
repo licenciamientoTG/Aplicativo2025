@@ -69,6 +69,13 @@ check('completar: el error dice cuáles', str_contains($msg, 'cobro 64100') && s
 $g = ConciliacionCobrosManual::grupo($comp, 'ok');
 check('grupo manual', $g['origen'] === 'manual' && $g['estatus'] === 'Conciliado manual' && $g['comentario'] === 'ok' && count($g['items']) === 3);
 
+// meses a bloquear: el del POST + los de los items elegidos + los del grupo editado, ordenados y sin repetir
+$editado = ['id' => 9, 'mes' => '2026-08', 'items' => [['tipo' => 'C', 'mes' => '2026-08'], ['tipo' => 'M', 'mes' => '2026-10']]];
+check('mesesABloquear con grupo editado', ConciliacionCobrosManual::mesesABloquear('2026-10', $comp, $editado) === ['2026-08', '2026-09', '2026-10', '2026-11']);
+check('mesesABloquear sin grupo', ConciliacionCobrosManual::mesesABloquear('2026-10', $comp, null) === ['2026-09', '2026-10', '2026-11']);
+check('mesesABloquear ignora meses inválidos', ConciliacionCobrosManual::mesesABloquear('2026-10', [['mes' => ''], ['mes' => 'x']], null) === ['2026-10']);
+check('mesesABloquear sin mes del POST (deshacer)', ConciliacionCobrosManual::mesesABloquear('', $editado['items'], null) === ['2026-08', '2026-10']);
+
 // totales: con cobros, las facturas no se restan (solo referencia); sin cobros, sí
 $t = ConciliacionCobrosManual::totales($comp, $cobros, $movs, $facturas);
 check('totales con cobros', $t === ['cobros' => 1500.5, 'facturas' => 600.25, 'movimientos' => 1000.0, 'diferencia' => -500.5]);

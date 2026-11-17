@@ -136,6 +136,46 @@ class ConciliacionCobrosGuardadoModel extends Model {
     }
 
     /**
+     * Un grupo por id (activo o no) con todos sus items, misma forma que gruposActivos() más 'activo' (bool).
+     * null si no existe. Sin NOLOCK: el controlador lo repite dentro del candado antes de darlo de baja.
+     */
+    public function grupoPorId(int $id): ?array {
+        if ($id <= 0) return null;
+        $query = "SELECT g.id AS grupo_id, g.mes AS grupo_mes, g.origen, g.estatus, g.comentario, g.creado_por, g.activo,
+                         CONVERT(varchar(19), g.creado_en, 120) AS creado_en,
+                         i.tipo, i.codgas, i.nro, i.movimiento_id, i.monto, i.mes AS item_mes, i.ocupa
+                    FROM " . self::GRUPO . " g
+                    LEFT JOIN " . self::ITEM . " i ON i.grupo_id = g.id
+                   WHERE g.id = ?
+                   ORDER BY i.id";
+        $grupo = null;
+        foreach ($this->sql->select($query, [$id]) ?: [] as $r) {
+            $grupo ??= [
+                'id' => (int)$r['grupo_id'],
+                'mes' => $r['grupo_mes'],
+                'origen' => $r['origen'],
+                'estatus' => $r['estatus'],
+                'comentario' => $r['comentario'],
+                'creado_por' => $r['creado_por'],
+                'creado_en' => $r['creado_en'],
+                'activo' => (int)$r['activo'] === 1,
+                'items' => [],
+            ];
+            if ($r['tipo'] === null) continue;
+            $grupo['items'][] = [
+                'tipo' => $r['tipo'],
+                'codgas' => $r['codgas'] !== null ? (int)$r['codgas'] : null,
+                'nro' => $r['nro'] !== null ? (int)$r['nro'] : null,
+                'movimiento_id' => $r['movimiento_id'] !== null ? (int)$r['movimiento_id'] : null,
+                'monto' => (float)$r['monto'],
+                'mes' => $r['item_mes'],
+                'ocupa' => (int)$r['ocupa'],
+            ];
+        }
+        return $grupo;
+    }
+
+    /**
      * Ids de grupos activos que tienen alguno de estos items con ocupa = 1.
      * $clavesC / $clavesF: "codgas|nro"; $movIds: movimientos_bancarios.id.
      */
