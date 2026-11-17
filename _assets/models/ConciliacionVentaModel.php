@@ -495,9 +495,57 @@ class ConciliacionVentaModel extends Model {
      */
     public function cobros(int $from, int $until, int $subope = self::SUBOPE_COBRANZA): array {
         $subopes = $subope;
+        return $this->consultaCobros("c.subope IN ({$subopes}) AND c.fch BETWEEN ? AND ?", [$from, $until]);
+    }
+
+    /**
+     * Mismas columnas que cobros(), para pares "codgas|nro" (cobros de otros meses que ya están en una
+     * conciliación guardada). Cualquier subope, incluso cancelados.
+     */
+    public function cobrosPorClave(array $claves): array {
+        $porGas = self::clavesPorEstacion($claves);
+        $filas = [];
+        foreach (self::condicionesClaves($porGas, 'c') as $cond) {
+            $filas = array_merge($filas, $this->consultaCobros($cond, []));
+        }
+        return $filas;
+    }
+
+    /**
+     * Cobros de Cobranza a Clientes (tip 4, subope 8) para el buscador manual. $f: folio (nro del cobro),
+     * cliente (texto del nombre), importe (monto exacto), mov (MOV del banco en la nota). TOP 200.
+     * Sin ningún filtro regresa [] (no se barre todo el rango).
+     */
+    public function buscarCobros(array $f, int $from, int $until): array {
+        $folio   = (int)($f['folio'] ?? 0);
+        $cliente = trim((string)($f['cliente'] ?? ''));
+        $importe = isset($f['importe']) && $f['importe'] !== '' ? round((float)$f['importe'], 2) : null;
+        $mov     = (int)($f['mov'] ?? 0);
+        if (!$folio && $cliente === '' && $importe === null && !$mov) return [];
+        $where = "c.subope IN (" . self::SUBOPE_COBRANZA . ") AND c.fch BETWEEN ? AND ?";
+        $params = [$from, $until];
+        if ($folio) { $where .= " AND c.nro = ?"; $params[] = $folio; }
+        if ($cliente !== '') {
+            $where .= " AND EXISTS (SELECT 1 FROM SG12.dbo.Clientes cx WITH (NOLOCK) WHERE cx.cod = c.codopr AND cx.den LIKE ?)";
+            $params[] = '%' . $cliente . '%';
+        }
+        if ($mov) { $where .= " AND CAST(c.txtref AS varchar(1000)) LIKE ?"; $params[] = '%' . $mov . '%'; }
+        $filas = $this->consultaCobros($where, $params, $importe, 200);
+        if ($mov) {
+            $filas = array_values(array_filter($filas, fn($r) => ConciliacionCobros::movDeTxtref((string)$r['txtref']) === $mov));
+        }
+        return $filas;
+    }
+
+    /**
+     * Cuerpo común de cobros(): $where filtra DocumentosC tip 4 (alias c) con parámetros posicionales.
+     * $importe (opcional) filtra por el monto total del cobro; $top limita filas.
+     */
+    private function consultaCobros(string $where, array $params, ?float $importe = null, int $top = 0): array {
+        $topSql = $top > 0 ? "TOP {$top} " : '';
+        $porImporte = $importe !== null ? 'WHERE ABS(ISNULL(m.monto, 0) - ' . sprintf('%.2f', $importe) . ') < 0.005' : '';
         $query = "
             SET NOCOUNT ON;
-            DECLARE @d int = ?, @h int = ?;
             DROP TABLE IF EXISTS #c, #m, #a;
 
             SELECT c.codgas, c.nro, c.fch, c.codopr, c.subope, c.satuid, x.t,
@@ -506,8 +554,7 @@ class ConciliacionVentaModel extends Model {
               FROM SG12.dbo.DocumentosC c WITH (NOLOCK)
              CROSS APPLY (SELECT REPLACE(REPLACE(CAST(c.txtref AS varchar(1000)), CHAR(13), ' '), CHAR(10), ' ') AS t) x
              WHERE c.tip = 4
-               AND c.subope IN ({$subopes})
-               AND c.fch BETWEEN @d AND @h
+               AND {$where}
             OPTION (RECOMPILE);
 
             SELECT d.codgas, d.nro, SUM(d.mto) / 100.0 AS monto
@@ -523,7 +570,7 @@ class ConciliacionVentaModel extends Model {
               JOIN SG12.dbo.DocumentosA a WITH (NOLOCK) ON a.nro = c.nro AND a.codgas = c.codgas AND a.tip = 4
              GROUP BY a.codgas, a.nro;
 
-            SELECT c.codgas, gs.abr AS estacion, EMP.cod AS empresa, c.nro,
+            SELECT {$topSql}c.codgas, gs.abr AS estacion, EMP.cod AS empresa, c.nro,
                    CONVERT(varchar(10), DATEADD(day, c.fch - 1, '19000101'), 23) AS fecha,
                    c.codopr, cl.den AS cliente, cl.cresdo AS saldo_linea, ef.den AS tipo, c.satuid, c.t AS txtref, c.cancelado,
                    ISNULL(m.monto, 0) AS monto, a.facturas
@@ -535,10 +582,147 @@ class ConciliacionVentaModel extends Model {
               LEFT JOIN SG12.dbo.Gasolineras gs WITH (NOLOCK) ON gs.cod = c.codgas
               LEFT JOIN TG.dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = c.codgas
               LEFT JOIN SG12.dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
+              {$porImporte}
              ORDER BY c.fch, c.codgas, c.nro;
 
             DROP TABLE IF EXISTS #c, #m, #a;";
-        return $this->sql->select($query, [$from, $until]) ?: [];
+        return $this->sql->select($query, $params) ?: [];
+    }
+
+    /** Pares "codgas|nro" -> [codgas => [nro => nro]] (enteros). */
+    private static function clavesPorEstacion(array $claves): array {
+        $porGas = [];
+        foreach ($claves as $k) {
+            $p = explode('|', (string)$k);
+            if (count($p) !== 2) continue;
+            $gas = (int)$p[0];
+            $nro = (int)$p[1];
+            if ($nro === 0) continue;
+            $porGas[$gas][$nro] = $nro;
+        }
+        return $porGas;
+    }
+
+    /** Condiciones SQL "alias.codgas = X AND alias.nro IN (...)" en bloques de hasta 1000 nros (listas ya saneadas con intval). */
+    private static function condicionesClaves(array $porGas, string $alias): array {
+        $conds = [];
+        foreach ($porGas as $gas => $nros) {
+            foreach (array_chunk(array_values($nros), 1000) as $bloque) {
+                $conds[] = "{$alias}.codgas = " . (int)$gas . " AND {$alias}.nro IN (" . implode(',', array_map('intval', $bloque)) . ")";
+            }
+        }
+        return $conds;
+    }
+
+    /** Primer nro de cada serie (get_invoice_series: nro = base + consecutivo). */
+    private const SERIES_BASE = [
+        'B' => 1000000000, 'C' => 1100000000, 'D' => 1200000000, 'E' => 1300000000, 'F' => 1400000000, 'G' => 1500000000,
+        'H' => 1600000000, 'I' => 1700000000, 'J' => 1800000000, 'K' => 1900000000, 'T' => 2000000000, 'Z' => 2300000000,
+    ];
+
+    /** "I104614", "I-104614" o "104614" -> nro de DocumentosC; null si no se entiende. */
+    public static function nroDeFolio(string $folio): ?int {
+        if (!preg_match('/^([A-Z])?\s*-?\s*(\d{1,9})$/', strtoupper(trim($folio)), $m)) return null;
+        if (($m[1] ?? '') === '') return (int)$m[2];
+        return isset(self::SERIES_BASE[$m[1]]) ? self::SERIES_BASE[$m[1]] + (int)$m[2] : null;
+    }
+
+    /** Facturas (tip 3) por pares "codgas|nro": codgas, nro, folio, fecha, codopr, cliente, total, cancelada, pagada, pagos. */
+    public function facturasPorClave(array $claves): array {
+        $filas = [];
+        foreach (self::condicionesClaves(self::clavesPorEstacion($claves), 'c') as $cond) {
+            $filas = array_merge($filas, $this->consultaFacturas($cond, []));
+        }
+        return $filas;
+    }
+
+    /**
+     * Buscador de facturas (tip 3). $f: folio ("I104614"), cliente (texto), importe (total exacto),
+     * desde / hasta ('Y-m-d'), codgas. Sin ningún filtro regresa []. TOP 200, las más recientes primero.
+     */
+    public function buscarFacturas(array $f): array {
+        $folio   = trim((string)($f['folio'] ?? ''));
+        $cliente = trim((string)($f['cliente'] ?? ''));
+        $importe = isset($f['importe']) && $f['importe'] !== '' ? round((float)$f['importe'], 2) : null;
+        $desde   = trim((string)($f['desde'] ?? ''));
+        $hasta   = trim((string)($f['hasta'] ?? ''));
+        $codgas  = (int)($f['codgas'] ?? 0);
+        $conds = [];
+        $params = [];
+        if ($folio !== '') {
+            $nro = self::nroDeFolio($folio);
+            if ($nro === null) return [];
+            $conds[] = 'c.nro = ?';
+            $params[] = $nro;
+        }
+        if ($cliente !== '') {
+            $conds[] = "EXISTS (SELECT 1 FROM SG12.dbo.Clientes cx WITH (NOLOCK) WHERE cx.cod = c.codopr AND cx.den LIKE ?)";
+            $params[] = '%' . $cliente . '%';
+        }
+        if (!$conds && $desde === '' && $hasta === '' && !$codgas && $importe === null) return [];
+        // sin folio ni desde: 3 meses hacia atrás desde hasta (o desde hoy) (12 meses tardaba ~16 s: el total sale de sumar Documentos por factura; sin ventana se barrería todo el historial de facturas)
+        if ($folio === '' && $desde === '') $desde = date('Y-m-d', strtotime(($hasta !== '' ? $hasta : 'today') . ' -3 months'));
+        if ($desde !== '') { $conds[] = 'c.fch >= ?'; $params[] = dateToInt($desde); }
+        if ($hasta !== '') { $conds[] = 'c.fch <= ?'; $params[] = dateToInt($hasta); }
+        if ($codgas) { $conds[] = 'c.codgas = ?'; $params[] = $codgas; }
+        return $this->consultaFacturas(implode(' AND ', $conds), $params, $importe, 200);
+    }
+
+    private function consultaFacturas(string $where, array $params, ?float $importe = null, int $top = 0): array {
+        $topSql = $top > 0 ? "TOP {$top} " : '';
+        // el filtro por importe se aplica ANTES de calcular las aplicaciones (#p), sobre las facturas ya acotadas por fecha
+        $porImporte = $importe !== null
+            ? 'DELETE k FROM #k k LEFT JOIN #t t ON t.codgas = k.codgas AND t.nro = k.nro WHERE ABS(ISNULL(t.total, 0) - ' . sprintf('%.2f', $importe) . ') >= 0.005;'
+            : '';
+        $query = "
+            SET NOCOUNT ON;
+            DROP TABLE IF EXISTS #k, #t, #p;
+
+            SELECT c.codgas, c.nro, c.fch, c.codopr,
+                   CASE WHEN CAST(c.txtref AS varchar(20)) LIKE '@N:CANCELAD%' THEN 1 ELSE 0 END AS cancelada
+              INTO #k
+              FROM SG12.dbo.DocumentosC c WITH (NOLOCK)
+             WHERE c.tip = 3
+               AND ({$where})
+            OPTION (RECOMPILE);
+
+            SELECT d.codgas, d.nro, SUM(d.mto) / 100.0 AS total
+              INTO #t
+              FROM #k k
+              JOIN SG12.dbo.Documentos d WITH (NOLOCK) ON d.nro = k.nro AND d.codgas = k.codgas AND d.tip = 3
+             GROUP BY d.codgas, d.nro
+            OPTION (RECOMPILE, LOOP JOIN);
+
+            {$porImporte}
+
+            SELECT a.gasapl AS codgas, a.nroapl AS nro,
+                   SUM(a.mtoapl) / 100.0 AS pagada,
+                   STRING_AGG(CAST(CAST(a.codgas AS varchar(6)) + '|' + CAST(a.nro AS varchar(12)) + ':' + CAST(CAST(a.mtoapl / 100.0 AS decimal(18,2)) AS varchar(20)) AS varchar(max)), ',') AS pagos
+              INTO #p
+              FROM #k k
+              JOIN SG12.dbo.DocumentosA a WITH (NOLOCK) ON a.nroapl = k.nro AND a.gasapl = k.codgas AND a.tip = 4
+              JOIN SG12.dbo.DocumentosC cc WITH (NOLOCK) ON cc.nro = a.nro AND cc.codgas = a.codgas AND cc.tip = 4
+             WHERE ISNULL(CAST(cc.txtref AS varchar(20)), '') NOT LIKE '@N:CANCELAD%'
+             GROUP BY a.gasapl, a.nroapl;
+
+            SELECT {$topSql}k.codgas, k.nro, CONVERT(varchar(10), DATEADD(day, k.fch - 1, '19000101'), 23) AS fecha,
+                   k.codopr, cl.den AS cliente, k.cancelada,
+                   ISNULL(t.total, 0) AS total, ISNULL(p.pagada, 0) AS pagada, p.pagos
+              FROM #k k
+              LEFT JOIN #t t ON t.codgas = k.codgas AND t.nro = k.nro
+              LEFT JOIN #p p ON p.codgas = k.codgas AND p.nro = k.nro
+              LEFT JOIN SG12.dbo.Clientes cl WITH (NOLOCK) ON cl.cod = k.codopr
+             ORDER BY k.fch DESC, k.codgas, k.nro;
+
+            DROP TABLE IF EXISTS #k, #t, #p;";
+        $filas = $this->sql->select($query, $params) ?: [];
+        foreach ($filas as &$r) {
+            $r['folio'] = (string)get_invoice_series((int)$r['nro']);
+            $r['total'] = round((float)$r['total'], 2);
+            $r['pagada'] = round((float)$r['pagada'], 2);
+        }
+        unset($r);
+        return $filas;
     }
 
     /**

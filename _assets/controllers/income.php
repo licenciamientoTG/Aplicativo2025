@@ -553,45 +553,127 @@ class Income{
     }
 
     /**
-     * POST: cobros del
-     * mes con el depósito del banco que les corresponde. El cruce corre con los
-     * cobros de todas las estaciones y luego se filtra la razón social, porque un
-     * MOV puede juntar cobros de varias.
+     * POST (mes, empresa): cobros del mes con el depósito del banco que les corresponde, guardados en
+     * TG.dbo.conciliacion_cobros_* (docs/superpowers/specs/2026-11-17-conciliacion-cobros-manual-design.md).
+     * La primera vez guarda el cruce automático; después lee los grupos guardados y solo cruza los cobros
+     * nuevos. El cruce corre con los cobros de todas las estaciones y luego se filtra la razón social,
+     * porque un MOV puede juntar cobros de varias.
      */
     public function conciliation_payments() : void {
         set_time_limit(300);
         [$from, $until, $desde, $hasta] = $this->conciliationRange();
-        $empresa = $this->conciliationEmpresa();
-        $model   = new ConciliacionVentaModel;
-        $cobros  = array_map(function ($r) {
-            $r['mov'] = ConciliacionCobros::movDeTxtref((string)$r['txtref']);
-            return $r;
-        }, $model->cobros($from, $until));
-        $dias = fn(string $fecha, int $n) => date('Y-m-d', strtotime($fecha . sprintf(' %+d days', $n)));
-        $depositos = $model->depositos(
-            array_column($cobros, 'mov'),
-            array_column($cobros, 'monto'),
-            $dias($desde, -ConciliacionCobros::DIAS_ANTES), $dias($hasta, ConciliacionCobros::DIAS_DESPUES),
-            $dias($desde, -ConciliacionCobros::DIAS_IMPORTE), $dias($hasta, ConciliacionCobros::DIAS_IMPORTE)
-        );
+        $mes      = substr($desde, 0, 7);
+        $empresa  = $this->conciliationEmpresa();
+        $model    = new ConciliacionVentaModel;
+        $guardado = new ConciliacionCobrosGuardadoModel;
+        $cobros   = $this->conciliationConMov($model->cobros($from, $until));
+
+        // Primera vez: se guarda el cruce automático. Si otro usuario guardó el mes antes, se lee lo suyo.
+        $mesFila = $guardado->mesGuardado($mes);
+        if ($mesFila === null) {
+            $grupos = ConciliacionCobrosGuardado::gruposDesdeCruce($this->conciliationCruce($model, $guardado, $cobros, $desde, $hasta), $mes);
+            $this->conciliationTransaccion($guardado, $mes, function () use ($guardado, $grupos, $mes) {
+                if ($guardado->mesGuardado($mes) !== null) return false;
+                if (!$guardado->reservarMes($mes, $this->conciliationUsuario())) return false;
+                $this->conciliationGuardarLibres($guardado, $grupos, $mes);
+                return true;
+            });
+            $mesFila = $guardado->mesGuardado($mes);
+        }
+
+        // Cobros nuevos (capturados después de guardar): solo ellos, contra los movimientos que siguen libres
+        $grupos = $guardado->gruposActivos($mes);
+        $nuevos = ConciliacionCobrosGuardado::cobrosSinGrupo($cobros, $grupos);
+        if ($nuevos) {
+            $gruposNuevos = ConciliacionCobrosGuardado::gruposDesdeCruce($this->conciliationCruce($model, $guardado, $nuevos, $desde, $hasta), $mes);
+            $this->conciliationTransaccion($guardado, $mes, fn() => $this->conciliationGuardarLibres($guardado, $gruposNuevos, $mes) > 0);
+            $grupos = $guardado->gruposActivos($mes);
+        }
+
+        // Solo se pintan los grupos con cobros de este mes (o sin cobros, con su depósito en el mes): los que salen
+        // en el mes solo por el depósito o una factura de un cobro de otro mes no suman a "Cobros del mes"
+        $delMes = ConciliacionCobrosGuardado::gruposDelMes($grupos, $mes);
+
+        // Datos frescos de lo ligado: cobros de otros meses (de los grupos que se pintan), movimientos y facturas.
+        // Un cobro de este mes que no está en $cobros ya no existe en ControlGas: no se vuelve a buscar.
+        $cobrosPorClave = $empresaGas = [];
+        foreach ($cobros as $c) {
+            $cobrosPorClave[ConciliacionCobrosGuardado::claveDoc((int)$c['codgas'], (int)$c['nro'])] = $c;
+            $empresaGas[(int)$c['codgas']] = $c['empresa'];
+        }
+        $otrosMeses = $movIds = $clavesF = [];
+        foreach ($grupos as $g) {
+            foreach ($g['items'] as $it) {
+                if ($it['tipo'] === 'M') $movIds[] = (int)$it['movimiento_id'];
+            }
+        }
+        foreach ($delMes as $g) {
+            foreach ($g['items'] as $it) {
+                if ($it['tipo'] === 'M') continue;
+                $k = ConciliacionCobrosGuardado::claveDoc((int)$it['codgas'], (int)$it['nro']);
+                if ($it['tipo'] === 'F') $clavesF[$k] = $k;
+                elseif ((string)$it['mes'] !== $mes && !isset($cobrosPorClave[$k])) $otrosMeses[$k] = $k;
+            }
+        }
+        if ($otrosMeses) {
+            foreach ($this->conciliationConMov($model->cobrosPorClave(array_values($otrosMeses))) as $c) {
+                $cobrosPorClave[ConciliacionCobrosGuardado::claveDoc((int)$c['codgas'], (int)$c['nro'])] = $c;
+            }
+        }
+        $movPorId = [];
+        foreach ($guardado->movimientosPorId($movIds) as $m) $movPorId[(int)$m['id']] = $m;
+        $facturasPorClave = [];
+        if ($clavesF) {
+            foreach ($model->facturasPorClave(array_values($clavesF)) as $f) {
+                $facturasPorClave[ConciliacionCobrosGuardado::claveDoc((int)$f['codgas'], (int)$f['nro'])] = $f;
+            }
+        }
+
+        // Alertas por grupo (nunca bloquean)
+        $otros   = ConciliacionCobrosContexto::otrosGrupos($grupos);
+        $cuentas = ConciliacionCobrosContexto::cuentasEstacion($grupos, $movPorId);
+        $alertas = [];
+        foreach ($delMes as $g) {
+            $alertas[(int)$g['id']] = ConciliacionAlertas::deGrupo($g, [
+                'cobros'          => $cobrosPorClave,
+                'movs'            => $movPorId,
+                'facturas'        => ConciliacionCobrosContexto::facturasDelGrupo($g, $facturasPorClave),
+                'otrosGrupos'     => $otros[(int)$g['id']] ?? [],
+                'cuentasEstacion' => $cuentas,
+                'mes'             => $mes,
+            ]);
+        }
 
         $data = [];
-        foreach (ConciliacionCobros::conciliar($cobros, $depositos) as $r) {
-            $emp = $r['empresa'] === null ? -1 : (int)$r['empresa'];
-            if ($empresa !== 0 && $emp !== $empresa) continue;
+        foreach (ConciliacionCobrosGuardado::filasDesdeGrupos($delMes, $cobrosPorClave, $movPorId, $facturasPorClave, $mes) as $r) {
+            $sinCobro = $r['codgas'] === null;
+            // Razón social: la del cobro; en un grupo sin cobros, la de la estación de sus facturas (si no se sabe, sale en todas)
+            $emp = $sinCobro ? null : ($r['empresa'] ?? ($empresaGas[(int)$r['codgas']] ?? null));
+            if ($sinCobro) {
+                foreach ($r['items_guardados'] as $it) {
+                    if ($it['tipo'] === 'F' && isset($empresaGas[(int)$it['codgas']])) { $emp = $empresaGas[(int)$it['codgas']]; break; }
+                }
+            }
+            if ($empresa !== 0 && !($sinCobro && $emp === null) && ($emp === null ? -1 : (int)$emp) !== $empresa) continue;
+            $c = $sinCobro ? [] : ($cobrosPorClave[ConciliacionCobrosGuardado::claveDoc((int)$r['codgas'], (int)$r['nro'])] ?? []);
+            $borrado = !$sinCobro && $r['borrado'];   // cobro del mes que ya no existe en ControlGas: sale con su monto guardado
             $tags = $this->txtrefTags((string)$r['txtref']);
             $facturas = [];
-            foreach (array_filter(explode(',', (string)$r['facturas'])) as $f) {
-                [$nro, $mto] = array_pad(explode(':', $f), 2, 0);
-                $facturas[] = get_invoice_series((int)$nro) . ' ($' . number_format((float)$mto, 2) . ')';
+            if ($sinCobro) {
+                $facturas[] = (string)$r['facturas'];
+            } else {
+                foreach (array_filter(explode(',', (string)$r['facturas'])) as $f) {
+                    [$nro, $mto] = array_pad(explode(':', $f), 2, 0);
+                    $facturas[] = get_invoice_series((int)$nro) . ' ($' . number_format((float)$mto, 2) . ')';
+                }
             }
             $data[] = [
                 'estacion'        => trim((string)$r['estacion']),
-                'cobro'           => (int)$r['nro'],
+                'cobro'           => $sinCobro ? null : (int)$r['nro'],
                 'fecha'           => $r['fecha'],
                 'codcli'          => $r['codopr'],
                 'cliente'         => $r['cliente'] ?? '',
-                'saldo_linea'     => ($r['saldo_linea'] ?? null) === null ? null : round((float)$r['saldo_linea'], 2),
+                'saldo_linea'     => ($c['saldo_linea'] ?? null) === null ? null : round((float)$c['saldo_linea'], 2),
                 'tipo'            => trim((string)$r['tipo']),
                 'forma_pago'      => self::CONCILIATION_FORMAS_PAGO[$tags['M'] ?? ''] ?? ($tags['M'] ?? ''),
                 'ordenante'       => trim($tags['B'] ?? ''),
@@ -615,9 +697,561 @@ class Income{
                 'detalle_banco'   => trim((string)$r['detalle_banco']),
                 'uuid'            => $r['satuid'] ?? '',
                 'referencia'      => $this->txtrefTexto((string)$r['txtref']),
+                'grupo_id'        => $r['grupo_id'],
+                'origen'          => $r['origen'],
+                'alertas'         => $borrado ? array_merge($alertas[(int)$r['grupo_id']] ?? [], ['El cobro ya no existe en ControlGas'])
+                                                : ($alertas[(int)$r['grupo_id']] ?? []),
+                'comentario'      => $r['comentario'],
+                'tiene_mov'       => (bool)$r['tiene_mov'],
+                'borrado'         => $borrado,
             ];
         }
+        json_output(['data' => $data, 'guardado' => [
+            'en'             => $mesFila['guardado_en'] ?? null,
+            'por'            => $mesFila['guardado_por'] ?? null,
+            'recalculado_en' => $mesFila['recalculado_en'] ?? null,
+            'recalculado_por' => $mesFila['recalculado_por'] ?? null,
+        ]]);
+    }
+
+    /**
+     * POST (mes): reintento diario de los grupos auto pendientes del mes (ConciliacionCobrosGuardado::REINTENTAR),
+     * lo llama la vista sola después de pintar. Solo el primer llamado del día cruza: si reintento_fecha ya es hoy
+     * regresa cambios 0 sin cruzar. El plan es ConciliacionCobrosGuardado::planReintento (bolsa sin los fijos;
+     * un depósito junta cobros de varios grupos viejos; no se rehacen grupos con cobros cancelados o borrados).
+     * tomarReintento, las bajas y los grupos nuevos van en la misma transacción con candado: si se deshace,
+     * el día no se gasta.
+     */
+    public function conciliation_payments_retry() : void {
+        set_time_limit(300);
+        [, , $desde, $hasta] = $this->conciliationRange();
+        $mes      = substr($desde, 0, 7);
+        $guardado = new ConciliacionCobrosGuardadoModel;
+        $sinCambios = ['cambios' => 0, 'detalle' => []];
+        $fila = $guardado->mesGuardado($mes);
+        if ($fila === null || $fila['reintento_fecha'] === date('Y-m-d')) { json_output($sinCambios); return; }
+
+        $pendientes = array_values(array_filter($guardado->gruposActivos($mes), fn($g) => $g['origen'] === 'auto' && $g['mes'] === $mes
+            && in_array($g['estatus'], ConciliacionCobrosGuardado::REINTENTAR, true)));
+        $claves = $actuales = $antes = [];
+        foreach ($pendientes as $g) {
+            $dep = null;
+            foreach ($g['items'] as $it) {
+                if ($it['tipo'] === 'M') { $actuales[(int)$it['movimiento_id']] = true; $dep ??= (int)$it['movimiento_id']; }
+            }
+            foreach ($g['items'] as $it) {
+                if ($it['tipo'] !== 'C') continue;
+                $k = ConciliacionCobrosGuardado::claveDoc((int)$it['codgas'], (int)$it['nro']);
+                $claves[] = $k;
+                $antes[$k] = ['estatus' => $g['estatus'], 'deposito_id' => $dep];
+            }
+        }
+        $plan = ['cruce' => [], 'componentes' => []];
+        if ($claves) {
+            $model = new ConciliacionVentaModel;
+            $cobros = $this->conciliationConMov($model->cobrosPorClave($claves));
+            $depositos = $this->conciliationDepositos($model, $cobros, $desde, $hasta);
+            $fijosDb = $guardado->movimientosOcupadosEntre(
+                array_merge(array_map(fn($d) => (int)$d['id'], $depositos), array_keys($actuales)),
+                array_map(fn($g) => (int)$g['id'], $pendientes)
+            );
+            $actualesPorId = [];
+            foreach ($actuales ? $guardado->movimientosPorId(array_keys($actuales)) : [] as $m) $actualesPorId[(int)$m['id']] = $m;
+            $plan = ConciliacionCobrosGuardado::planReintento($pendientes, $cobros, $depositos, $actualesPorId, $fijosDb, $mes);
+        }
+
+        // Dentro del candado: marca el día y aplica los componentes que siguen sin conflicto (los que chocan con
+        // un movimiento que otra sesión ocupó se quedan como estaban; el resto sí se guarda)
+        $hechos = [];
+        $ok = $this->conciliationTransaccion($guardado, $mes, function () use ($guardado, $plan, $mes, &$hechos) {
+            if (!$guardado->tomarReintento($mes)) return false;
+            $comps = $plan['componentes'];
+            if (!$comps) return true;
+            $movs = array_keys(ConciliacionCobrosGuardado::movimientosOcupados(array_merge(...array_column($comps, 'nuevos'))));
+            $ocupados = $guardado->movimientosOcupadosEntre($movs, array_merge(...array_column($comps, 'bajas')));
+            $comps = ConciliacionCobrosGuardado::componentesSinConflicto($comps, $ocupados);
+            if (!$comps) return true;
+            $bajas = array_merge(...array_column($comps, 'bajas'));
+            if ($guardado->darDeBaja($bajas, $this->conciliationUsuario()) !== count($bajas)) return false;
+            $guardado->guardarGrupos(array_merge(...array_column($comps, 'nuevos')), $mes, 'sistema');
+            $hechos = $comps;
+            return true;
+        });
+        if (!$ok || !$hechos) { json_output($sinCambios); return; }
+
+        $cruce = $plan['cruce'];
+        $rehechos = [];
+        foreach (array_merge(...array_column($hechos, 'nuevos')) as $g) {
+            foreach ($g['items'] as $it) {
+                if ($it['tipo'] === 'C') $rehechos[ConciliacionCobrosGuardado::claveDoc((int)$it['codgas'], (int)$it['nro'])] = true;
+            }
+        }
+        $detalle = [];
+        foreach ($cruce as $r) {
+            $k = ConciliacionCobrosGuardado::claveDoc((int)$r['codgas'], (int)$r['nro']);
+            $a = $antes[$k] ?? null;
+            if ($a === null || !isset($rehechos[$k])) continue;
+            $dep = ($r['deposito_id'] ?? null) === null ? null : (int)$r['deposito_id'];
+            if ($r['estatus'] === $a['estatus'] && $dep === $a['deposito_id']) continue;
+            $detalle[] = ['nro' => (int)$r['nro'], 'antes' => $a['estatus'], 'despues' => $r['estatus']];
+        }
+        json_output(['cambios' => count($detalle), 'detalle' => $detalle]);
+    }
+
+    /**
+     * POST (mes): "Recalcular automático". Da de baja los grupos auto creados desde el mes y vuelve a cruzar
+     * los cobros del mes que no están en otros grupos (manuales o de otro mes), contra los movimientos que no
+     * ocupa ningún otro grupo activo. Nunca toca los manuales.
+     */
+    public function conciliation_recalculate() : void {
+        set_time_limit(300);
+        [$from, $until, $desde, $hasta] = $this->conciliationRange();
+        $mes      = substr($desde, 0, 7);
+        $guardado = new ConciliacionCobrosGuardadoModel;
+        if ($guardado->mesGuardado($mes) === null) {
+            json_output(['ok' => false, 'error' => 'El mes todavía no se ha guardado']);
+            return;
+        }
+        $model = new ConciliacionVentaModel;
+        $esAutoDelMes = fn($g) => $g['origen'] === 'auto' && $g['mes'] === $mes;
+        $activos = $guardado->gruposActivos($mes);
+        $autoIds = array_map(fn($g) => (int)$g['id'], array_values(array_filter($activos, $esAutoDelMes)));
+        $fijos = array_values(array_filter($activos, fn($g) => !$esAutoDelMes($g)));
+        $cobros = ConciliacionCobrosGuardado::cobrosSinGrupo($this->conciliationConMov($model->cobros($from, $until)), $fijos);
+        $grupos = ConciliacionCobrosGuardado::gruposDesdeCruce($this->conciliationCruce($model, $guardado, $cobros, $desde, $hasta, $autoIds), $mes);
+        $usuario = $this->conciliationUsuario();
+        $ok = $this->conciliationTransaccion($guardado, $mes, function () use ($guardado, $grupos, $mes, $usuario, $esAutoDelMes, $autoIds) {
+            // Dentro del candado: si otra sesión cambió los grupos auto del mes mientras se cruzaba, no se escribe
+            $ahora = array_map(fn($g) => (int)$g['id'], array_values(array_filter($guardado->gruposActivos($mes), $esAutoDelMes)));
+            if ($ahora != $autoIds) return false;
+            if ($guardado->bajaAutoDelMes($mes, $usuario) !== count($autoIds)) return false;
+            $this->conciliationGuardarLibres($guardado, $grupos, $mes);
+            $guardado->marcarRecalculado($mes, $usuario);
+            return true;
+        });
+        json_output($ok ? ['ok' => true] : ['ok' => false, 'error' => 'La conciliación del mes cambió mientras se recalculaba; intenta de nuevo']);
+    }
+
+    /** POST (mes, cuentas[]): abonos del mes de esas cuentas que no están en ningún grupo activo (ocupa = 1). */
+    public function conciliation_unmatched_deposits() : void {
+        [, , $desde, $hasta] = $this->conciliationRange();
+        $cuentas = array_slice(array_map('strval', (array)($_POST['cuentas'] ?? [])), 0, 50);
+        json_output(['data' => (new ConciliacionCobrosGuardadoModel)->depositosSinConciliar($desde, $hasta, $cuentas)]);
+    }
+
+    /**
+     * POST (mes, grupo_id o movimiento_id opcionales): vista parcial del modal de conciliación manual
+     * (views/income/modals/conciliation_manual.html). Precarga los items del grupo activo o el movimiento;
+     * sin ninguno abre vacío ("Conciliar desde banco").
+     */
+    public function conciliation_manual_modal() : void {
+        [, , $desde, $hasta] = $this->conciliationRange();
+        $mes      = substr($desde, 0, 7);
+        $guardado = new ConciliacionCobrosGuardadoModel;
+        $grupoId  = (int)($_POST['grupo_id'] ?? 0);
+        $movId    = (int)($_POST['movimiento_id'] ?? 0);
+        $grupo = $error = null;
+        $items = [];
+        if ($grupoId > 0) {
+            foreach ($guardado->gruposActivos($mes) as $g) {
+                if ($g['id'] === $grupoId) { $grupo = $g; break; }
+            }
+            if ($grupo === null) $error = 'Esta conciliación ya no está activa (otro usuario la cambió). Recarga el tab.';
+            else $items = $grupo['items'];
+        } elseif ($movId > 0) {
+            $items = [['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => $movId, 'monto' => 0, 'ocupa' => 1]];
+        }
+        // Seleccionados = items con ocupa = 1. La referencia de una Diferencia (ocupa = 0) va aparte como sugerida:
+        // ese depósito puede ocuparlo un Cuadra y no debe tomarse sin que el usuario lo elija.
+        $filas = $sugeridos = [];
+        if ($items) {
+            [$cobros, $movs, $facturas] = $this->conciliationManualDatos($guardado, $items);
+            foreach ($items as $it) {
+                $k = $it['tipo'] === 'M' ? (int)$it['movimiento_id'] : ConciliacionCobrosGuardado::claveDoc((int)$it['codgas'], (int)$it['nro']);
+                $r = ['C' => $cobros, 'M' => $movs, 'F' => $facturas][$it['tipo']][$k] ?? null;
+                // lo que ya no existe se muestra con el monto guardado, para que se pueda quitar
+                $fila = $r !== null ? $this->conciliationManualFila($it['tipo'], $r) : [
+                    'tipo' => $it['tipo'], 'codgas' => $it['codgas'], 'nro' => $it['nro'], 'movimiento_id' => $it['movimiento_id'],
+                    'monto' => round((float)$it['monto'], 2), 'existe' => false,
+                ];
+                if ((int)$it['ocupa'] === 1) $filas[] = $fila;
+                else $sugeridos[] = $fila;
+            }
+        }
+        $flags = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE;
+        echo $this->twig->render($this->route . 'modals/conciliation_manual.html', [
+            'mes'            => $mes,
+            'desde'          => $desde,
+            'hasta'          => $hasta,
+            'grupo'          => $grupo,
+            'error'          => $error,
+            'items_json'     => json_encode($filas, $flags),
+            'sugeridos_json' => json_encode($sugeridos, $flags),
+        ]);
+    }
+
+    /** POST (importe, importe_min, importe_max, desde, hasta, cuenta, secuencia, texto): abonos del banco para el modal. */
+    public function conciliation_search_movements() : void {
+        $f = [];
+        foreach (['importe', 'importe_min', 'importe_max', 'secuencia'] as $k) {
+            $v = trim((string)($_POST[$k] ?? ''));
+            if ($v !== '' && is_numeric($v)) $f[$k] = $v;
+        }
+        foreach (['desde', 'hasta'] as $k) {
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_POST[$k] ?? ''))) $f[$k] = $_POST[$k];
+        }
+        $cuenta = preg_replace('/[^0-9A-Za-z]/', '', (string)($_POST['cuenta'] ?? ''));
+        if ($cuenta !== '') $f['cuenta'] = $cuenta;
+        $texto = mb_substr(trim((string)($_POST['texto'] ?? '')), 0, 100);
+        if ($texto !== '') $f['texto'] = $texto;
+        $data = array_map(fn($m) => $this->conciliationManualFila('M', $m) + [
+            'grupo_id'  => $m['grupo_id'] === null ? null : (int)$m['grupo_id'],
+            'origen'    => $m['origen'],
+            'mes_grupo' => $m['mes_grupo'],
+        ], (new ConciliacionCobrosGuardadoModel)->buscarMovimientos($f));
         json_output(['data' => $data]);
+    }
+
+    /** POST (mes, folio, cliente, importe, mov): cobros de Cobranza del mes y ±1 mes, con el grupo activo que los ocupa. */
+    public function conciliation_search_payments() : void {
+        [, , $desde] = $this->conciliationRange();
+        $from  = dateToInt(date('Y-m-01', strtotime($desde . ' -1 month')));
+        $until = dateToInt(date('Y-m-t', strtotime($desde . ' +1 month')));
+        $importe = trim((string)($_POST['importe'] ?? ''));
+        $f = [
+            'folio'   => (int)($_POST['folio'] ?? 0),
+            'cliente' => mb_substr(trim((string)($_POST['cliente'] ?? '')), 0, 100),
+            'importe' => is_numeric($importe) ? $importe : '',
+            'mov'     => (int)($_POST['mov'] ?? 0),
+        ];
+        $filas = array_map(fn($c) => $this->conciliationManualFila('C', $c),
+            $this->conciliationConMov((new ConciliacionVentaModel)->buscarCobros($f, $from, $until)));
+        json_output(['data' => $this->conciliationManualAnotar(new ConciliacionCobrosGuardadoModel, $filas)]);
+    }
+
+    /** POST (folio, cliente, importe, desde, hasta, codgas): facturas (sin folio ni fechas, últimos 3 meses), con el grupo activo que las ocupa. */
+    public function conciliation_search_invoices() : void {
+        $importe = trim((string)($_POST['importe'] ?? ''));
+        $f = [
+            'folio'   => mb_substr(trim((string)($_POST['folio'] ?? '')), 0, 20),
+            'cliente' => mb_substr(trim((string)($_POST['cliente'] ?? '')), 0, 100),
+            'importe' => is_numeric($importe) ? $importe : '',
+            'codgas'  => (int)($_POST['codgas'] ?? 0),
+        ];
+        foreach (['desde', 'hasta'] as $k) {
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_POST[$k] ?? ''))) $f[$k] = $_POST[$k];
+        }
+        $filas = array_map(fn($r) => $this->conciliationManualFila('F', $r), (new ConciliacionVentaModel)->buscarFacturas($f));
+        json_output(['data' => $this->conciliationManualAnotar(new ConciliacionCobrosGuardadoModel, $filas)]);
+    }
+
+    /**
+     * POST (mes, items JSON, grupo_id opcional): alertas y totales de la conciliación manual antes de guardar.
+     * No escribe nada. Avisa de los items que ya ocupan otros grupos activos (al guardar se dan de baja);
+     * el grupo que se está editando no cuenta.
+     */
+    public function conciliation_manual_preview() : void {
+        [, , $desde] = $this->conciliationRange();
+        $mes      = substr($desde, 0, 7);
+        $grupoId  = (int)($_POST['grupo_id'] ?? 0);
+        $guardado = new ConciliacionCobrosGuardadoModel;
+        try {
+            $items = ConciliacionCobrosManual::items($_POST['items'] ?? '');
+            [$cobros, $movs, $facturas] = $this->conciliationManualDatos($guardado, $items);
+            $completos = ConciliacionCobrosManual::completar($items, $cobros, $movs, $facturas);
+        } catch (InvalidArgumentException $e) {
+            $this->conciliationManualError($e->getMessage());
+            return;
+        }
+        $grupo = ['id' => 0] + ConciliacionCobrosManual::grupo($completos, null);
+        $porMes = $this->conciliationManualGrupos($guardado, array_merge([$mes], array_column($completos, 'mes')));
+        $otros = [];
+        $cl = ConciliacionCobrosManual::claves($items);
+        $ocupan = array_values(array_diff($items ? $guardado->gruposQueOcupan($cl['C'], $cl['M'], $cl['F']) : [], [$grupoId]));
+        if ($ocupan) {
+            $ocupantes = $this->conciliationManualOcupantes($porMes);
+            foreach ($completos as $it) {
+                $o = $ocupantes[ConciliacionCobrosManual::claveItem($it)] ?? null;
+                if ($o !== null && in_array($o['id'], $ocupan, true)) $otros[ConciliacionCobrosManual::claveItem($it)] = $o;
+            }
+        }
+        json_output([
+            'alertas' => $this->conciliationManualAlertas($guardado, $grupo, $mes, $porMes[$mes] ?? [], $cobros, $movs, $facturas, $otros),
+            'totales' => ConciliacionCobrosManual::totales($completos, $cobros, $movs, $facturas),
+        ]);
+    }
+
+    /**
+     * POST (mes, items JSON, comentario, grupo_id opcional): guarda la conciliación manual. Nunca se bloquea:
+     * en la transacción del mes da de baja los grupos activos que ocupan alguno de los items y el grupo que se
+     * edita, y crea el grupo manual (ocupa = 1). Montos y mes de cada item salen de BD, no del POST.
+     * Los cobros que quedan sin grupo vuelven al cruce automático en la siguiente carga del tab.
+     */
+    public function conciliation_manual_save() : void {
+        [, , $desde] = $this->conciliationRange();
+        $mes      = substr($desde, 0, 7);
+        $grupoId  = (int)($_POST['grupo_id'] ?? 0);
+        $guardado = new ConciliacionCobrosGuardadoModel;
+        try {
+            $items = ConciliacionCobrosManual::items($_POST['items'] ?? '');
+            if (!$items) throw new InvalidArgumentException('Elige al menos un cobro, movimiento o factura');
+            $comentario = ConciliacionCobrosManual::comentario($_POST['comentario'] ?? '');
+            [$cobros, $movs, $facturas] = $this->conciliationManualDatos($guardado, $items);
+            $grupo = ConciliacionCobrosManual::grupo(ConciliacionCobrosManual::completar($items, $cobros, $movs, $facturas), $comentario);
+        } catch (InvalidArgumentException $e) {
+            $this->conciliationManualError($e->getMessage());
+            return;
+        }
+        // El grupo que se edita solo cuenta si sigue activo (puede ser de otro mes); sus meses entran al candado
+        $editado = $guardado->grupoPorId($grupoId);
+        if ($editado !== null && !$editado['activo']) $editado = null;
+        $meses = ConciliacionCobrosManual::mesesABloquear($mes, $grupo['items'], $editado);
+        $cl = ConciliacionCobrosManual::claves($items);
+        $usuario = $this->conciliationUsuario();
+        $nuevoId = 0;
+        $ok = $this->conciliationTransaccion($guardado, $meses, function () use ($guardado, $cl, $editado, $grupo, $mes, $usuario, &$nuevoId) {
+            $bajas = $guardado->gruposQueOcupan($cl['C'], $cl['M'], $cl['F']);
+            if ($editado !== null && ($guardado->grupoPorId($editado['id'])['activo'] ?? false)) $bajas[] = $editado['id'];
+            $bajas = array_values(array_unique($bajas));
+            if ($guardado->darDeBaja($bajas, $usuario) !== count($bajas)) return false;
+            $nuevoId = $guardado->guardarGrupos([$grupo], $mes, $usuario)[0];
+            return true;
+        });
+        if (!$ok) {
+            http_response_code(409);
+            json_output(['error' => 'La conciliación cambió mientras la editabas; vuelve a abrirla']);
+            return;
+        }
+        $grupo['id'] = $nuevoId;
+        $porMes = $this->conciliationManualGrupos($guardado, [$mes]);
+        json_output([
+            'ok'       => true,
+            'grupo_id' => $nuevoId,
+            'alertas'  => $this->conciliationManualAlertas($guardado, $grupo, $mes, $porMes[$mes] ?? [], $cobros, $movs, $facturas, []),
+        ]);
+    }
+
+    /**
+     * POST (grupo_id): deshace una conciliación manual activa (activo = 0), con el candado de los meses de sus
+     * items. Sus cobros vuelven al cruce automático.
+     */
+    public function conciliation_manual_undo() : void {
+        $grupoId  = (int)($_POST['grupo_id'] ?? 0);
+        $guardado = new ConciliacionCobrosGuardadoModel;
+        $grupo = $guardado->grupoPorId($grupoId);
+        if ($grupo === null || !$grupo['activo'] || $grupo['origen'] !== 'manual') {
+            $this->conciliationManualError('Solo se puede deshacer una conciliación manual activa');
+            return;
+        }
+        $usuario = $this->conciliationUsuario();
+        $meses = ConciliacionCobrosManual::mesesABloquear((string)$grupo['mes'], $grupo['items'], null);
+        $ok = $this->conciliationTransaccion($guardado, $meses, fn() => $guardado->darDeBaja([$grupoId], $usuario) === 1);
+        if (!$ok) {
+            $this->conciliationManualError('La conciliación ya se había deshecho');
+            return;
+        }
+        json_output(['ok' => true]);
+    }
+
+    private function conciliationManualError(string $mensaje) : void {
+        http_response_code(400);
+        json_output(['error' => $mensaje]);
+    }
+
+    /** Datos frescos de los items: [cobros "codgas|nro" => fila, movimientos id => fila, facturas "codgas|nro" => fila]. */
+    private function conciliationManualDatos(ConciliacionCobrosGuardadoModel $guardado, array $items) : array {
+        $cl = ConciliacionCobrosManual::claves($items);
+        $model = new ConciliacionVentaModel;
+        $cobros = $movs = $facturas = [];
+        if ($cl['C']) {
+            foreach ($this->conciliationConMov($model->cobrosPorClave($cl['C'])) as $c) {
+                $cobros[ConciliacionCobrosGuardado::claveDoc((int)$c['codgas'], (int)$c['nro'])] = $c;
+            }
+        }
+        if ($cl['M']) {
+            foreach ($guardado->movimientosPorId($cl['M']) as $m) $movs[(int)$m['id']] = $m;
+        }
+        if ($cl['F']) {
+            foreach ($model->facturasPorClave($cl['F']) as $f) {
+                $facturas[ConciliacionCobrosGuardado::claveDoc((int)$f['codgas'], (int)$f['nro'])] = $f;
+            }
+        }
+        return [$cobros, $movs, $facturas];
+    }
+
+    /** Fila del modal (resultado de búsqueda o seleccionado) con la clave del item y los datos a mostrar. */
+    private function conciliationManualFila(string $tipo, array $r) : array {
+        if ($tipo === 'M') {
+            return [
+                'tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => (int)$r['id'],
+                'banco'       => trim((string)$r['banco']),
+                'cuenta'      => trim((string)$r['cuenta']),
+                'fecha'       => $r['fecha'],
+                'secuencia'   => $r['secuencia'],
+                'monto'       => round((float)$r['abono'], 2),
+                'contraparte' => trim((string)$r['nombre_contraparte']),
+                'rfc'         => trim((string)$r['rfc_contraparte']),
+                'detalle'     => trim((string)$r['detalle']),
+                'existe'      => true,
+            ];
+        }
+        if ($tipo === 'C') {
+            $facturas = [];
+            foreach (array_filter(explode(',', (string)$r['facturas'])) as $f) {
+                [$nro, $mto] = array_pad(explode(':', $f), 2, 0);
+                $facturas[] = get_invoice_series((int)$nro) . ' ($' . number_format((float)$mto, 2) . ')';
+            }
+            return [
+                'tipo' => 'C', 'codgas' => (int)$r['codgas'], 'nro' => (int)$r['nro'], 'movimiento_id' => null,
+                'estacion'  => trim((string)$r['estacion']),
+                'fecha'     => $r['fecha'],
+                'cliente'   => trim((string)$r['cliente']),
+                'monto'     => round((float)$r['monto'], 2),
+                'mov'       => $r['mov'],
+                'cancelado' => (int)$r['cancelado'] === 1,
+                'facturas'  => implode(', ', $facturas),
+                'existe'    => true,
+            ];
+        }
+        return [
+            'tipo' => 'F', 'codgas' => (int)$r['codgas'], 'nro' => (int)$r['nro'], 'movimiento_id' => null,
+            'folio'     => (string)$r['folio'],
+            'fecha'     => $r['fecha'],
+            'cliente'   => trim((string)$r['cliente']),
+            'monto'     => round((float)$r['total'], 2),
+            'cancelada' => (int)$r['cancelada'] === 1,
+            'pagada'    => round((float)$r['pagada'], 2),
+            'existe'    => true,
+        ];
+    }
+
+    /** Grupos activos de esos meses ('Y-m'), una consulta por mes: [mes => grupos]. */
+    private function conciliationManualGrupos(ConciliacionCobrosGuardadoModel $guardado, array $meses) : array {
+        $out = [];
+        foreach (array_unique($meses) as $m) {
+            if (preg_match('/^\d{4}-\d{2}$/', (string)$m)) $out[$m] = $guardado->gruposActivos($m);
+        }
+        return $out;
+    }
+
+    /** Item ('C|codgas|nro', 'M|id', 'F|codgas|nro') => grupo activo que lo ocupa (ocupa = 1): id, origen, mes. */
+    private function conciliationManualOcupantes(array $gruposPorMes) : array {
+        $out = [];
+        foreach ($gruposPorMes as $grupos) {
+            foreach ($grupos as $g) {
+                foreach ($g['items'] as $it) {
+                    if ((int)$it['ocupa'] === 1) $out[ConciliacionCobrosManual::claveItem($it)] ??= ['id' => (int)$g['id'], 'origen' => (string)$g['origen'], 'mes' => $g['mes']];
+                }
+            }
+        }
+        return $out;
+    }
+
+    /** Filas de cobros o facturas con grupo_id / origen / mes_grupo del grupo activo que las ocupa (o null). */
+    private function conciliationManualAnotar(ConciliacionCobrosGuardadoModel $guardado, array $filas) : array {
+        if (!$filas) return [];
+        $ocupantes = $this->conciliationManualOcupantes(
+            $this->conciliationManualGrupos($guardado, array_map(fn($r) => substr((string)$r['fecha'], 0, 7), $filas))
+        );
+        return array_map(function ($r) use ($ocupantes) {
+            $o = $ocupantes[ConciliacionCobrosManual::claveItem($r)] ?? null;
+            return $r + ['grupo_id' => $o['id'] ?? null, 'origen' => $o['origen'] ?? null, 'mes_grupo' => $o['mes'] ?? null];
+        }, $filas);
+    }
+
+    /**
+     * Alertas de un grupo manual (ConciliacionAlertas::deGrupo) con datos frescos. Las cuentas que "suele usar"
+     * cada estación salen de los grupos activos del mes ($delMes); $otros = items que ocupan otros grupos.
+     */
+    private function conciliationManualAlertas(ConciliacionCobrosGuardadoModel $guardado, array $grupo, string $mes, array $delMes,
+                                               array $cobros, array $movs, array $facturas, array $otros) : array {
+        $movMes = $movs;
+        $faltan = [];
+        foreach ($delMes as $g) {
+            foreach ($g['items'] as $it) {
+                if ($it['tipo'] === 'M' && (int)$it['ocupa'] === 1 && !isset($movMes[(int)$it['movimiento_id']])) $faltan[(int)$it['movimiento_id']] = true;
+            }
+        }
+        foreach ($faltan ? $guardado->movimientosPorId(array_keys($faltan)) : [] as $m) $movMes[(int)$m['id']] = $m;
+        return ConciliacionAlertas::deGrupo($grupo, [
+            'cobros'          => $cobros,
+            'movs'            => $movs,
+            'facturas'        => ConciliacionCobrosContexto::facturasDelGrupo($grupo, $facturas),
+            'otrosGrupos'     => $otros,
+            'cuentasEstacion' => ConciliacionCobrosContexto::cuentasEstacion($delMes, $movMes),
+            'mes'             => $mes,
+        ]);
+    }
+
+    /** Cobros con su MOV (ConciliacionCobros::movDeTxtref) en la columna mov. */
+    private function conciliationConMov(array $cobros) : array {
+        return array_map(function ($r) {
+            $r['mov'] = ConciliacionCobros::movDeTxtref((string)$r['txtref']);
+            return $r;
+        }, $cobros);
+    }
+
+    /** Bolsa de depósitos para esos cobros, con la misma ventana que el cruce de siempre (sin quitar ocupados). */
+    private function conciliationDepositos(ConciliacionVentaModel $model, array $cobros, string $desde, string $hasta) : array {
+        if (!$cobros) return [];
+        $dias = fn(string $fecha, int $n) => date('Y-m-d', strtotime($fecha . sprintf(' %+d days', $n)));
+        return $model->depositos(
+            array_column($cobros, 'mov'),
+            array_column($cobros, 'monto'),
+            $dias($desde, -ConciliacionCobros::DIAS_ANTES), $dias($hasta, ConciliacionCobros::DIAS_DESPUES),
+            $dias($desde, -ConciliacionCobros::DIAS_IMPORTE), $dias($hasta, ConciliacionCobros::DIAS_IMPORTE)
+        );
+    }
+
+    /**
+     * Cruce de esos cobros contra la bolsa sin los movimientos que ya ocupa (ocupa = 1) algún grupo activo
+     * de cualquier mes, salvo los grupos de $excluirGrupos (los que se van a rehacer).
+     */
+    private function conciliationCruce(ConciliacionVentaModel $model, ConciliacionCobrosGuardadoModel $guardado, array $cobros, string $desde, string $hasta, array $excluirGrupos = []) : array {
+        $depositos = $this->conciliationDepositos($model, $cobros, $desde, $hasta);
+        $ocupados = $guardado->movimientosOcupadosEntre(array_map(fn($d) => (int)$d['id'], $depositos), $excluirGrupos);
+        if ($ocupados) $depositos = array_values(array_filter($depositos, fn($d) => !isset($ocupados[(int)$d['id']])));
+        return ConciliacionCobros::conciliar($cobros, $depositos);
+    }
+
+    /**
+     * Dentro del candado (conciliationTransaccion): guarda solo los grupos cuyos cobros siguen sin grupo y cuyos movimientos
+     * (ocupa = 1) siguen libres, releídos sin NOLOCK. Devuelve cuántos guardó.
+     */
+    private function conciliationGuardarLibres(ConciliacionCobrosGuardadoModel $guardado, array $grupos, string $mes) : int {
+        if (!$grupos) return 0;
+        $libres = ConciliacionCobrosGuardado::gruposLibres(
+            $grupos,
+            $guardado->gruposActivos($mes),
+            $guardado->movimientosOcupadosEntre(array_keys(ConciliacionCobrosGuardado::movimientosOcupados($grupos)))
+        );
+        if ($libres) $guardado->guardarGrupos($libres, $mes, 'sistema');
+        return count($libres);
+    }
+
+    /**
+     * Corre $fn en una transacción con el candado global de la conciliación de cobros (bloquear): un grupo
+     * de un mes puede ocupar un depósito de otro, así que todos los que escriben se forman en el mismo.
+     * $meses ya no cambia el candado (se deja la firma). Commit si regresa true, rollBack si regresa false o lanza.
+     */
+    private function conciliationTransaccion(ConciliacionCobrosGuardadoModel $guardado, string|array $meses, callable $fn) : bool {
+        $guardado->sql->beginTransaction();
+        try {
+            $guardado->bloquear();
+            $ok = (bool)$fn();
+            if ($ok) $guardado->sql->commit();
+            else $guardado->sql->rollBack();
+            return $ok;
+        } catch (Throwable $e) {
+            $guardado->sql->rollBack();
+            throw $e;
+        }
+    }
+
+    /** Correo del usuario en sesión (o 'sistema'). */
+    private function conciliationUsuario() : string {
+        $correo = trim((string)($_SESSION['tg_user']['Correo'] ?? ''));
+        return $correo !== '' ? $correo : 'sistema';
     }
 
     /** POST (cuentas[]): movimientos del mes de las cuentas que recibieron cobros. */

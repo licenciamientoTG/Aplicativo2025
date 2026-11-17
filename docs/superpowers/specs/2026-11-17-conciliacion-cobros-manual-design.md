@@ -276,3 +276,15 @@ buscar movimientos, buscar cobros, buscar facturas, modal (GET parcial), guardar
 - Diseño visual del modal (siguiendo los modales existentes de la página).
 - Límite de resultados en los buscadores y la ventana de fechas por defecto.
 - Cómo mostrar la lista de alertas en la fila (tooltip, popover).
+
+## Estado (2026-11-17)
+
+Implementado en la rama `conciliacion-cobros-manual` (commits a297f4dd..d2c49065), revisado tarea por tarea y en revisión final; falta la prueba en navegador.
+Decisiones tomadas al implementar que ajustan este documento:
+
+- Un solo candado global `conc_cobros` (sp_getapplock, 30 s) para todas las escrituras, en lugar de uno por mes: cierra la carrera entre meses (un depósito de noviembre tomado por un grupo de octubre).
+- Cada mes muestra solo sus propios cobros; un grupo cuyo depósito cae en otro mes no aparece en ese otro mes (su depósito solo deja de salir en "Depósitos sin conciliar"). Un cobro borrado en ControlGas sale marcado y no suma.
+- La alerta de ordenante solo aplica a grupos manuales y auto "Cuadra por importe*" / "Sin MOV".
+- El modal precarga solo los items que ocupan; el depósito de referencia de una Diferencia sale como sugerencia.
+- "Cuadrado contra banco" cuenta un manual solo si tiene movimientos y diferencia < $0.01; los demás manuales van en una línea aparte.
+- Buscador de facturas sin folio ni fecha inicial: ventana de 3 meses.
