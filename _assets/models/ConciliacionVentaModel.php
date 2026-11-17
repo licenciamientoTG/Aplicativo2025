@@ -660,8 +660,8 @@ class ConciliacionVentaModel extends Model {
             $params[] = '%' . $cliente . '%';
         }
         if (!$conds && $desde === '' && $hasta === '' && !$codgas && $importe === null) return [];
-        // sin folio ni fechas: últimos 3 meses (12 meses tardaba ~16 s: el total sale de sumar Documentos por factura; sin ventana se barrería todo el historial de facturas)
-        if ($folio === '' && $desde === '' && $hasta === '') $desde = date('Y-m-d', strtotime('-3 months'));
+        // sin folio ni desde: 3 meses hacia atrás desde hasta (o desde hoy) (12 meses tardaba ~16 s: el total sale de sumar Documentos por factura; sin ventana se barrería todo el historial de facturas)
+        if ($folio === '' && $desde === '') $desde = date('Y-m-d', strtotime(($hasta !== '' ? $hasta : 'today') . ' -3 months'));
         if ($desde !== '') { $conds[] = 'c.fch >= ?'; $params[] = dateToInt($desde); }
         if ($hasta !== '') { $conds[] = 'c.fch <= ?'; $params[] = dateToInt($hasta); }
         if ($codgas) { $conds[] = 'c.codgas = ?'; $params[] = $codgas; }
@@ -697,7 +697,7 @@ class ConciliacionVentaModel extends Model {
 
             SELECT a.gasapl AS codgas, a.nroapl AS nro,
                    SUM(a.mtoapl) / 100.0 AS pagada,
-                   STRING_AGG(CAST(a.codgas AS varchar(6)) + '|' + CAST(a.nro AS varchar(12)) + ':' + CAST(CAST(a.mtoapl / 100.0 AS decimal(18,2)) AS varchar(20)), ',') AS pagos
+                   STRING_AGG(CAST(CAST(a.codgas AS varchar(6)) + '|' + CAST(a.nro AS varchar(12)) + ':' + CAST(CAST(a.mtoapl / 100.0 AS decimal(18,2)) AS varchar(20)) AS varchar(max)), ',') AS pagos
               INTO #p
               FROM #k k
               JOIN SG12.dbo.DocumentosA a WITH (NOLOCK) ON a.nroapl = k.nro AND a.gasapl = k.codgas AND a.tip = 4

@@ -8,7 +8,7 @@
  * el controlador las envuelve. Las listas IN van en línea ya saneadas (intval): SG12 está en nivel de
  * compatibilidad 110, sin STRING_SPLIT, y se parten en bloques de hasta 1000.
  * Las lecturas que deciden escrituras (mesGuardado, gruposActivos, gruposQueOcupan, movimientosOcupadosEntre)
- * van sin NOLOCK: el controlador las repite dentro de bloquearMes() para no guardar dos veces lo mismo.
+ * van sin NOLOCK: el controlador las repite dentro de bloquear() para no guardar dos veces lo mismo.
  */
 class ConciliacionCobrosGuardadoModel extends Model {
 
@@ -229,15 +229,16 @@ class ConciliacionCobrosGuardadoModel extends Model {
     }
 
     /**
-     * Candado exclusivo del mes hasta que termine la transacción abierta (sp_getapplock, espera hasta 30 s).
-     * Toda escritura de grupos de un mes empieza con él; lanza si no se obtiene.
+     * Candado exclusivo único (conc_cobros) hasta que termine la transacción abierta (sp_getapplock, espera
+     * hasta 30 s). Es global y no por mes: un grupo de un mes puede ocupar un depósito de otro. Toda escritura
+     * de grupos empieza con él; lanza si no se obtiene.
      */
-    public function bloquearMes(string $mes): void {
+    public function bloquear(): void {
         $r = $this->sql->select("SET NOCOUNT ON; DECLARE @r int;
             EXEC @r = sys.sp_getapplock @Resource = ?, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 30000;
-            SELECT @r AS r;", ['conc_cobros_' . $mes]);
+            SELECT @r AS r;", ['conc_cobros']);
         if (!$r || (int)$r[0]['r'] < 0) {
-            throw new Exception('Otro usuario está guardando la conciliación de cobros de ' . $mes . '; intenta de nuevo');
+            throw new Exception('Otro usuario está guardando la conciliación de cobros; intenta de nuevo');
         }
     }
 

@@ -64,7 +64,13 @@
     });
   }
 
-  var API = { agruparCruce: agruparCruce, claveItem: claveItem };
+  // Mes y razón social de la búsqueda que se está viendo (no lo que el usuario cambie después en los filtros):
+  // la vista registra de dónde leerlos con usarFiltros. Sin búsqueda, null.
+  var fuenteFiltros = null;
+  function usarFiltros(fn) { fuenteFiltros = fn; }
+  function filtrosBusqueda() { return (fuenteFiltros && fuenteFiltros()) || null; }
+
+  var API = { agruparCruce: agruparCruce, claveItem: claveItem, usarFiltros: usarFiltros, filtrosBusqueda: filtrosBusqueda };
   if (typeof window !== 'undefined') window.ConciliacionManual = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   if (typeof window === 'undefined' || typeof $ === 'undefined') return;
@@ -73,7 +79,7 @@
   var sel, sugeridos, res, timers = {}, previewSeq = 0, buscarSeq = { C: 0, M: 0, F: 0 };
 
   function filtros(extra) {
-    return $.extend({ mes: $('#cvMes').val(), empresa: $('#cvEmpresa').val() }, extra || {});
+    return $.extend({}, filtrosBusqueda(), extra || {});
   }
   function jsonDe(texto) {
     try { return JSON.parse(texto); } catch (e) { return null; }
@@ -82,6 +88,7 @@
   function grupoId() { return root().data('grupo-id') || ''; }
 
   function abrir(opts) {
+    if (!filtrosBusqueda()) return;   // sin búsqueda no hay mes que conciliar
     opts = opts || {};
     var extra = {};
     if (opts.grupo_id) extra.grupo_id = opts.grupo_id;

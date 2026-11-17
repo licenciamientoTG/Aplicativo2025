@@ -59,8 +59,10 @@ try {
     check('gruposQueOcupan por movimiento ocupa=1', $m->gruposQueOcupan([], [987654321], []) === [$ids[0]]);
     check('gruposQueOcupan sin nada', $m->gruposQueOcupan([], [], []) === []);
 
-    $m->bloquearMes($MES);
-    check('bloquearMes dentro de la transacción no falla', true);
+    $modo = fn() => (string)($db->select("SELECT APPLOCK_MODE('public', 'conc_cobros', 'Transaction') AS modo")[0]['modo'] ?? '');
+    check('sin candado antes de bloquear', $modo() === 'NoLock');
+    $m->bloquear();
+    check('bloquear toma el candado global conc_cobros (Exclusive)', $modo() === 'Exclusive');
     check('movimientosOcupadosEntre solo ocupa=1', $m->movimientosOcupadosEntre([987654321, 987654322, 0]) === [987654321 => true]);
     check('movimientosOcupadosEntre excluyendo el grupo', $m->movimientosOcupadosEntre([987654321], [$ids[0]]) === []);
     check('movimientosOcupadosEntre sin ids', $m->movimientosOcupadosEntre([]) === []);
@@ -148,7 +150,7 @@ if ($f) {
 // sobre un grupo auto de 2 cobros se elige 1 → el auto queda inactivo y el otro cobro queda sin grupo
 $db->beginTransaction();
 try {
-    $m->bloquearMes($MES);
+    $m->bloquear();
     [$autoId] = $m->guardarGrupos([['origen' => 'auto', 'estatus' => 'Cuadra', 'comentario' => null, 'items' => [
         ['tipo' => 'C', 'codgas' => 7, 'nro' => 990011, 'movimiento_id' => null, 'monto' => 60, 'mes' => $MES, 'ocupa' => 1],
         ['tipo' => 'C', 'codgas' => 7, 'nro' => 990012, 'movimiento_id' => null, 'monto' => 40, 'mes' => $MES, 'ocupa' => 1],
@@ -178,8 +180,9 @@ try {
     $ga = $m->grupoPorId($autoId);
     check('grupoPorId: el auto dado de baja sale inactivo', $ga !== null && $ga['activo'] === false && count($ga['items']) === 3);
     check('grupoPorId: inexistente / 0 → null', $m->grupoPorId(2147483000) === null && $m->grupoPorId(0) === null);
-    $m->bloquearMes('1999-02');
-    check('bloquearMes de un segundo mes en la misma transacción', true);
+    $m->bloquear();
+    check('bloquear otra vez en la misma transacción: un solo candado global (Exclusive)',
+        (string)$db->select("SELECT APPLOCK_MODE('public', 'conc_cobros', 'Transaction') AS modo")[0]['modo'] === 'Exclusive');
     // deshacer: el manual se da de baja y los dos cobros quedan sin grupo
     check('deshacer: darDeBaja del manual', $m->darDeBaja([$manualId], 'test') === 1);
     check('deshacer: segunda vez = 0', $m->darDeBaja([$manualId], 'test') === 0);

@@ -135,4 +135,11 @@ check('sin cobros ni facturas', tiene($a, 'Sin cobros ni facturas'));
 $a = ConciliacionAlertas::deGrupo(['origen' => 'manual', 'estatus' => 'Manual', 'items' => [ic(1, 10.00)]], ctx(['cobros' => ['2|1' => fc(1, 10.00)]]));
 check('manual sin movimiento', tiene($a, 'Sin movimiento bancario') && !tiene($a, 'No cuadra'));
 
+// Mismo nro en dos estaciones: cada cobro se revisa por su clave (codgas|nro), no se pisan
+$g = ['origen' => 'manual', 'estatus' => 'Manual', 'items' => [ic(5, 100.00, 1), ic(5, 200.00, 2), im(9, 300.00)]];
+$a = ConciliacionAlertas::deGrupo($g, ctx(['cobros' => ['1|5' => fc(5, 100.00, 999, codgas: 1), '2|5' => fc(5, 200.00, 100, codgas: 2)],
+    'movs' => [9 => fm(9, 300.00, 100)]]));
+check('mismo nro en dos estaciones: MOV del cobro de la estación 1 revisado', tiene($a, 'El MOV capturado 999 del cobro 5'));
+check('mismo nro en dos estaciones: suma los dos cobros (cuadra)', !tiene($a, 'No cuadra'));
+
 finish();

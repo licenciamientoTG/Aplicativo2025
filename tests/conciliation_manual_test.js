@@ -34,4 +34,12 @@ assert.equal(g2[0].facturas, 'I9 ($10.00)');
 assert.equal(g2[0].uuids, 'u9');
 assert.equal(g2[0].cobros, 0);
 
+// Filtros del modal: los de la búsqueda que fija la vista (sin búsqueda, null)
+assert.equal(CM.filtrosBusqueda(), null);
+let busqueda = { mes: '2026-10', empresa: '1' };
+CM.usarFiltros(() => busqueda);
+assert.deepEqual(CM.filtrosBusqueda(), { mes: '2026-10', empresa: '1' });
+busqueda = { mes: '2026-11', empresa: '0' };
+assert.deepEqual(CM.filtrosBusqueda(), { mes: '2026-11', empresa: '0' });
+
 console.log('conciliation_manual_test: OK');

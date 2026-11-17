@@ -97,6 +97,49 @@ $filas = ConciliacionCobrosGuardado::filasDesdeGrupos([$g3], [], [23673 => d(236
 $f = $filas[0];
 check('M+F sin cobros: fila nro null con folios', count($filas) === 1 && $f['nro'] === null && $f['facturas'] === 'I104614');
 check('M+F sin cobros: diferencia = abono - total factura', $f['diferencia'] === 500.0);
+check('tiene_mov: con movimiento true, sin movimiento false', $f['tiene_mov'] === true
+    && ConciliacionCobrosGuardado::filasDesdeGrupos([['id' => 8, 'origen' => 'manual', 'estatus' => 'Conciliado manual', 'items' => [
+        ['tipo' => 'C', 'codgas' => 2, 'nro' => 1, 'movimiento_id' => null, 'monto' => 10.0, 'mes' => '2026-10', 'ocupa' => 1]]]],
+        ['2|1' => cobroFull(1, 10.0, '2026-10-01')], [], [])[0]['tiene_mov'] === false);
+
+// cobro cancelado: no suma en monto_mov ni en diferencia (igual que ConciliacionCobrosManual::totales)
+$gCan = ['id' => 10, 'origen' => 'manual', 'estatus' => 'Conciliado manual', 'items' => [
+    ['tipo' => 'C', 'codgas' => 2, 'nro' => 1, 'movimiento_id' => null, 'monto' => 100.0, 'mes' => '2026-10', 'ocupa' => 1],
+    ['tipo' => 'C', 'codgas' => 2, 'nro' => 2, 'movimiento_id' => null, 'monto' => 50.0, 'mes' => '2026-10', 'ocupa' => 1],
+    ['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => 1, 'monto' => 100.0, 'mes' => '2026-10', 'ocupa' => 1],
+]];
+$can = cobroFull(2, 50.0, '2026-10-01'); $can['cancelado'] = 1;
+$filas = ConciliacionCobrosGuardado::filasDesdeGrupos([$gCan], ['2|1' => cobroFull(1, 100.0, '2026-10-01'), '2|2' => $can], [1 => d(1, 11, 100.0)], []);
+check('cancelado: monto_mov y diferencia sin el cobro cancelado', $filas[0]['monto_mov'] === 100.0 && $filas[0]['diferencia'] === 0.0 && count($filas) === 2);
+
+// filasDesdeGrupos con mes: solo filas de los cobros de ese mes; el cobro del mes que ya no existe sale con borrado
+$gMes = ['id' => 11, 'origen' => 'manual', 'estatus' => 'Conciliado manual', 'items' => [
+    ['tipo' => 'C', 'codgas' => 2, 'nro' => 1, 'movimiento_id' => null, 'monto' => 100.0, 'mes' => '2026-10', 'ocupa' => 1],
+    ['tipo' => 'C', 'codgas' => 2, 'nro' => 2, 'movimiento_id' => null, 'monto' => 70.0, 'mes' => '2026-11', 'ocupa' => 1],
+    ['tipo' => 'C', 'codgas' => 2, 'nro' => 3, 'movimiento_id' => null, 'monto' => 30.0, 'mes' => '2026-11', 'ocupa' => 1],
+    ['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => 1, 'monto' => 200.0, 'mes' => '2026-11', 'ocupa' => 1],
+]];
+$filas = ConciliacionCobrosGuardado::filasDesdeGrupos([$gMes], ['2|1' => cobroFull(1, 100.0, '2026-10-30'), '2|2' => cobroFull(2, 70.0, '2026-11-01')],
+    [1 => d(1, 11, 200.0, '2026-11-01')], [], '2026-11');
+check('con mes: solo los cobros de noviembre', array_column($filas, 'nro') === [2, 3]);
+check('con mes: la suma del grupo sigue contando el cobro de octubre', $filas[0]['monto_mov'] === 200.0 && $filas[0]['diferencia'] === 0.0);
+check('con mes: el cobro que ya no existe sale borrado con su monto guardado', $filas[0]['borrado'] === false && $filas[1]['borrado'] === true && $filas[1]['monto'] === 30.0);
+check('sin mes: todas las filas (como antes)', count(ConciliacionCobrosGuardado::filasDesdeGrupos([$gMes], [], [], [])) === 3);
+
+// gruposDelMes: con cobro del mes; sin cobros, por su movimiento (o, sin movimientos, por sus facturas)
+$gOct = ['id' => 20, 'items' => [
+    ['tipo' => 'C', 'codgas' => 2, 'nro' => 1, 'movimiento_id' => null, 'monto' => 1.0, 'mes' => '2026-10', 'ocupa' => 1],
+    ['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => 1, 'monto' => 1.0, 'mes' => '2026-11', 'ocupa' => 1]]];
+$gDepNov = ['id' => 21, 'items' => [
+    ['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => 2, 'monto' => 1.0, 'mes' => '2026-11', 'ocupa' => 1],
+    ['tipo' => 'F', 'codgas' => 2, 'nro' => 5, 'movimiento_id' => null, 'monto' => 1.0, 'mes' => '2026-10', 'ocupa' => 1]]];
+$gDepOct = ['id' => 22, 'items' => [
+    ['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => 3, 'monto' => 1.0, 'mes' => '2026-10', 'ocupa' => 1],
+    ['tipo' => 'F', 'codgas' => 2, 'nro' => 6, 'movimiento_id' => null, 'monto' => 1.0, 'mes' => '2026-11', 'ocupa' => 1]]];
+$gSoloF = ['id' => 23, 'items' => [['tipo' => 'F', 'codgas' => 2, 'nro' => 7, 'movimiento_id' => null, 'monto' => 1.0, 'mes' => '2026-11', 'ocupa' => 1]]];
+$gNov = ['id' => 24, 'items' => [['tipo' => 'C', 'codgas' => 2, 'nro' => 8, 'movimiento_id' => null, 'monto' => 1.0, 'mes' => '2026-11', 'ocupa' => 1]]];
+check('gruposDelMes: sin el grupo de un cobro de octubre ni el depósito de octubre',
+    array_column(ConciliacionCobrosGuardado::gruposDelMes([$gOct, $gDepNov, $gDepOct, $gSoloF, $gNov], '2026-11'), 'id') === [21, 23, 24]);
 
 // cambiosReintento
 $viejo = [['id' => 3, 'origen' => 'auto', 'estatus' => 'Sin banco', 'items' => [

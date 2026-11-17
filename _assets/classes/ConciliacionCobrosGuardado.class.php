@@ -74,11 +74,28 @@ class ConciliacionCobrosGuardado {
     }
 
     /**
-     * Una fila por cobro del grupo (misma forma que arma conciliation_payments) más
-     * grupo_id, origen, comentario, creado_por e items_guardados. Un grupo sin cobros
-     * da una sola fila con las columnas del cobro vacías y los folios de sus facturas.
+     * Grupos que se pintan en el mes: los que tienen algún cobro de ese mes (item.mes); los que no tienen
+     * cobros, si alguno de sus movimientos es del mes (o, sin movimientos, alguna de sus facturas). Un grupo
+     * que sale en el mes solo por su movimiento o una factura pero tiene cobros de otro mes no se pinta.
      */
-    public static function filasDesdeGrupos(array $grupos, array $cobrosPorClave, array $movPorId, array $facturasPorClave): array {
+    public static function gruposDelMes(array $grupos, string $mes): array {
+        return array_values(array_filter($grupos, function ($g) use ($mes) {
+            $porTipo = ['C' => [], 'M' => [], 'F' => []];
+            foreach ($g['items'] as $it) $porTipo[$it['tipo']][] = (string)$it['mes'];
+            $ancla = $porTipo['C'] ?: ($porTipo['M'] ?: $porTipo['F']);
+            return in_array($mes, $ancla, true);
+        }));
+    }
+
+    /**
+     * Una fila por cobro del grupo (misma forma que arma conciliation_payments) más
+     * grupo_id, origen, comentario, creado_por, items_guardados, tiene_mov y borrado (el cobro ya no
+     * está en $cobrosPorClave: sale con el monto guardado). Un grupo sin cobros da una sola fila con
+     * las columnas del cobro vacías y los folios de sus facturas. Con $mes, solo salen las filas de
+     * los cobros de ese mes (item.mes); las sumas del grupo siguen contando todos sus cobros.
+     * Los cobros cancelados no suman en monto_mov ni en diferencia (igual que ConciliacionCobrosManual::totales).
+     */
+    public static function filasDesdeGrupos(array $grupos, array $cobrosPorClave, array $movPorId, array $facturasPorClave, ?string $mes = null): array {
         $filas = [];
         foreach ($grupos as $g) {
             $cs = $ms = $fs = [];
@@ -108,7 +125,10 @@ class ConciliacionCobrosGuardado {
                 $cobrosRef[] = $cobrosPorClave[self::claveDoc((int)$it['codgas'], (int)$it['nro'])] ?? null;
             }
             $sumaCobros = 0.0;
-            foreach ($cs as $i => $it) $sumaCobros += $cobrosRef[$i] !== null ? (float)$cobrosRef[$i]['monto'] : (float)$it['monto'];
+            foreach ($cs as $i => $it) {
+                if ($cobrosRef[$i] === null) $sumaCobros += (float)$it['monto'];
+                elseif (empty($cobrosRef[$i]['cancelado'])) $sumaCobros += (float)$cobrosRef[$i]['monto'];
+            }
             $sumaCobros = round($sumaCobros, 2);
             $folios = []; $sumaFact = 0.0;
             foreach ($fs as $it) {
@@ -140,6 +160,8 @@ class ConciliacionCobrosGuardado {
                 'comentario'      => $g['comentario'] ?? null,
                 'creado_por'      => $g['creado_por'] ?? null,
                 'items_guardados' => $g['items'],
+                'tiene_mov'       => (bool)$ms,
+                'borrado'         => false,
             ];
 
             if (!$cs) {
@@ -151,6 +173,7 @@ class ConciliacionCobrosGuardado {
                 continue;
             }
             foreach ($cs as $i => $it) {
+                if ($mes !== null && (string)$it['mes'] !== $mes) continue;
                 $c = $cobrosRef[$i];
                 $filas[] = array_merge($comun, [
                     'codgas'   => (int)$it['codgas'],
@@ -166,6 +189,7 @@ class ConciliacionCobrosGuardado {
                     'monto'    => $c !== null ? (float)$c['monto'] : (float)$it['monto'],
                     'facturas' => $c['facturas'] ?? null,
                     'mov'      => $c['mov'] ?? null,
+                    'borrado'  => $c === null,
                 ]);
             }
         }

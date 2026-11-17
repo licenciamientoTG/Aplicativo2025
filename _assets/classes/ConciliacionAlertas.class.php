@@ -50,7 +50,8 @@ class ConciliacionAlertas {
         if (!$iM && $origen === 'manual') $al[] = 'Sin movimiento bancario';
 
         // Filas frescas existentes
-        $cobros = []; // nro => fila
+        $cobros = []; // "codgas|nro" => fila (dos estaciones pueden tener el mismo nro)
+        $nros = [];   // "codgas|nro" => nro
         $movs = [];   // id => fila
         $sumCobros = 0.0;
         $sumFact = 0.0;
@@ -69,7 +70,8 @@ class ConciliacionAlertas {
             if (abs((float)$f['monto'] - (float)$it['monto']) >= 0.005) {
                 $al[] = "Cambió después de conciliar: monto del cobro $nro era $" . self::money((float)$it['monto']) . ', hoy $' . self::money((float)$f['monto']);
             }
-            $cobros[$nro] = $f;
+            $cobros[$k] = $f;
+            $nros[$k] = $nro;
             $sumCobros += (float)$f['monto'];
             $mes = substr((string)($f['fecha'] ?? ''), 0, 7);
             if ($mes === '') $mes = (string)$it['mes'];
@@ -128,7 +130,8 @@ class ConciliacionAlertas {
             // MOV capturado del cobro vs movimientos elegidos
             $secs = [];
             foreach ($movs as $m) if (($m['secuencia'] ?? null) !== null) $secs[(int)$m['secuencia']] = true;
-            foreach ($cobros as $nro => $c) {
+            foreach ($cobros as $k => $c) {
+                $nro = $nros[$k];
                 $mov = $c['mov'] ?? null;
                 if ($mov !== null && $movs && !isset($secs[(int)$mov])) {
                     $al[] = "El MOV capturado $mov del cobro $nro no es ninguno de los movimientos elegidos";
@@ -136,7 +139,8 @@ class ConciliacionAlertas {
             }
 
             // Días entre cobro y el movimiento más cercano
-            foreach ($cobros as $nro => $c) {
+            foreach ($cobros as $k => $c) {
+                $nro = $nros[$k];
                 $mejor = null; $sec = null;
                 foreach ($movs as $m) {
                     $d = self::dias((string)$c['fecha'], (string)$m['fecha']);

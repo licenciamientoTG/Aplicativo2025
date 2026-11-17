@@ -590,7 +590,12 @@ class Income{
             $grupos = $guardado->gruposActivos($mes);
         }
 
-        // Datos frescos de lo ligado: cobros de otros meses, movimientos y facturas
+        // Solo se pintan los grupos con cobros de este mes (o sin cobros, con su depósito en el mes): los que salen
+        // en el mes solo por el depósito o una factura de un cobro de otro mes no suman a "Cobros del mes"
+        $delMes = ConciliacionCobrosGuardado::gruposDelMes($grupos, $mes);
+
+        // Datos frescos de lo ligado: cobros de otros meses (de los grupos que se pintan), movimientos y facturas.
+        // Un cobro de este mes que no está en $cobros ya no existe en ControlGas: no se vuelve a buscar.
         $cobrosPorClave = $empresaGas = [];
         foreach ($cobros as $c) {
             $cobrosPorClave[ConciliacionCobrosGuardado::claveDoc((int)$c['codgas'], (int)$c['nro'])] = $c;
@@ -599,10 +604,15 @@ class Income{
         $otrosMeses = $movIds = $clavesF = [];
         foreach ($grupos as $g) {
             foreach ($g['items'] as $it) {
-                if ($it['tipo'] === 'M') { $movIds[] = (int)$it['movimiento_id']; continue; }
+                if ($it['tipo'] === 'M') $movIds[] = (int)$it['movimiento_id'];
+            }
+        }
+        foreach ($delMes as $g) {
+            foreach ($g['items'] as $it) {
+                if ($it['tipo'] === 'M') continue;
                 $k = ConciliacionCobrosGuardado::claveDoc((int)$it['codgas'], (int)$it['nro']);
                 if ($it['tipo'] === 'F') $clavesF[$k] = $k;
-                elseif (!isset($cobrosPorClave[$k])) $otrosMeses[$k] = $k;
+                elseif ((string)$it['mes'] !== $mes && !isset($cobrosPorClave[$k])) $otrosMeses[$k] = $k;
             }
         }
         if ($otrosMeses) {
@@ -623,7 +633,7 @@ class Income{
         $otros   = ConciliacionCobrosContexto::otrosGrupos($grupos);
         $cuentas = ConciliacionCobrosContexto::cuentasEstacion($grupos, $movPorId);
         $alertas = [];
-        foreach ($grupos as $g) {
+        foreach ($delMes as $g) {
             $alertas[(int)$g['id']] = ConciliacionAlertas::deGrupo($g, [
                 'cobros'          => $cobrosPorClave,
                 'movs'            => $movPorId,
@@ -635,7 +645,7 @@ class Income{
         }
 
         $data = [];
-        foreach (ConciliacionCobrosGuardado::filasDesdeGrupos($grupos, $cobrosPorClave, $movPorId, $facturasPorClave) as $r) {
+        foreach (ConciliacionCobrosGuardado::filasDesdeGrupos($delMes, $cobrosPorClave, $movPorId, $facturasPorClave, $mes) as $r) {
             $sinCobro = $r['codgas'] === null;
             // Razón social: la del cobro; en un grupo sin cobros, la de la estación de sus facturas (si no se sabe, sale en todas)
             $emp = $sinCobro ? null : ($r['empresa'] ?? ($empresaGas[(int)$r['codgas']] ?? null));
@@ -646,6 +656,7 @@ class Income{
             }
             if ($empresa !== 0 && !($sinCobro && $emp === null) && ($emp === null ? -1 : (int)$emp) !== $empresa) continue;
             $c = $sinCobro ? [] : ($cobrosPorClave[ConciliacionCobrosGuardado::claveDoc((int)$r['codgas'], (int)$r['nro'])] ?? []);
+            $borrado = !$sinCobro && $r['borrado'];   // cobro del mes que ya no existe en ControlGas: sale con su monto guardado
             $tags = $this->txtrefTags((string)$r['txtref']);
             $facturas = [];
             if ($sinCobro) {
@@ -688,8 +699,11 @@ class Income{
                 'referencia'      => $this->txtrefTexto((string)$r['txtref']),
                 'grupo_id'        => $r['grupo_id'],
                 'origen'          => $r['origen'],
-                'alertas'         => $alertas[(int)$r['grupo_id']] ?? [],
+                'alertas'         => $borrado ? array_merge($alertas[(int)$r['grupo_id']] ?? [], ['El cobro ya no existe en ControlGas'])
+                                                : ($alertas[(int)$r['grupo_id']] ?? []),
                 'comentario'      => $r['comentario'],
+                'tiene_mov'       => (bool)$r['tiene_mov'],
+                'borrado'         => $borrado,
             ];
         }
         json_output(['data' => $data, 'guardado' => [
@@ -1201,7 +1215,7 @@ class Income{
     }
 
     /**
-     * Dentro del candado del mes: guarda solo los grupos cuyos cobros siguen sin grupo y cuyos movimientos
+     * Dentro del candado (conciliationTransaccion): guarda solo los grupos cuyos cobros siguen sin grupo y cuyos movimientos
      * (ocupa = 1) siguen libres, releídos sin NOLOCK. Devuelve cuántos guardó.
      */
     private function conciliationGuardarLibres(ConciliacionCobrosGuardadoModel $guardado, array $grupos, string $mes) : int {
@@ -1216,15 +1230,14 @@ class Income{
     }
 
     /**
-     * Corre $fn en una transacción con el candado del mes o de varios meses (bloquearMes, en orden para
-     * no cruzarse con otra sesión): commit si regresa true, rollBack si regresa false o lanza.
+     * Corre $fn en una transacción con el candado global de la conciliación de cobros (bloquear): un grupo
+     * de un mes puede ocupar un depósito de otro, así que todos los que escriben se forman en el mismo.
+     * $meses ya no cambia el candado (se deja la firma). Commit si regresa true, rollBack si regresa false o lanza.
      */
     private function conciliationTransaccion(ConciliacionCobrosGuardadoModel $guardado, string|array $meses, callable $fn) : bool {
-        $meses = array_values(array_unique((array)$meses));
-        sort($meses);
         $guardado->sql->beginTransaction();
         try {
-            foreach ($meses as $mes) $guardado->bloquearMes($mes);
+            $guardado->bloquear();
             $ok = (bool)$fn();
             if ($ok) $guardado->sql->commit();
             else $guardado->sql->rollBack();
