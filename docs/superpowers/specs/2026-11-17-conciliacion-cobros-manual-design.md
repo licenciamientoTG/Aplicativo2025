@@ -48,6 +48,14 @@ cruce automático; las siguientes veces se lee lo guardado y no se recalcula ni 
 El cruce es barato; lo caro son las consultas. Guardar no hace la página más lenta: la primera vez agrega un insert de
 unas 800 filas, y las siguientes veces cambia el cruce por un SELECT indexado.
 
+## Tablas: por qué 3
+
+El usuario evaluó 1, 2 y 3 tablas y eligió 3 (2026-11-17). Con 1 sola tabla no hay dónde guardar "ya se reintentó hoy"
+ni una llave que impida que dos usuarios guarden el mes a la vez. Con 2, el estatus, el comentario y el usuario se repiten
+en cada renglón. Con 3 (mes · grupo · item) cada dato vive en un solo lugar y se sigue el patrón que ya existe en TG para
+la conciliación de tarjetas (`Conciliacion_V3_CierreMes` / `_Grupos` / `_Detalles`). **No se reusan esas tablas V3**: son de
+tarjetas/terminales (estación, entidad, afiliación), están en producción y mezclar dominios arriesga romperlas.
+
 ## Enfoques considerados
 
 - **A. Guardar solo las ligas (ELEGIDO por el usuario).** Se guarda qué cobro va con qué movimiento o factura, con su
@@ -137,8 +145,17 @@ pagada total o parcialmente por algún cobro, si está cancelada o si es de otro
 
 ### Reintento de pendientes en segundo plano (una vez por día)
 
-Decisión del usuario: lo que ya cuadró y lo manual queda fijo. Los grupos `auto` que no cuadraron ("Sin banco",
-"Sin MOV", "Diferencia") se reintentan, pero **sin frenar la carga** y **una vez por día**:
+Decisión del usuario: lo manual y lo que cuadró con seguridad queda fijo. Se reintentan, **sin frenar la carga** y
+**una vez por día**:
+
+- los grupos `auto` que no cuadraron ("Sin banco", "Sin MOV", "Diferencia");
+- los grupos `auto` "Cuadra por importe" y "Cuadra por importe (sin MOV)", que son los menos seguros: el día que se guardaron
+  pudo faltar el movimiento correcto y se ligaron a otro del mismo importe. Si en el reintento aparece un candidato mejor
+  según los mismos criterios de desempate de la regla 5 (cuenta del MOV, cuenta de la estación, secuencia más cercana,
+  fecha más cercana), se vuelven a ligar y entran en el aviso de cambios. Los "Cuadra" por MOV exacto, centavos, MOV
+  compartido y MOV vecinos no se tocan.
+
+Pasos:
 
 1. La carga del tab (`conciliation_payments`) responde con lo guardado, sin reintentar.
 2. Al terminar de pintar, la vista llama sola a una ruta nueva (por ejemplo `conciliation/payments/retry/`, POST mes).
@@ -203,6 +220,29 @@ y chip "Con alertas" para filtrar), con datos frescos:
 - Cambió después de guardar: el cobro se canceló, se borró en ControlGas, o su monto cambió respecto al `monto` guardado.
   Lo mismo para el movimiento o la factura.
 - Un grupo sin cobros y sin facturas (solo movimiento), o sin movimientos (solo cobros marcados a mano).
+
+### Depósitos sin conciliar
+
+El tab tiene una fila por cobro, así que un depósito sin cobro (octubre: $2,000,000 MOV 23673, $5,500 MOV 23394, GCC
+442642–442643) no aparece. Se agrega un apartado **"Depósitos sin conciliar"** debajo de la tabla de cobros:
+
+- Abonos (`abono > 0`) del mes en las cuentas que recibieron cobros ese mes (las cuentas de los grupos con movimiento, como
+  ya hace `conciliation_bank`), que **no** estén en ningún grupo activo con `ocupa = 1`.
+- Columnas: cuenta, fecha, secuencia, abono, ordenante, RFC, detalle, y botón **Conciliar** (abre el modal con ese
+  movimiento precargado, para ligarle cobros o facturas).
+- Se carga en segundo plano, en una llamada aparte después de pintar los cobros (~0.5 s), para no frenar la carga. Se
+  recarga junto con el tab cuando hay cambios o se guarda una conciliación manual.
+- Chip con el conteo y el total, como el Excel ("PENDIENTE: SIN COBROS IDENTIFICADOS").
+
+### Lo que no se ha capturado al guardar (resumen)
+
+| Caso | Qué pasa |
+|---|---|
+| Cobro capturado después en ControlGas | En la siguiente carga es "nuevo": se cruza y se guarda en ese momento. |
+| Movimiento importado después | El reintento diario cruza los pendientes; aviso y recarga. Si urge, "Recalcular automático". |
+| Cuadre "por importe" con el movimiento equivocado | El reintento diario también revisa los "por importe" y los religa si hay un candidato mejor. |
+| Cobro cancelado o con otro monto después de guardar | Alerta "cambió después de conciliar"; no se rehace solo. |
+| Depósito sin cobro | Aparece en "Depósitos sin conciliar" para ligarlo a mano. |
 
 ### Recalcular automático
 
