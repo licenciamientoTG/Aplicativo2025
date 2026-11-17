@@ -57,4 +57,45 @@ $dia = CreditCierre::filaParaDia($fila, '2026-11-07');
 check('dia en medio: ini = fin', $dia['saldo_ini_calc_desp'] == 950.0 && $dia['saldo_ini_sistema'] == 1500.0 && $dia['saldo_ini_calc_cortes'] == 940.0);
 check('dia en medio: movimientos de credito en 0', $dia['cobros_dia'] == 0 && $dia['notas_dia'] == 0 && $dia['facturado_dia'] == 0 && $dia['consumos_desp_dia'] == 0 && $dia['desfase_dia'] == 0);
 check('dia en medio: limite y disponible se conservan', $dia['limite'] == 2000.0 && $dia['disponible'] == $fila['disponible']);
+
+// Movimientos con fecha atrasada: la fila guarda lo acumulado hasta su día (acum_*);
+// al día siguiente lo histórico de hoy (hist_*) contra ese acumulado da el ajuste retro.
+$calcA = array_merge($calc, ['hist_desp'=>10000.0,'hist_cortes'=>9000.0,'hist_abonos'=>4000.0,
+                             'acum_desp'=>10300.0,'acum_cortes'=>9280.0,'acum_abonos'=>4250.0]);
+$s = CreditCierre::armarFila($calcA, null);
+check('siembra: ajustes retro NULL', $s['ajuste_retro_desp'] === null && $s['ajuste_retro_cortes'] === null);
+check('siembra: guarda acumulados del dia', $s['acum_desp'] == 10300.0 && $s['acum_cortes'] == 9280.0 && $s['acum_abonos'] == 4250.0);
+
+$antA = array_merge($ant, ['acum_desp'=>10000.0,'acum_cortes'=>9000.0,'acum_abonos'=>4000.0]);
+$sinRetro = CreditCierre::armarFila($calcA, $antA);
+check('sin atrasados: ajustes en 0', $sinRetro['ajuste_retro_desp'] == 0.0 && $sinRetro['ajuste_retro_cortes'] == 0.0);
+check('sin atrasados: ini = fin anterior', $sinRetro['saldo_ini_calc_desp'] == 900.0 && $sinRetro['saldo_ini_calc_cortes'] == 910.0);
+
+// Cobro atrasado de 500 (hist_abonos 4500 vs 4000 que conocía la foto anterior)
+$cobroTarde = CreditCierre::armarFila(array_merge($calcA, ['hist_abonos'=>4500.0,'acum_abonos'=>4750.0]), $antA);
+check('cobro atrasado: ajuste desp = -500', $cobroTarde['ajuste_retro_desp'] == -500.0);
+check('cobro atrasado: ajuste cortes = -500', $cobroTarde['ajuste_retro_cortes'] == -500.0);
+check('cobro atrasado: ini desp = 900 - 500', $cobroTarde['saldo_ini_calc_desp'] == 400.0);
+check('cobro atrasado: fin desp = 400+300-250', $cobroTarde['saldo_fin_calc_desp'] == 450.0);
+
+// Despacho que se quitó después (-120) y corte que llegó tarde (+75)
+$movTarde = CreditCierre::armarFila(array_merge($calcA, ['hist_desp'=>9880.0,'hist_cortes'=>9075.0]), $antA);
+check('despacho quitado: ajuste desp = -120', $movTarde['ajuste_retro_desp'] == -120.0);
+check('corte tarde: ajuste cortes = +75', $movTarde['ajuste_retro_cortes'] == 75.0);
+check('ajuste desp no toca cortes', $movTarde['saldo_ini_calc_cortes'] == 985.0 && $movTarde['saldo_ini_calc_desp'] == 780.0);
+
+// Fila anterior sin acumulados (antes del cambio): no se puede comparar, sin ajuste
+$sinAcum = CreditCierre::armarFila(array_merge($calcA, ['hist_abonos'=>99999.0]), $ant);
+check('anterior sin acum: ajuste NULL', $sinAcum['ajuste_retro_desp'] === null && $sinAcum['ajuste_retro_cortes'] === null);
+check('anterior sin acum: ini = fin anterior', $sinAcum['saldo_ini_calc_desp'] == 900.0);
+check('anterior sin acum: empieza a guardar acum', $sinAcum['acum_abonos'] == 4250.0);
+
+// Diferencias de redondeo bajo medio centavo no son ajuste
+$ruido = CreditCierre::armarFila(array_merge($calcA, ['hist_desp'=>10000.004]), $antA);
+check('ruido < 0.005: ajuste 0', $ruido['ajuste_retro_desp'] == 0.0);
+
+check('ajuste retro => cambio', CreditCierre::hayCambio($sinRetro, $cobroTarde) === true);
+check('acum distinto => cambio', CreditCierre::hayCambio($sinRetro, array_merge($sinRetro, ['acum_abonos'=>1.0])) === true);
+$diaA = CreditCierre::filaParaDia($cobroTarde + ['fecha_desde'=>'2026-11-05','fecha_hasta'=>null], '2026-11-07');
+check('dia en medio: ajustes retro en 0', $diaA['ajuste_retro_desp'] == 0 && $diaA['ajuste_retro_cortes'] == 0);
 finish();

@@ -69,6 +69,9 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     <li class="nav-item" role="presentation">
         <button class="nav-link {{ ver_debito ? '' : 'active' }}" data-bs-toggle="tab" data-bs-target="#credit_clients" type="button">Crédito</button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#vehicles_credit" type="button">Vehículos Crédito</button>
+    </li>
     {% endif %}
     {% if ver_debito %}
     <li class="nav-item" role="presentation">
@@ -511,6 +514,64 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 
     </div>
 
+    {% endif %}
+
+    {% if ver_credito %}
+    {# ── TAB: VEHÍCULOS CRÉDITO ── #}
+    <div class="tab-pane" id="vehicles_credit" role="tabpanel">
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-2 align-items-end">
+                    <div class="col-12 col-md-4">
+                        <label class="col-form-label-sm">Cliente</label>
+                        <select class="selectpicker" id="cliente_vehicles_credit" data-live-search="true" data-live-search-normalize="true" data-size="10" data-width="100%" title="Seleccionar cliente...">
+                            {% for c in clientes_credit %}
+                            <option value="{{ c.cod }}">{{ c.cod }} · {{ c.den }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button id="btn_vehicles_credit" class="btn btn-sm btn-primary">
+                            <i class="fas fa-search"></i> Consultar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Vehículos — Cliente Crédito</h5>
+                <small class="text-muted">
+                    Límites en litros de la pantalla "Controles" de ControlGas (0 = sin límite). Los acumulados
+                    cuentan solo si la última carga fue hoy / esta semana (lunes a domingo) / este mes.
+                    Saldo Global (cliente) = lo que debe el cliente.
+                </small>
+            </div>
+            <div class="card-body table-responsive">
+                <table id="vehicles_credit_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Vehículo</th><th>Tarjeta</th><th>Placas</th><th>Descripción</th><th>Estatus</th>
+                            <th>Lím. Carga</th><th>Lím. Día</th><th>Lím. Semana</th><th>Lím. Mes</th>
+                            <th>Acum. Día</th><th>Acum. Semana</th><th>Acum. Mes</th>
+                            <th>Última Carga</th><th>Litros</th>
+                            <th>Saldo Vehículo</th><th>Saldo Global</th><th>Saldo Global (cliente)</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th></th><th></th><th></th><th class="text-end">Total</th><th></th>
+                            <th></th><th></th><th></th><th></th>
+                            <th></th><th></th><th></th>
+                            <th></th><th></th>
+                            <th></th><th></th><th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
     {% endif %}
 
     {% if ver_credito %}
@@ -1089,17 +1150,18 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         <tr>
                             <th>Código</th><th>Cliente</th><th>Límite</th>
                             <th>Saldo ini. sistema</th><th>Saldo ini. calc. (desp.)</th>
+                            <th title="Lo que llegó con fecha atrasada después de la foto anterior (cobros, despachos quitados, cortes tardíos)">Ajuste retro (desp.)</th>
                             <th>Consumos despachos</th><th>Consumos cortes</th><th>Desfase</th>
                             <th>Cobros</th><th>Notas crédito</th><th>Facturado</th>
                             <th>Saldo fin calc. (desp.)</th><th>Saldo fin calc. (cortes)</th>
                             <th>Saldo fin sistema</th><th>Dif. sistema − calc.</th><th>Disponible</th>
-                            <th>Saldo ini. calc. (cortes)</th><th>Contador vehículos</th><th>Bolsa global</th><th>Vigente desde</th>
+                            <th>Saldo ini. calc. (cortes)</th><th>Ajuste retro (cortes)</th><th>Contador vehículos</th><th>Bolsa global</th><th>Vigente desde</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                     <tfoot>
                         <tr>
-                            <th></th><th>Total</th>{% for i in 1..18 %}<th></th>{% endfor %}
+                            <th></th><th>Total</th>{% for i in 1..20 %}<th></th>{% endfor %}
                         </tr>
                     </tfoot>
                 </table>
@@ -1546,6 +1608,11 @@ $('#seach_clients_debit').on('click', function () {
 // ── Crédito list ──
 $('#seach_clients_credit').on('click', function () {
     clients_credit_table();
+});
+
+// ── Vehículos Crédito ──
+$('#btn_vehicles_credit').on('click', function () {
+    vehicles_credit_table();
 });
 
 // ── Vehículos Débito ──

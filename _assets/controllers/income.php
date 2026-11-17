@@ -1123,6 +1123,13 @@ public function balance_age()
         json_output(array("data" => $data));
     }
 
+    /** Tab "Vehículos Crédito" de /income/clients-credit/: límites de litros y saldos por vehículo. */
+    public function clients_credit_vehicles() : void {
+        $codcli = (int)($_POST['codcli'] ?? 0);
+        $data = $codcli > 0 ? ($this->vehiclesModel->getCreditVehiclesByClient($codcli) ?: []) : [];
+        json_output(['data' => $data]);
+    }
+
     public function client_vehicles_balance() : void {
         set_time_limit(300);
         ini_set('max_execution_time', 300);

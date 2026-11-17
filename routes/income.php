@@ -56,6 +56,7 @@ return [
         // Clientes por tipo: misma vista que /income/clients filtrada a sus pestañas (views/income/clients.html, modo)
         route('clients-debit/', [Income::class, 'clients_debit'], name: 'income.clients_debit', methods: ['GET'], permission: 14),
         route('clients-credit/', [Income::class, 'clients_credit'], name: 'income.clients_credit', methods: ['GET'], permission: 14),
+        route('clients-credit/vehicles/', [Income::class, 'clients_credit_vehicles'], name: 'income.clients_credit_vehicles', methods: ['POST'], permission: 14),
         // Modal "Cortes que no cuadran" de Consumos Débito/Crédito: mismos tabs que el modal de Conciliación crédito
         route('clients/dispatches-invoice/', [Income::class, 'clients_dispatches_invoice'], name: 'income.clients_dispatches_invoice', methods: ['POST'], permission: 14),
         route('clients/dispatches-vs-cuts/', [Income::class, 'clients_dispatches_vs_cuts'], name: 'income.clients_dispatches_vs_cuts', methods: ['POST'], permission: 14),

@@ -56,3 +56,24 @@ hace nada con los clientes.
    de salida 0 solo si los dos salen bien.
 7. Pantalla: pestaña nueva "Estado de Cuenta Foto Crédito" en /income/clients,
    mismo patrón que la de débito (día, totales al pie, Excel, columnas).
+
+## Ajuste retro (2026-11-15)
+
+Revisión del 15-nov: el encadenado no veía lo que llega con fecha atrasada.
+Había 6 clientes desfasados contra el sistema: 4 cobros capturados después de
+la foto (IMPER, CARDBORD, CASTORES, IKRALG), un despacho quitado (GEN
+INDUSTRIAL, −$19,998) y un corte tardío (SOPORTE CON SERVICIOS, +$2,424.69).
+
+- Cada fila guarda `acum_desp/acum_cortes/acum_abonos` = lo que había hasta su
+  día al momento de la foto (cada renglón a decimal(18,4) antes de sumar, para
+  que sea exacto día con día).
+- La corrida siguiente calcula `hist_*` (lo anterior al día, como está hoy).
+  `ajuste_retro_desp = (hist_desp − acum_desp) − (hist_abonos − acum_abonos)`,
+  igual con cortes, y lo suma al inicial calculado. Menos de medio centavo se
+  toma como redondeo. Si la anterior no trae acumulados, el ajuste va NULL.
+- Costo: el histórico de despachos agrega ~11 s a la corrida de crédito.
+- Migración + carga de acumulados en las filas existentes:
+  `docs/sql/credit_clients_cierre_retro.sql` (aplicada el 2026-11-15). Los dos
+  cobros con fecha anterior a la siembra (CARDBORD 03-nov, IKRALG 06-nov) se
+  restan a mano del acumulado para que la corrida los detecte.
+- Pantalla: columnas "Ajuste retro (desp.)" (visible) y "(cortes)" (oculta).

@@ -19,15 +19,18 @@ class CreditClientsCierreModel extends DebitClientsCierreModel
     const COLUMNAS = [
         'codcli', 'cliente', 'debglo', 'limite',
         'saldo_ini_sistema', 'saldo_ini_calc_desp', 'saldo_ini_calc_cortes',
+        'ajuste_retro_desp', 'ajuste_retro_cortes',
         'cobros_dia', 'notas_dia', 'facturado_dia',
         'consumos_desp_dia', 'consumos_cortes_dia', 'desfase_dia',
         'saldo_fin_calc_desp', 'saldo_fin_calc_cortes', 'saldo_fin_sistema', 'saldo_fin_vehiculos', 'disponible',
         'lectura_cresdo', 'lectura_vehiculos', 'consumos_post_cierre', 'abonos_post_cierre', 'lectura_at',
+        'acum_desp', 'acum_cortes', 'acum_abonos',
     ];
 
     const COLUMNAS_FOTO = [
         'limite',
         'saldo_ini_sistema', 'saldo_ini_calc_desp', 'saldo_ini_calc_cortes',
+        'ajuste_retro_desp', 'ajuste_retro_cortes',
         'cobros_dia', 'notas_dia', 'facturado_dia',
         'consumos_desp_dia', 'consumos_cortes_dia', 'desfase_dia',
         'saldo_fin_calc_desp', 'saldo_fin_calc_cortes', 'saldo_fin_sistema', 'saldo_fin_vehiculos', 'disponible',
@@ -37,8 +40,11 @@ class CreditClientsCierreModel extends DebitClientsCierreModel
      * Una fila por cliente crédito (tipval 3, codest <> -1) con los
      * movimientos DEL día $dia y, con $conLectura, la lectura actual de cresdo,
      * la suma de vehículos y lo posterior al día (despachos y abonos) para
-     * reconstruir el cierre. No recorre el histórico: el calculado va
-     * encadenado (CreditCierre::armarFila).
+     * reconstruir el cierre. El calculado va encadenado
+     * (CreditCierre::armarFila); el histórico solo se usa para detectar lo
+     * que llegó con fecha atrasada: hist_* = todo lo anterior al día tal como
+     * está hoy, acum_* = hist_* + el día. Cada renglón se pasa a decimal antes
+     * de sumar para que hist(mañana) = acum(hoy) exacto, sin ruido de float.
      */
     public function calcularDia(string $dia, bool $conLectura): array
     {
@@ -55,36 +61,42 @@ class CreditClientsCierreModel extends DebitClientsCierreModel
              WHERE C.tipval = 3 AND C.codest <> -1;
             CREATE UNIQUE CLUSTERED INDEX ix ON #u (cod);
 
-            -- Despachos del día y posteriores (cresdo ya los trae a la hora de la lectura)
+            -- Despachos: histórico, del día y posteriores (cresdo ya los trae a la hora de la lectura)
             SELECT d.codcli AS cod,
-                   SUM(CASE WHEN d.fchtrn = @d THEN d.mto ELSE 0 END) AS dia,
-                   SUM(CASE WHEN d.fchtrn > @d THEN d.mto ELSE 0 END) AS post
+                   SUM(CASE WHEN d.fchtrn <  @d THEN CAST(d.mto AS decimal(18,4)) ELSE 0 END) AS hist,
+                   SUM(CASE WHEN d.fchtrn <= @d THEN CAST(d.mto AS decimal(18,4)) ELSE 0 END) AS acum,
+                   SUM(CASE WHEN d.fchtrn =  @d THEN d.mto ELSE 0 END) AS dia,
+                   SUM(CASE WHEN d.fchtrn >  @d THEN d.mto ELSE 0 END) AS post
               INTO #des
               FROM [SG12].dbo.Despachos d WITH (NOLOCK)
               JOIN #u ON #u.cod = d.codcli
-             WHERE d.fchtrn >= @d
              GROUP BY d.codcli
             OPTION (RECOMPILE);
 
             -- Cortes: vales crédito (codval 28) por fecha del corte
-            SELECT r.codcli AS cod, SUM(r.mto) AS dia
+            SELECT r.codcli AS cod,
+                   SUM(CASE WHEN r.fch <  @d THEN CAST(r.mto AS decimal(18,4)) ELSE 0 END) AS hist,
+                   SUM(CAST(r.mto AS decimal(18,4))) AS acum,
+                   SUM(CASE WHEN r.fch =  @d THEN r.mto ELSE 0 END) AS dia
               INTO #cor
               FROM [SG12].dbo.ValesR r WITH (NOLOCK)
               JOIN #u ON #u.cod = r.codcli
-             WHERE r.codval = 28 AND r.fch = @d
+             WHERE r.codval = 28 AND r.fch <= @d
              GROUP BY r.codcli
             OPTION (RECOMPILE);
 
             -- Cobros (tipope 4) y notas de crédito (tipope 6): el movimiento (tipmov 1),
             -- no sus aplicaciones (tipmov 2). Vienen negativos en centavos.
             SELECT m.codopr AS cod,
+                   -SUM(CASE WHEN m.fchope <  @d THEN CAST(m.mtoopeori AS decimal(18,4)) ELSE 0 END) / 100 AS hist,
+                   -SUM(CASE WHEN m.fchope <= @d THEN CAST(m.mtoopeori AS decimal(18,4)) ELSE 0 END) / 100 AS acum,
                    -SUM(CASE WHEN m.tipope = 4 AND m.fchope = @d THEN m.mtoopeori ELSE 0 END) / 100.0 AS cobros,
                    -SUM(CASE WHEN m.tipope = 6 AND m.fchope = @d THEN m.mtoopeori ELSE 0 END) / 100.0 AS notas,
                    -SUM(CASE WHEN m.fchope > @d THEN m.mtoopeori ELSE 0 END) / 100.0 AS post
               INTO #mov
               FROM [SG12].dbo.MovimientosAnl m WITH (NOLOCK)
               JOIN #u ON #u.cod = m.codopr
-             WHERE m.tipopr = 1 AND m.tipmov = 1 AND m.tipope IN (4, 6) AND m.fchope >= @d
+             WHERE m.tipopr = 1 AND m.tipmov = 1 AND m.tipope IN (4, 6)
              GROUP BY m.codopr
             OPTION (RECOMPILE);
 
@@ -105,6 +117,12 @@ class CreditClientsCierreModel extends DebitClientsCierreModel
                    CAST(ISNULL(f.dia, 0)     AS decimal(18,2)) AS facturado_dia,
                    CAST(ISNULL(de.dia, 0)    AS decimal(18,2)) AS consumos_desp_dia,
                    CAST(ISNULL(co.dia, 0)    AS decimal(18,2)) AS consumos_cortes_dia,
+                   CAST(ISNULL(de.hist, 0) AS decimal(18,4)) AS hist_desp,
+                   CAST(ISNULL(de.acum, 0) AS decimal(18,4)) AS acum_desp,
+                   CAST(ISNULL(co.hist, 0) AS decimal(18,4)) AS hist_cortes,
+                   CAST(ISNULL(co.acum, 0) AS decimal(18,4)) AS acum_cortes,
+                   CAST(ISNULL(mv.hist, 0) AS decimal(18,4)) AS hist_abonos,
+                   CAST(ISNULL(mv.acum, 0) AS decimal(18,4)) AS acum_abonos,
                    CASE WHEN @lec = 1 THEN u.cresdo END AS lectura_cresdo,
                    CASE WHEN @lec = 1 THEN ISNULL(v.s, 0) END AS lectura_vehiculos,
                    CASE WHEN @lec = 1 THEN CAST(ISNULL(de.post, 0) AS decimal(18,2)) END AS consumos_post_cierre,

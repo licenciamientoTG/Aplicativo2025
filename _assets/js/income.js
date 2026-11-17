@@ -2025,6 +2025,95 @@ async function clients_debit_table(){
     });
 }
 
+// Tab "Vehículos Crédito" (/income/clients-credit/): límites de litros día/semana/mes y saldos por vehículo
+function vehicles_credit_table(){
+    var codcli = $('#cliente_vehicles_credit').val();
+    if (!codcli) {
+        alertify.warning('Selecciona un cliente.');
+        return;
+    }
+
+    if ($.fn.DataTable.isDataTable('#vehicles_credit_table')) {
+        $('#vehicles_credit_table').DataTable().destroy();
+    }
+
+    var litros = function (v) {
+        var n = parseFloat(v) || 0;
+        return n.toLocaleString('es-MX', { maximumFractionDigits: 2 }) + ' L';
+    };
+    // Límite 0 en ControlGas = sin límite
+    var limite = function (v) {
+        return (parseFloat(v) || 0) === 0 ? '<span class="text-muted">Sin límite</span>' : litros(v);
+    };
+    var dinero = $.fn.dataTable.render.number(',', '.', 2, '$').display;
+
+    $('#vehicles_credit_table').DataTable({
+        order: [0, 'asc'],
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollY: '400px',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+        buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
+        ajax: {
+            method: 'POST',
+            url: routeUrl('income.clients_credit_vehicles'),
+            data: { codcli: codcli },
+            timeout: 600000,
+            error: function () {
+                $('.table-responsive').removeClass('loading');
+                alertify.error('No se pudieron cargar los vehículos del cliente.');
+            },
+            beforeSend: function () {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            { data: 'nroveh', className: 'text-end' },
+            { data: 'tar' },
+            { data: 'plc', render: $.fn.dataTable.render.text() },
+            { data: 'den', render: $.fn.dataTable.render.text() },
+            {
+                data: 'estado', className: 'text-nowrap',
+                render: function (v) {
+                    var cls = v === 'Habilitado' ? 'bg-success' : (v === 'Suspendido' ? 'bg-danger' : 'bg-secondary');
+                    return '<span class="badge ' + cls + '">' + $('<div>').text(v || '').html() + '</span>';
+                }
+            },
+            { data: 'carmax', className: 'text-nowrap text-end', render: limite },
+            { data: 'candia', className: 'text-nowrap text-end', render: limite },
+            { data: 'cansem', className: 'text-nowrap text-end', render: limite },
+            { data: 'canmes', className: 'text-nowrap text-end', render: limite },
+            { data: 'acudia', className: 'text-nowrap text-end', render: litros },
+            { data: 'acusem', className: 'text-nowrap text-end', render: litros },
+            { data: 'acumes', className: 'text-nowrap text-end', render: litros },
+            {
+                data: 'ultima_carga', className: 'text-nowrap',
+                render: function (v) { return v || '<span class="text-danger">Nunca</span>'; }
+            },
+            { data: 'ultcan', className: 'text-nowrap text-end', render: litros },
+            { data: 'debsdo', className: 'text-nowrap text-end', render: dinero },
+            {
+                data: 'debglo', className: 'text-nowrap text-center',
+                render: function (v) { return parseInt(v, 10) === 1 ? 'Sí' : 'No'; }
+            },
+            { data: 'saldo_global', className: 'text-nowrap text-end', render: dinero },
+        ],
+        deferRender: true,
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+        },
+        footerCallback: function () {
+            var api = this.api();
+            var suma = function (i) {
+                return api.column(i, { search: 'applied' }).data().reduce(function (a, b) { return a + (parseFloat(b) || 0); }, 0);
+            };
+            [9, 10, 11, 13].forEach(function (i) { $(api.column(i).footer()).html(litros(suma(i))); });
+            $(api.column(14).footer()).html(dinero(suma(14)));
+        }
+    });
+}
+
 async function vehicles_debit_table(){
     var codcli = $('#cliente_vehicles_debit').val();
     if (codcli === null || codcli === undefined || codcli === '') return;
@@ -3753,7 +3842,7 @@ function credit_snapshot_table() {
         return { data: key, render: money, className: 'text-nowrap text-end', visible: visible !== false };
     };
     // Índices de las columnas de monto (de Límite a Contador vehículos)
-    var moneyCols = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+    var moneyCols = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
 
     $t.DataTable({
         ordering: true,
@@ -3790,6 +3879,7 @@ function credit_snapshot_table() {
             m('limite'),
             m('saldo_ini_sistema'),
             m('saldo_ini_calc_desp'),
+            m('ajuste_retro_desp'),
             m('consumos_desp_dia'),
             m('consumos_cortes_dia'),
             m('desfase_dia'),
@@ -3808,6 +3898,7 @@ function credit_snapshot_table() {
             },
             m('disponible'),
             m('saldo_ini_calc_cortes', false),
+            m('ajuste_retro_cortes', false),
             m('saldo_fin_vehiculos', false),
             { data: 'debglo', className: 'text-center', visible: false, render: function (d) { return parseInt(d, 10) === 1 ? 'Sí' : 'No'; } },
             { data: 'fecha_desde', className: 'text-center', visible: false },
