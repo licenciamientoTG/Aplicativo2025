@@ -670,14 +670,14 @@ async function valeras_table() {
                 data: col.key,
                 title: col.label,
                 className: 'text-end', createdCell: vrZeroCell,
-                render: $.fn.dataTable.render.number(',', '.', 2)
+                render: $.fn.dataTable.render.number(',', '.', 2, '$')
             });
         });
         columns.push({
             data: 'total',
             title: 'Total',
             className: 'text-end fw-bold col-total',
-            render: $.fn.dataTable.render.number(',', '.', 2)
+            render: $.fn.dataTable.render.number(',', '.', 2, '$')
         });
 
         columns.forEach(function (col) {
@@ -699,7 +699,7 @@ async function valeras_table() {
                     extend: 'excel',
                     className: 'btn btn-success',
                     text: ' Excel',
-                    title: 'Valeras_' + fromDate + '_' + untilDate
+                    title: 'Valeras_Corte_Estacion_' + fromDate + '_' + untilDate
                 },
             ],
             deferRender: true,
@@ -839,6 +839,71 @@ function render_valeras_desp_table() {
     draw_valeras_desp_table('#valeras_desp_valera_table', valeraRows, [
         { data: 'valera', title: 'Valera', className: 'text-nowrap' }
     ], 'Valeras_Despachos_Valera_');
+    draw_valeras_desp_base_table();
+}
+
+// Sub-tab "Base" de Despachos: una fila por estación + valera + mes, con despachos, litros y monto
+// (no depende del selector Litros/Monto: muestra los dos). Solo se redibuja al consultar.
+var valeras_desp_base_drawn = null;
+function draw_valeras_desp_base_table() {
+    var response = valeras_desp_cache.response;
+    if (valeras_desp_base_drawn === response) return; // cambiar Litros/Monto no la afecta
+    valeras_desp_base_drawn = response;
+
+    var rows = [];
+    response.data.forEach(function (row) {
+        response.columns.forEach(function (col) {
+            var mes = row.meses[col.key];
+            if (!mes) return;
+            var p = col.key.split('_');
+            rows.push({
+                estacion: row.estacion, valera: row.valera, anio: +p[0], mes: +p[1],
+                despachos: mes.despachos, litros: mes.litros, monto: mes.monto
+            });
+        });
+    });
+
+    if ($.fn.DataTable.isDataTable('#valeras_desp_base_table')) {
+        $('#valeras_desp_base_table').DataTable().destroy();
+    }
+    $('#valeras_desp_base_table tbody').empty();
+
+    var n0 = $.fn.dataTable.render.number(',', '.', 0);
+    $('#valeras_desp_base_table').DataTable({
+        data: rows,
+        columns: [
+            { data: 'estacion', className: 'text-nowrap' },
+            { data: 'valera', className: 'text-nowrap' },
+            { data: 'anio', className: 'text-end' },
+            { data: 'mes', className: 'text-end' },
+            { data: 'despachos', className: 'text-end', render: n0 },
+            { data: 'litros', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'monto', className: 'text-end col-total', render: $.fn.dataTable.render.number(',', '.', 2, '$') }
+        ],
+        order: [],
+        scrollY: '700px',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        buttons: [
+            { extend: 'excel', className: 'btn btn-success', text: ' Excel',
+              title: 'Valeras_Despachos_Base_' + valeras_desp_cache.fromDate + '_' + valeras_desp_cache.untilDate },
+        ],
+        deferRender: true,
+        footerCallback: function () {
+            var api = this.api();
+            var nf = new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            var nf0 = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 0 });
+            var sum = function (i) {
+                return api.column(i, { search: 'applied' }).data().reduce(function (a, b) { return a + (Number(b) || 0); }, 0);
+            };
+            $(api.column(3).footer()).html('Suma');
+            $(api.column(4).footer()).html(nf0.format(sum(4)));
+            $(api.column(5).footer()).html(nf.format(sum(5)));
+            $(api.column(6).footer()).html('$' + nf.format(sum(6)));
+        }
+    });
 }
 
 function draw_valeras_desp_table(selector, rows, labelColumns, tituloPrefix) {
@@ -921,7 +986,7 @@ function valeras_base_render(response, fromDate, untilDate) {
             { data: 'denominacion', className: 'text-nowrap' },
             { data: 'anio', className: 'text-end' },
             { data: 'mes', className: 'text-end' },
-            { data: 'total', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2) }
+            { data: 'total', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') }
         ],
         order: [],
         scrollY: '700px',
@@ -934,7 +999,7 @@ function valeras_base_render(response, fromDate, untilDate) {
                 extend: 'excel',
                 className: 'btn btn-success',
                 text: ' Excel',
-                title: 'Valeras_Base_' + fromDate + '_' + untilDate
+                title: 'Valeras_Corte_Base_' + fromDate + '_' + untilDate
             },
         ],
         deferRender: true,
@@ -1002,14 +1067,14 @@ function valeras_conc_render(response, fromDate, untilDate) {
                 data: col.key,
                 title: col.label,
                 className: 'text-end', createdCell: vrZeroCell,
-                render: $.fn.dataTable.render.number(',', '.', 2)
+                render: $.fn.dataTable.render.number(',', '.', 2, '$')
             });
         });
         columns.push({
             data: 'total',
             title: 'Total',
             className: 'text-end fw-bold col-total',
-            render: $.fn.dataTable.render.number(',', '.', 2)
+            render: $.fn.dataTable.render.number(',', '.', 2, '$')
         });
 
         columns.forEach(function (col) {
@@ -1031,7 +1096,7 @@ function valeras_conc_render(response, fromDate, untilDate) {
                     extend: 'excel',
                     className: 'btn btn-success',
                     text: ' Excel',
-                    title: 'Valeras_Concentrado_' + fromDate + '_' + untilDate
+                    title: 'Valeras_Corte_Valera_' + fromDate + '_' + untilDate
                 },
             ],
             deferRender: true,

@@ -108,8 +108,8 @@
         </div>
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0">Valeras LTS del Corte</h5>
-                <small class="text-muted">Valores capturados en el corte (MovimientosTar). Sin bancarias, HTI, INTERL, BANKAOOL ni transferencias.</small>
+                <h5 class="card-title mb-0">Valeras del Corte ($)</h5>
+                <small class="text-muted">Lo que declara el corte de cada turno (SG12.Ingresos), en pesos: el corte no guarda litros. Mismo catálogo de valeras que Venta por Estación Mensual &gt; Ingresos.</small>
                 <ul class="nav nav-tabs card-header-tabs mt-2" id="corteTab" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active" id="CorteEstacion-tab" data-bs-toggle="tab" data-bs-target="#CorteEstacion" type="button" role="tab" aria-controls="CorteEstacion" aria-selected="true">Por estación</button>
@@ -231,8 +231,8 @@
                     <div class="col-2 ">
                         <label class="col-form-label-sm" for="medida_desp">Ver: </label>
                         <select class="form-select form-select-sm" id="medida_desp">
-                            <option value="litros" selected>Litros</option>
-                            <option value="monto">Monto ($)</option>
+                            <option value="litros">Litros</option>
+                            <option value="monto" selected>Monto ($)</option>
                         </select>
                     </div>
                     <div class="col-2 ">
@@ -251,6 +251,9 @@
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="DespValera-tab" data-bs-toggle="tab" data-bs-target="#DespValera" type="button" role="tab" aria-controls="DespValera" aria-selected="false">Por valera</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="DespBase-tab" data-bs-toggle="tab" data-bs-target="#DespBase" type="button" role="tab" aria-controls="DespBase" aria-selected="false">Base</button>
                     </li>
                 </ul>
             </div>
@@ -286,6 +289,27 @@
                                 <tbody></tbody>
                                 <tfoot>
                                     <tr></tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane" id="DespBase" role="tabpanel" aria-labelledby="DespBase-tab">
+                        <div class="table-responsive d-none">
+                            <table class="table table-sm table-hover w-100" id="valeras_desp_base_table">
+                                <thead>
+                                    <tr>
+                                        <th>Estación</th>
+                                        <th>Valera</th>
+                                        <th>Año</th>
+                                        <th>Mes</th>
+                                        <th>Despachos</th>
+                                        <th>Litros</th>
+                                        <th>Monto</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                                <tfoot>
+                                    <tr><th></th><th></th><th></th><th></th><th></th><th></th><th></th></tr>
                                 </tfoot>
                             </table>
                         </div>

@@ -388,76 +388,51 @@ class MovimientosTarModel extends Model{
         return $this->sql->select($query, []) ?: false;
     }
 
+    /**
+     * Tab Corte de /direction/valeras: valeras que declara el corte (SG12.Ingresos), en PESOS
+     * (en Ingresos can = mto; el corte no guarda litros). Mismo origen y catálogo que
+     * Venta por Estación Mensual > Ingresos (VentasModel::conceptosValeras()) y Ingresos > Valeras
+     * (ValerasModel), para que los totales cuadren entre pantallas.
+     * Antes salía de MovimientosTar y dejaba fuera estaciones que solo capturan la valera en el corte
+     * (Villa Ahumada, Las Fuentes, Satélite...: despachos sin rut ni MovimientosTar).
+     * Fecha del corte: el día real es fch - 1 (DATEADD(DAY, fch - 1, 0)).
+     */
     function get_valeras_report(int $fromInt, int $untilInt, int $codgas = 0) : array|false {
+        $valeras = (new VentasModel)->conceptosValeras();
         $query = "
+            SET NOCOUNT ON;
             DECLARE @codgas INT = ?, @ini INT = ?, @fin INT = ?; -- @codgas 0 = todas las estaciones
-            -- Denominaciones que sí son valeras (fuera bancarias, dólares, promociones...)
-            WITH val AS (
-                SELECT t13.cod, t13.den
-                FROM [SG12].[dbo].[Valores] t13
-                WHERE NOT EXISTS (
-                        SELECT 1 FROM (VALUES
-                            (' DOLARES'), (' SMARTBT - American Express'), (' SMARTBT - Bancarias'),
-                            (' Tarjetas Bancomer'), (' Tarjetas Santander'), (' Tarjetas Banorte'),
-                            (N'INTERL - Tarjeta de Débito'), (N'INTERL - Tarjeta de Crédito'),
-                            ('MAS QUE GAS'), (' Tarjetas Afirme'), (' Tarjetas American Express'),
-                            (' Banorte Payworks'), ('Promociones MKT'), ('Raspaditos'),
-                            (' SMARTBT - MANUAL Bancarias')
-                        ) AS excl(den)
-                        WHERE excl.den = t13.den
-                    )
-                    -- Terminales bancarias (HTI, Interlogic, Bankaool) y transferencias: no son valeras
-                    AND t13.den NOT LIKE 'HTI -%'
-                    AND t13.den NOT LIKE 'INTERL%'
-                    AND LTRIM(t13.den) NOT LIKE 'BANKAOOL%'
-                    AND LTRIM(t13.den) <> 'Transferencias'
-                    AND LTRIM(t13.den) <> 'Tarjetas Scotiabank'
-            ),
-            -- Se parte de MovimientosTar por (codbco, fchmov) con IX_MovimientosTarBco: solo toca los
-            -- movimientos de valeras en vez de recorrer ~1M despachos/mes de Despachos (150M filas).
-            -- fchmov = fchtrn del despacho; el ±1 día es margen, el filtro exacto va sobre fchtrn.
-            -- DISTINCT: MovimientosTar trae filas repetidas idénticas; cada despacho cuenta una vez por medio.
-            mv AS (
-                SELECT DISTINCT m.codgas, m.nrotrn, m.codbco
-                FROM [SG12].[dbo].[MovimientosTar] m
-                INNER JOIN val ON val.cod = m.codbco
-                WHERE m.fchmov BETWEEN @ini - 1 AND @fin + 1
-                    AND m.mto != 0
-                    AND (@codgas = 0 OR m.codgas = @codgas)
-            )
             SELECT
                 t2.abr,
-                t13.den AS denominacion,
-                YEAR(DATEADD(DAY, t1.fchtrn - 1, 0))  AS anio,
-                MONTH(DATEADD(DAY, t1.fchtrn - 1, 0)) AS mes,
-                ROUND(SUM(t1.can), 2) AS total
-            FROM mv
-            INNER JOIN [SG12].[dbo].[Despachos] t1 ON t1.nrotrn = mv.nrotrn AND t1.codgas = mv.codgas
-            INNER JOIN [SG12].[dbo].[gasolineras] t2 ON t1.codgas = t2.cod
-            INNER JOIN val t13 ON t13.cod = mv.codbco
-            WHERE
-                t1.mto != 0
-                AND t1.fchtrn BETWEEN @ini AND @fin
-                -- Solo combustibles: en otros productos (p. ej. 163 Anticipo) 'can' son pesos o piezas
-                AND t1.codprd IN (179, 180, 181, 192, 193)
+                LTRIM(t13.den) AS denominacion, -- conceptosValeras() trae Pluxee con y sin espacio inicial: una sola fila
+                YEAR(DATEADD(DAY, i.fch - 1, 0))  AS anio,
+                MONTH(DATEADD(DAY, i.fch - 1, 0)) AS mes,
+                ROUND(SUM(i.mto), 2) AS total
+            FROM [SG12].[dbo].[Ingresos] i WITH (NOLOCK)
+            INNER JOIN [SG12].[dbo].[Valores] t13 WITH (NOLOCK) ON t13.cod = i.codval
+            INNER JOIN [SG12].[dbo].[gasolineras] t2 WITH (NOLOCK) ON t2.cod = i.codgas
+            WHERE i.fch BETWEEN @ini AND @fin
+                AND (@codgas = 0 OR i.codgas = @codgas)
+                AND t13.den IN ({$valeras})
             GROUP BY
-                t2.abr, t13.den,
-                YEAR(DATEADD(DAY, t1.fchtrn - 1, 0)),
-                MONTH(DATEADD(DAY, t1.fchtrn - 1, 0))
+                t2.abr, LTRIM(t13.den),
+                YEAR(DATEADD(DAY, i.fch - 1, 0)),
+                MONTH(DATEADD(DAY, i.fch - 1, 0))
+            HAVING ROUND(SUM(i.mto), 2) <> 0
             ORDER BY
                 t2.abr,
-                CASE t13.den
-                    WHEN ' SMARTBT - SODEXO WIZEO' THEN 1
-                    WHEN ' Vale Efectivale' THEN 2
-                    WHEN ' Tarjeta Inburgas' THEN 3
-                    WHEN ' Vale Sodexo' THEN 4
-                    WHEN ' Vale Edenred' THEN 5
-                    WHEN ' SMARTBT - EFECTIVALE' THEN 6
-                    WHEN ' Tarjeta EfectiCard' THEN 7
+                CASE LTRIM(t13.den)
+                    WHEN 'SMARTBT - SODEXO WIZEO' THEN 1
+                    WHEN 'Vale Efectivale' THEN 2
+                    WHEN 'Tarjeta Inburgas' THEN 3
+                    WHEN 'Vale Sodexo' THEN 4
+                    WHEN 'Vale Edenred' THEN 5
+                    WHEN 'SMARTBT - EFECTIVALE' THEN 6
+                    WHEN 'Tarjeta EfectiCard' THEN 7
                     WHEN 'Ultra Gas' THEN 8
-                    WHEN ' Tarjetas Sodexo (Pluxee)' THEN 9
+                    WHEN 'Tarjetas Sodexo (Pluxee)' THEN 9
                     WHEN 'Mobil FleetPro' THEN 10
-                    WHEN ' Tarjeta TicketCar' THEN 11
+                    WHEN 'Tarjeta TicketCar' THEN 11
                     ELSE 12
                 END,
                 anio, mes

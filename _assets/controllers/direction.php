@@ -255,7 +255,7 @@ class Direction{
                 ];
             }
             $colKey = $row['anio'] . '_' . $row['mes'];
-            $data[$key]['meses'][$colKey] = ['litros' => (float)$row['litros'], 'monto' => (float)$row['monto']];
+            $data[$key]['meses'][$colKey] = ['litros' => (float)$row['litros'], 'monto' => (float)$row['monto'], 'despachos' => (int)$row['despachos']];
             $data[$key]['despachos'] += (int)$row['despachos'];
             $data[$key]['litros'] = round($data[$key]['litros'] + (float)$row['litros'], 2);
             $data[$key]['monto']  = round($data[$key]['monto'] + (float)$row['monto'], 2);
