@@ -19,6 +19,7 @@
     // Cobros
     'Cuadra': 'cv-ok', 'Cuadra (centavos)': 'cv-ok', 'Cuadra (MOV compartido)': 'cv-ok', 'Cuadra (MOV vecinos)': 'cv-ok',
     'Cuadra por importe': 'cv-info', 'Cuadra por importe (sin MOV)': 'cv-info',
+    'Conciliado manual': 'cv-ok',
     'Diferencia': 'cv-warn', 'Sin banco': 'cv-bad', 'Sin MOV': 'cv-bad', 'Cancelado': 'cv-muted',
     // Banco
     'Ligado a cobro': 'cv-ok', 'Sin cobro de crédito': 'cv-muted', 'Retiro': 'cv-muted',
