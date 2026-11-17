@@ -37,6 +37,7 @@ return [
         route('sync-consumption/', [Direction::class, 'sync_consumption'], name: 'direction.sync_consumption', methods: ['POST']),
         route('vta-vs-meta-canvas/', [Direction::class, 'Vta_vs_meta_canvas'], name: 'direction.Vta_vs_meta_canvas', methods: ['POST'], alias: ['direction/Vta_vs_meta_canvas']),
         route('valeras-table/', [Direction::class, 'valeras_table'], name: 'direction.valeras_table', methods: ['POST'], alias: ['direction/valeras_table']),
+        route('valeras-despachos-table/', [Direction::class, 'valeras_despachos_table'], name: 'direction.valeras_despachos_table', methods: ['POST']),
         route('excel-tg6/', [Direction::class, 'excel_tg6'], name: 'direction.excel_tg6', methods: ['GET'], alias: ['direction/excel_tg6']),
         route('monthly-summary-shortge-table/', [Direction::class, 'monthly_summary_shortge_table'], name: 'direction.monthly_summary_shortge_table', methods: ['POST'], alias: ['direction/monthly_summary_shortge_table']),
         route('daily-summary-shortge-table/', [Direction::class, 'daily_summary_shortge_table'], name: 'direction.daily_summary_shortge_table', methods: ['POST'], alias: ['direction/daily_summary_shortge_table']),

@@ -7,7 +7,7 @@
         padding: 0.25rem 0.5rem;
     }
     /* Altura mínima para que el overlay de carga sea visible con la tabla vacía */
-    #card_table.loading, #card_table_base.loading, #card_graph.loading, #card_table_conc.loading {
+    #card_table.loading, #card_table_base.loading, #card_graph.loading, #card_table_conc.loading, #card_table_desp.loading {
         min-height: 300px;
     }
 </style>
@@ -28,6 +28,9 @@
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="Concentrado-tab" data-bs-toggle="tab" data-bs-target="#Concentrado" type="button" role="tab" aria-controls="Concentrado" aria-selected="false">Concentrado Valeras</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="Despachos-tab" data-bs-toggle="tab" data-bs-target="#Despachos" type="button" role="tab" aria-controls="Despachos" aria-selected="false">Despachos</button>
     </li>
 </ul>
 
@@ -206,6 +209,68 @@
             </div>
         </div>
     </div>
+    <div class="tab-pane" id="Despachos" role="tabpanel" aria-labelledby="Despachos-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="from_desp">Desde: </label>
+                        <input type="date" class="form-control form-control-sm" name="from_desp" id="from_desp" value="{{ 'now'|date('Y-m-01') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="until_desp">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until_desp" id="until_desp" value="{{ 'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="codgas_desp">Estación: </label>
+                        <select class="selectpicker form-control" data-live-search="true" name="codgas_desp" id="codgas_desp" required>
+                            <option value="0" selected>TODAS</option>
+                            {% for station in stations %}
+                            <option value="{{ station.cod }}">{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="medida_desp">Ver: </label>
+                        <select class="form-select form-select-sm" id="medida_desp">
+                            <option value="litros" selected>Litros</option>
+                            <option value="monto">Monto ($)</option>
+                        </select>
+                    </div>
+                    <div class="col-2 ">
+                        <button id="search_valeras_desp_table" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Valeras desde Despachos por Estación / Valera</h5>
+                <small class="text-muted">Clasificadas por el medio de pago del despacho. Las filas "SBT …" son vales cobrados en terminal SmartBT, que el tab Valeras no cuenta. Solo combustibles.</small>
+            </div>
+            <div class="card-body" id="card_table_desp">
+                <div class="table-responsive d-none">
+                    <table class="table table-sm table-hover w-100" id="valeras_desp_table">
+                        <thead class="table-info">
+                            <tr></tr>
+                        </thead>
+                        <tbody></tbody>
+                        <tfoot>
+                            <tr></tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <div id="alert_valeras_desp_table">
+                    <div class="alert alert-warning alert-dismissible mt-2" role="alert">
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        <div class="alert-message">
+                            <strong>¡Atención!</strong> Seleccione un rango de fechas para generar el reporte de valeras desde despachos
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     <div class="tab-pane" id="Grafica" role="tabpanel" aria-labelledby="Grafica-tab">
         <div class="card">
             <div class="card-body">
@@ -289,6 +354,13 @@ $('#search_valeras_graph').on('click', function() {
 });
 $('#search_valeras_conc_table').on('click', function() {
     valeras_conc_table();
+});
+$('#search_valeras_desp_table').on('click', function() {
+    valeras_desp_table();
+});
+// Cambiar Litros/Monto redibuja con los datos ya consultados
+$('#medida_desp').on('change', function() {
+    render_valeras_desp_table();
 });
 // Quitar/agregar estaciones o valeras redibuja ambas gráficas con los datos ya consultados
 $('#graph_filter_stations, #graph_filter_valeras').on('changed.bs.select', function() {

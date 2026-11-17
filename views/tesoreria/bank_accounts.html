@@ -14,13 +14,24 @@
         white-space: nowrap;
     }
     .badge-tipo { font-size: .68rem; }
+    .cb-tabla tbody td { vertical-align: middle; font-size: .82rem; }
+    .cb-tabla .cb-nombre { font-weight: 600; color: #0f172a; }
+    .cb-tabla .cb-pagan { color: #64748b; max-width: 16rem; }
+
+    /* Pestañas Propias / Proveedores */
+    .cb-tabs { border-bottom: 1px solid #e2e8f0; padding: 0 .75rem; gap: .25rem; }
+    .cb-tabs .nav-link { border: 0; border-bottom: 2px solid transparent; color: #64748b; font-size: .85rem; font-weight: 600; padding: .7rem .9rem; margin-bottom: -1px; }
+    .cb-tabs .nav-link:hover { color: #1C4587; }
+    .cb-tabs .nav-link.active { color: #1C4587; border-bottom-color: #1C4587; background: transparent; }
+    .cb-tabs .cb-n { display: inline-block; margin-left: .35rem; padding: 0 .45rem; border-radius: 1rem; background: #e2e8f0; color: #475569; font-size: .68rem; }
+    .cb-tabs .nav-link.active .cb-n { background: #1C4587; color: #fff; }
 
     /* Fila de filtros de cabecera (mismo patrón que payment_list_table) */
-    #bank_accounts_table thead tr.filter th {
+    .cb-tabla thead tr.filter th {
         background-color: #e2e8f0 !important;
         padding: 3px 6px !important;
     }
-    #bank_accounts_table thead tr.filter th input {
+    .cb-tabla thead tr.filter th input {
         font-size: 0.7rem;
         padding: 2px 5px;
         height: 22px;
@@ -34,10 +45,10 @@
 {% block content %}
 
 <div class="card border-0 shadow-sm mb-3">
-    <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
+    <div class="card-body py-2 px-3 d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2">
         <div>
             <h6 class="mb-0" style="color:#334155;"><i class="fas fa-university me-2 text-primary"></i>Catálogo de Cuentas Bancarias</h6>
-            <small class="text-muted">Administra cuentas propias y de terceros usadas en los layouts de pago.</small>
+            <small class="text-muted">Cuentas propias de las razones sociales y cuentas de proveedores usadas en los layouts de pago.</small>
         </div>
         <div class="d-flex gap-2">
             <button onclick="openNew()" class="btn btn-sm btn-primary">
@@ -51,30 +62,62 @@
 </div>
 
 <div class="card border-0 shadow-sm">
-    <div class="card-body p-0">
-        <div class="table-responsive" style="padding:.75rem;">
-            <table id="bank_accounts_table" class="table table-hover table-sm w-100 mb-0">
-                <thead class="cb-thead">
-                    <tr>
-                        <th class="text-center">ID</th>
-                        <th>Descripción</th>
-                        <th>Cuenta</th>
-                        <th>Clave</th>
-                        <th>Banco</th>
-                        <th>Titular</th>
-                        <th>Tipo</th>
-                        <th>Divisa</th>
-                        <th class="text-center">Emp.</th>
-                        <th class="text-center">Prov.</th>
-                        <th>Pueden pagar</th>
-                        <th>Dirección</th>
-                        <th>Solicitud</th>
-                        <th class="text-center">Activo</th>
-                        <th class="text-center">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
+    <ul class="nav cb-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="tab_propias" data-bs-toggle="tab" data-bs-target="#pane_propias" data-tipo="Propias" type="button" role="tab">
+                <i class="fas fa-building me-1"></i> Propias <span class="cb-n" id="n_propias">…</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab_proveedores" data-bs-toggle="tab" data-bs-target="#pane_proveedores" data-tipo="Terceros" type="button" role="tab">
+                <i class="fas fa-truck me-1"></i> Proveedores <span class="cb-n" id="n_proveedores">…</span>
+            </button>
+        </li>
+    </ul>
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="pane_propias" role="tabpanel">
+            <div class="table-responsive" style="padding:.75rem;">
+                <table id="tabla_propias" class="table table-hover table-sm w-100 mb-0 cb-tabla">
+                    <thead class="cb-thead">
+                        <tr>
+                            <th class="text-center">ID</th>
+                            <th>Empresa</th>
+                            <th>Descripción</th>
+                            <th>Banco</th>
+                            <th>Cuenta</th>
+                            <th>Clave</th>
+                            <th>Divisa</th>
+                            <th>Titular</th>
+                            <th class="text-center">Activo</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="pane_proveedores" role="tabpanel">
+            <div class="table-responsive" style="padding:.75rem;">
+                <table id="tabla_proveedores" class="table table-hover table-sm w-100 mb-0 cb-tabla">
+                    <thead class="cb-thead">
+                        <tr>
+                            <th class="text-center">ID</th>
+                            <th>Proveedor</th>
+                            <th>Banco</th>
+                            <th>Cuenta</th>
+                            <th>CLABE</th>
+                            <th>Divisa</th>
+                            <th>Pueden pagar</th>
+                            <th>Dirección</th>
+                            <th>Solicitud</th>
+                            <th class="text-center">Prov.</th>
+                            <th class="text-center">Activo</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
@@ -117,7 +160,7 @@
                             <select class="form-select form-select-sm" name="Tipo" id="ed_tipo">
                                 <option value="">(sin tipo)</option>
                                 <option value="Propias">Propias</option>
-                                <option value="Terceros">Terceros</option>
+                                <option value="Terceros">Terceros (proveedores)</option>
                             </select>
                         </div>
                         <div class="col-md-4">
@@ -135,11 +178,11 @@
                                 <option value="0">No</option>
                             </select>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-4 ed-solo-propias">
                             <label class="form-label form-label-sm">emp_cod <small class="text-muted">(empresa propia)</small></label>
                             <input type="number" class="form-control form-control-sm" name="emp_cod" id="ed_emp_cod" placeholder="solo cuentas Propias">
                         </div>
-                        <div class="col-md-8">
+                        <div class="col-md-8 ed-solo-terceros">
                             <label class="form-label form-label-sm">proveedor_cod <small class="text-muted">(vincula cuenta de tercero a un proveedor)</small></label>
                             <input type="number" class="form-control form-control-sm" name="proveedor_cod" id="ed_proveedor_cod" list="proveedores_list" placeholder="código de proveedor (ControlGas)">
                             <datalist id="proveedores_list">
@@ -149,7 +192,7 @@
                             </datalist>
                             <small class="text-muted">Este código es el que el layout usa para elegir la cuenta del proveedor (prioridad sobre el match por nombre).</small>
                         </div>
-                        <div class="col-12" id="ed_pagadores_wrap">
+                        <div class="col-12 ed-solo-terceros" id="ed_pagadores_wrap">
                             <label class="form-label form-label-sm">Razones sociales que pueden pagarle <small class="text-muted">(solo cuentas de proveedores / Terceros)</small></label>
                             <div class="d-flex flex-wrap gap-1 border rounded p-2" style="max-height:9rem;overflow:auto;">
                                 {% for e in empresas %}
@@ -177,141 +220,132 @@
 {% endblock %}
 {% block myjs %}
 <script>
-let bankAccountsTable = null;
+// Dos DataTables sobre el mismo JSON: Propias (Tipo = 'Propias') y Proveedores (Terceros y las que no tienen tipo).
+let tablaPropias = null;
+let tablaProveedores = null;
+let cuentasPorId = {};
 // Detalle de la alta de cuenta que originó la fila (ruta con nombre; el 0 se reemplaza por el id)
 const BA_DETAIL_URL = '{{ url('bankaccounts.detail', {id: 0}) }}';
 
 function escHtml(s) {
     return $('<div>').text(s === null || s === undefined ? '' : String(s)).html();
 }
+function texto(d) { return d ? escHtml(d) : '—'; }
+function codigo(d) { return (d === null || d === undefined || d === '') ? '—' : escHtml(d); }
 
-function badgeTipo(tipo) {
-    if (tipo === 'Propias')  return '<span class="badge bg-info badge-tipo">Propias</span>';
-    if (tipo === 'Terceros') return '<span class="badge bg-secondary badge-tipo">Terceros</span>';
-    return '<span class="badge bg-light text-muted badge-tipo">—</span>';
+function switchActivo(d, type, row) {
+    if (type !== 'display') { return parseInt(d) === 1 ? 'Sí' : 'No'; }
+    var checked = (parseInt(d) === 1) ? 'checked' : '';
+    return '<div class="form-check form-switch d-flex justify-content-center">'
+         + '<input class="form-check-input" type="checkbox" ' + checked
+         + ' onchange="toggleAccount(' + parseInt(row.Id) + ', this.checked ? 1 : 0, this)"></div>';
+}
+function botonEditar(d) {
+    return '<button class="btn btn-sm btn-outline-primary" onclick="openEdit(' + parseInt(d) + ')" title="Editar">'
+         + '<i class="fas fa-edit"></i></button>';
+}
+
+// Fila de filtros por columna (patrón de payment_list_table). Activo y Acciones no llevan input.
+function filaFiltros(api, selector) {
+    function construir() {
+        $(selector + ' thead tr.filter').remove();
+        var fila = $('<tr class="filter"></tr>');
+        $(selector + ' thead tr:first th').each(function () {
+            var title = $(this).text().trim();
+            fila.append(title === 'Activo' || title === 'Acciones' || title === ''
+                ? '<th></th>'
+                : '<th><input type="text" class="form-control form-control-sm" placeholder="' + escHtml(title) + '" /></th>');
+        });
+        $(selector + ' thead').append(fila);
+        $(selector + ' thead tr.filter th input')
+            .on('keyup change', function () { api.column($(this).parent().index() + ':visible').search(this.value).draw(); })
+            .on('click', function (e) { e.stopPropagation(); });
+    }
+    construir();
+    api.on('column-visibility.dt', function () { api.columns().search(''); construir(); api.draw(); });
+}
+
+function opcionesTabla(titulo, columnas, exportar) {
+    return {
+        dom: '<"d-flex justify-content-between align-items-center mb-2"Bf>rtip',
+        buttons: [
+            { extend: 'excel', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-sm btn-success',
+              title: titulo, exportOptions: { columns: exportar } },
+            { extend: 'colvis', text: '<i class="fas fa-columns"></i> Columnas', className: 'btn btn-sm btn-outline-secondary' }
+        ],
+        data: [],
+        deferRender: true,
+        columns: columnas,
+        order: [[0, 'desc']],
+        pageLength: 50,
+        language: { emptyTable: 'Sin cuentas', zeroRecords: 'Ninguna cuenta coincide con el filtro' },
+        initComplete: function () { filaFiltros(this.api(), '#' + this.attr('id')); }
+    };
+}
+
+function initTablas() {
+    tablaPropias = $('#tabla_propias').DataTable(opcionesTabla('Cuentas bancarias propias', [
+        { data: 'Id', type: 'num', className: 'text-center font-monospace' },
+        { data: 'empresa_den', className: 'cb-nombre', render: function (d, type, row) {
+            if (d) { return escHtml(d); }
+            if (row.emp_cod) { return 'emp_cod ' + escHtml(row.emp_cod); }
+            return type === 'display' ? '<span class="badge bg-warning text-dark badge-tipo" title="Capture emp_cod con Editar">Sin empresa</span>' : 'sin empresa';
+        } },
+        { data: 'Descripcion', render: texto },
+        { data: 'Banco', render: texto },
+        { data: 'CuentaLocal', className: 'font-monospace', render: texto },
+        { data: 'Clave', className: 'font-monospace', render: texto },
+        { data: 'Divisa', render: texto },
+        { data: 'TitularCuenta', render: texto },
+        { data: 'Activo', className: 'text-center', orderable: false, render: switchActivo },
+        { data: 'Id', className: 'text-center', orderable: false, render: botonEditar }
+    ], [0, 1, 2, 3, 4, 5, 6, 7, 8]));
+
+    tablaProveedores = $('#tabla_proveedores').DataTable(opcionesTabla('Cuentas bancarias de proveedores', [
+        { data: 'Id', type: 'num', className: 'text-center font-monospace' },
+        { data: null, className: 'cb-nombre', render: function (d, type, row) {
+            var nombre = row.solicitud_proveedor || row.Descripcion || row.TitularCuenta || '';
+            // "sin tipo" también en el texto de búsqueda: así se encuentran escribiéndolo en el buscador
+            if (type !== 'display') { return nombre + (row.Tipo ? '' : ' sin tipo'); }
+            return (nombre ? escHtml(nombre) : '—')
+                 + (row.Tipo ? '' : ' <span class="badge bg-warning text-dark badge-tipo" title="Asigne el tipo con Editar">Sin tipo</span>');
+        } },
+        { data: 'Banco', render: texto },
+        { data: 'CuentaLocal', className: 'font-monospace', render: texto },
+        { data: 'Clave', className: 'font-monospace', render: texto },
+        { data: 'Divisa', render: texto },
+        { data: 'pagadores', orderable: false, className: 'cb-pagan small', render: function (d, type) {
+            var nombres = (d || []).map(function (p) { return p.den; });
+            if (!nombres.length) { return type === 'display' ? '<span class="text-muted">Sin definir</span>' : ''; }
+            return type === 'display' ? escHtml(nombres.join(', ')) : nombres.join(', ');
+        } },
+        { data: 'Direccion', render: texto },
+        { data: 'solicitud_id', render: function (d, type, row) {
+            if (!d) { return type === 'display' ? '—' : ''; }
+            if (type !== 'display') { return '#' + d + ' ' + (row.solicitud_proveedor || ''); }
+            return '<a href="' + BA_DETAIL_URL.replace(/0\/?$/, parseInt(d) + '/') + '" target="_blank" title="Ver solicitud de alta y carátula">#' + parseInt(d) + '</a>';
+        } },
+        { data: 'proveedor_cod', className: 'text-center', render: codigo },
+        { data: 'Activo', className: 'text-center', orderable: false, render: switchActivo },
+        { data: 'Id', className: 'text-center', orderable: false, render: botonEditar }
+    ], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
 }
 
 function reloadBankAccounts() {
-    if (bankAccountsTable) {
-        bankAccountsTable.ajax.reload(null, false);
-    }
-}
-
-function initBankAccountsTable() {
-    bankAccountsTable = $('#bank_accounts_table').DataTable({
-        dom: '<"d-flex justify-content-between align-items-center mb-2"Bf>rtip',
-        buttons: [
-            {
-                extend: 'excel',
-                text: '<i class="fas fa-file-excel"></i> Excel',
-                className: 'btn btn-sm btn-success',
-                title: 'Cuentas Bancarias',
-                exportOptions: { columns: [0,1,2,3,4,5,6,7,8,9,10,11,12,13] }
-            },
-            {
-                extend: 'colvis',
-                text: '<i class="fas fa-columns"></i> Columnas',
-                className: 'btn btn-sm btn-outline-secondary'
-            }
-        ],
-        processing: true,
-        ajax: {
-            url: '/tesoreria/bank_accounts_table',
-            type: 'POST',
-            dataSrc: function(json) {
-                if (json.error) { alertify.error(json.error); return []; }
-                return json.data || [];
-            },
-            error: function() { alertify.error('Error al cargar las cuentas'); }
-        },
-        columns: [
-            { data: 'Id', type: 'num', className: 'text-center font-monospace' },
-            { data: 'Descripcion', defaultContent: '—' },
-            { data: 'CuentaLocal', className: 'font-monospace', render: function(d){ return d || '—'; } },
-            { data: 'Clave', className: 'font-monospace', defaultContent: '—', render: function(d){ return d ? $('<div>').text(d).html() : '—'; } },
-            { data: 'Banco', defaultContent: '—' },
-            { data: 'TitularCuenta', defaultContent: '—' },
-            { data: 'Tipo', className: 'text-center', render: function(d){ return badgeTipo(d); } },
-            { data: 'Divisa', defaultContent: '—', render: function(d){ return d || '—'; } },
-            { data: 'emp_cod', className: 'text-center', defaultContent: '—', render: function(d){ return (d === null || d === '') ? '—' : d; } },
-            { data: 'proveedor_cod', className: 'text-center', defaultContent: '—', render: function(d){ return (d === null || d === '') ? '—' : d; } },
-            {
-                data: 'pagadores', defaultContent: '—', orderable: false,
-                render: function(d, type, row) {
-                    if (row.Tipo === 'Propias') { return '—'; }
-                    var nombres = (d || []).map(function(p){ return p.den; });
-                    if (!nombres.length) { return type === 'display' ? '<span class="text-muted small">Sin definir</span>' : ''; }
-                    return type === 'display' ? '<span class="small">' + escHtml(nombres.join(', ')) + '</span>' : nombres.join(', ');
-                }
-            },
-            { data: 'Direccion', defaultContent: '—', render: function(d){ return d ? escHtml(d) : '—'; } },
-            {
-                data: 'solicitud_id', defaultContent: '—',
-                render: function(d, type, row) {
-                    if (!d) { return '—'; }
-                    if (type !== 'display') { return '#' + d + ' ' + (row.solicitud_proveedor || ''); }
-                    return '<a href="' + BA_DETAIL_URL.replace(/0\/?$/, d + '/') + '" target="_blank" title="Ver solicitud de alta y carátula">#' + d + '</a>'
-                         + (row.solicitud_proveedor ? ' <small class="text-muted">' + escHtml(row.solicitud_proveedor) + '</small>' : '');
-                }
-            },
-            {
-                data: 'Activo', className: 'text-center', orderable: false,
-                render: function(d, type, row) {
-                    var checked = (parseInt(d) === 1) ? 'checked' : '';
-                    return '<div class="form-check form-switch d-flex justify-content-center">'
-                         + '<input class="form-check-input" type="checkbox" ' + checked
-                         + ' onchange="toggleAccount(' + row.Id + ', this.checked ? 1 : 0, this)"></div>';
-                }
-            },
-            {
-                data: 'Id', className: 'text-center', orderable: false,
-                render: function(d) {
-                    return '<button class="btn btn-sm btn-outline-primary" onclick="openEdit(' + d + ')" title="Editar">'
-                         + '<i class="fas fa-edit"></i></button>';
-                }
-            }
-        ],
-        order: [[0, 'desc']],
-        pageLength: 50,
-        initComplete: function () {
-            var api = this.api();
-
-            // Fila de filtros por columna (patrón de payment_list_table).
-            // Activo y Acciones no llevan input; el índice del input es
-            // visible y se mapea con ':visible' por el botón Columnas.
-            function buildFilterRow() {
-                $('#bank_accounts_table thead tr.filter').remove();
-                var filterRow = $('<tr class="filter"></tr>');
-                $('#bank_accounts_table thead tr:first th').each(function () {
-                    var title = $(this).text().trim();
-                    if (title === 'Activo' || title === 'Acciones' || title === '') {
-                        filterRow.append('<th></th>');
-                    } else {
-                        filterRow.append(
-                            '<th><input type="text" class="form-control form-control-sm" placeholder="' + title + '" /></th>'
-                        );
-                    }
-                });
-                $('#bank_accounts_table thead').append(filterRow);
-
-                $('#bank_accounts_table thead tr.filter th input').on('keyup change', function () {
-                    var visIdx = $(this).parent().index();
-                    api.column(visIdx + ':visible').search(this.value).draw();
-                });
-                $('#bank_accounts_table thead tr.filter th input').on('click', function (e) {
-                    e.stopPropagation();
-                });
-            }
-
-            buildFilterRow();
-
-            api.on('column-visibility.dt', function () {
-                api.columns().search('');
-                buildFilterRow();
-                api.draw();
-            });
-        }
-    });
+    $.ajax({ url: '/tesoreria/bank_accounts_table', type: 'POST', dataType: 'json' })
+        .done(function (json) {
+            if (json.error) { alertify.error(json.error); return; }
+            var filas = json.data || [];
+            cuentasPorId = {};
+            filas.forEach(function (r) { cuentasPorId[parseInt(r.Id)] = r; });
+            var propias = filas.filter(function (r) { return r.Tipo === 'Propias'; });
+            var proveedores = filas.filter(function (r) { return r.Tipo !== 'Propias'; });
+            tablaPropias.clear().rows.add(propias).draw(false);
+            tablaProveedores.clear().rows.add(proveedores).draw(false);
+            $('#n_propias').text(propias.length);
+            $('#n_proveedores').text(proveedores.length.toLocaleString('es-MX'));
+        })
+        .fail(function () { alertify.error('Error al cargar las cuentas'); });
 }
 
 function setCuentaHint() {
@@ -319,19 +353,29 @@ function setCuentaHint() {
     $('#ed_cuentalocal_hint').text(len ? (len + ' dígitos') : '');
 }
 
+// emp_cod solo aplica a Propias; proveedor_cod y quién puede pagar, a Terceros
+function toggleCamposTipo() {
+    var tipo = $('#ed_tipo').val();
+    $('.ed-solo-propias').toggle(tipo !== 'Terceros');
+    $('.ed-solo-terceros').toggle(tipo !== 'Propias');
+}
+$('#ed_tipo').on('change', toggleCamposTipo);
+
 function openNew() {
     $('#editAccountForm')[0].reset();
     $('#ed_id').val('');
     $('#ed_activo').val('1');
+    // El tipo sale de la pestaña abierta
+    $('#ed_tipo').val($('.cb-tabs .nav-link.active').data('tipo') || '');
     $('.ed-pagador').prop('checked', false);
-    togglePagadores();
+    toggleCamposTipo();
     setCuentaHint();
     $('#editAccountTitle').html('<i class="fas fa-plus me-2"></i>Nueva Cuenta Bancaria');
     $('#editAccountModal').modal('show');
 }
 
 function openEdit(id) {
-    const row = bankAccountsTable.rows().data().toArray().find(r => parseInt(r.Id) === parseInt(id));
+    const row = cuentasPorId[parseInt(id)];
     if (!row) { alertify.error('No se encontró la cuenta'); return; }
 
     $('#ed_id').val(row.Id);
@@ -348,7 +392,7 @@ function openEdit(id) {
     $('#ed_direccion').val(row.Direccion || '');
     var pagan = (row.pagadores || []).map(function(p){ return String(p.cod); });
     $('.ed-pagador').each(function(){ this.checked = pagan.indexOf(this.value) !== -1; });
-    togglePagadores();
+    toggleCamposTipo();
 
     setCuentaHint();
     $('#editAccountTitle').html('<i class="fas fa-edit me-2"></i>Editar Cuenta Bancaria');
@@ -356,12 +400,6 @@ function openEdit(id) {
 }
 
 $('#ed_cuentalocal').on('keyup', setCuentaHint);
-
-// Quién puede pagar solo aplica a cuentas de proveedores (Terceros); en Propias se usa emp_cod
-function togglePagadores() {
-    $('#ed_pagadores_wrap').toggle($('#ed_tipo').val() === 'Terceros');
-}
-$('#ed_tipo').on('change', togglePagadores);
 
 $('#editAccountForm').on('submit', function(e) {
     e.preventDefault();
@@ -398,6 +436,7 @@ function toggleAccount(id, activo, el) {
     }).done(function(resp) {
         if (resp.success) {
             alertify.success(resp.message);
+            if (cuentasPorId[id]) { cuentasPorId[id].Activo = activo; }
         } else {
             alertify.error(resp.message || 'No se pudo cambiar el estado');
             $(el).prop('checked', activo !== 1); // revertir visual
@@ -409,7 +448,15 @@ function toggleAccount(id, activo, el) {
 }
 
 $(document).ready(function() {
-    initBankAccountsTable();
+    initTablas();
+    reloadBankAccounts();
+    // La tabla oculta se dibuja sin ancho: se ajusta al mostrar su pestaña. #proveedores abre esa pestaña.
+    $('.cb-tabs [data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
+        var t = e.target.id === 'tab_propias' ? tablaPropias : tablaProveedores;
+        t.columns.adjust();
+        try { history.replaceState(null, '', e.target.id === 'tab_propias' ? '#propias' : '#proveedores'); } catch (err) {}
+    });
+    if (location.hash === '#proveedores') { $('#tab_proveedores').tab('show'); }
 });
 </script>
 {% endblock %}

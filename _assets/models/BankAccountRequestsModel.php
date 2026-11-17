@@ -71,12 +71,11 @@ class BankAccountRequestsModel extends Model
         return $r ? $r[0] : null;
     }
 
-    /** Todas (con $ver_todas) o solo las del usuario; el borrador es siempre privado de su dueño. */
-    public function list_visible(int $userId, bool $verTodas): array
+    /** Todas las solicitudes; el borrador es siempre privado de su dueño. */
+    public function list_visible(int $userId): array
     {
-        $where  = $verTodas ? ' WHERE (r.status <> ' . self::ST_BORRADOR . ' OR r.user_id = ?)' : ' WHERE r.user_id = ?';
-        $params = [$userId];
-        return $this->sql->select(self::SELECT . $where . ' ORDER BY r.id DESC;', $params) ?: [];
+        $where = ' WHERE (r.status <> ' . self::ST_BORRADOR . ' OR r.user_id = ?)';
+        return $this->sql->select(self::SELECT . $where . ' ORDER BY r.id DESC;', [$userId]) ?: [];
     }
 
     /**
