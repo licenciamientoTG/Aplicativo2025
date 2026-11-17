@@ -628,111 +628,234 @@ $('.refresh_datatables_permissions').on('click', function () {
 
 
 
-// Tabla de despachos a liberar
-let datatables_release_dispatches = $('#datatables_release_dispatches').DataTable({
-    colReorder: true,
-    dom: '<"top"Bf>rt<"bottom"lip>',
-    pageLength: 100,
-    buttons: [
-        {
-            extend: 'excel',
-            className: 'd-none',
-        },
-        {
-            extend: 'pdf', // Agrega el botón de exportación a PDF
-            className: 'd-none',
-            text: 'PDF',
-            customize: function (doc) {
-                // Establecer la orientación horizontal (apaisada)
-                doc.pageOrientation = 'landscape';
-                // Ajustar todas las columnas al ancho del PDF
-                let colWidths = [];
-                let tableWidth = doc.pageOrientation === 'landscape' ? 1060 : 500; // Ancho de página para orientación horizontal o vertical
-                let totalColWidths = 0;
+// =====================================================================
+// Liberación de despachos (views/it/release_dispatches.html)
+// Busca un despacho en la base de la estación y lo libera en la estación
+// Y en el central (limpia UUID, RFC, cliente y factura).
+// =====================================================================
+const releaseDispatchPage = (function () {
+    const $result = $('#rd-result');
+    if (!$result.length) return null;
 
-                console.log(tableWidth);
-                $('#datatables_release_dispatches thead th').each(function () {
-                    let colWidth = $(this).outerWidth() / tableWidth;
-                    totalColWidths += colWidth;
-                    colWidths.push(colWidth * 100 + '%');
-                });
+    const STATION_KEY = 'it.release_dispatches.codgas';
+    const $form = $('#rd-form');
+    const $nrotrn = $('#nrotrn');
+    const $codgas = $('#codgas');
+    const $formError = $('#rd-form-error');
+    const fmtLitros = new Intl.NumberFormat('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    const fmtMonto = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
-                if (totalColWidths < 1) {
-                    colWidths.push('*'); // Columna extra para completar el ancho restante
-                }
+    const ICONS = {
+        info: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+        error: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+        warn: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+        ok: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'
+    };
 
-                doc.content[1].table.widths = colWidths;
-            }
-        },
-        {
-            extend: 'print', // Agrega el botón de impresión
-            className: 'd-none',
-        }
-    ],
-    ajax: {
-        data: {'nrotrn': $('#nrotrn').val(), 'codgas': $('#codgas').val()},
-        url: '/it/datatables_release_dispatches',
-        error: function() {
-            $('#datatables_release_dispatches').waitMe('hide');
-            alertify.myAlert(
-                `<div class="container text-center text-danger">
-                    <h4 class="mt-2 text-danger">¡Error!</h4>
-                </div>
-                <div class="text-dark">
-                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                </div>`
-            );
-        },
-        beforeSend: function() {
-            $('.table-responsive').addClass('loading');
-        }
-    },
-    deferRender: true,
-    columns: [
-        {'data': 'DESPACHO'},
-        {'data': 'FDESPACHO'},
-        {'data': 'LITROS', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-        {'data': 'MONTO', 'render': $.fn.dataTable.render.number( ',', '.', 2, '$' )},
-        {'data': 'FACTURA'},
-        {'data': 'FACTEST'},
-        {'data': 'UUID'},
-        {'data': 'CLIENTE'},
-        {'data': 'RFC'},
-        {'data': 'LOGFECHA'},
-        {'data': 'ACCIONES'},
-    ],
-    rowId: 'DESPACHO',
-    createdRow: function (row, data, dataIndex) {
-
-    },
-    initComplete: function () {
-        $('.dt-buttons').addClass('d-none');
-        $('.table-responsive').removeClass('loading');
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
-});
 
-// Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
-$('#filtro-datatables_release_dispatches input').on('keyup change clear', function () {
-    datatables_release_dispatches
-        .column(0).search($('#DESPACHO').val().trim())
-        .column(1).search($('#FDESPACHO').val().trim())
-        .column(2).search($('#LITROS').val().trim())
-        .column(3).search($('#MONTO').val().trim())
-        .column(4).search($('#FACTURA').val().trim())
-        .column(5).search($('#FACTEST').val().trim())
-        .column(6).search($('#UUID').val().trim())
-        .column(7).search($('#CLIENTE').val().trim())
-        .column(8).search($('#RFC').val().trim())
-        .column(9).search($('#LOGFECHA').val().trim())
-        .draw();
-  });
+    function stationName(codgas) {
+        const opt = $codgas.find(`option[value="${codgas}"]`);
+        return opt.length ? opt.text().trim() : `estación ${codgas}`;
+    }
 
-// Agregar un evento clic de refresh
-$('.refresh_datatables_release_dispatches').on('click', function () {
-    datatables_release_dispatches.clear().draw();
-    datatables_release_dispatches.ajax.reload();
-    $('#datatables_release_dispatches').waitMe('hide');
-});
+    function message(type, title, text) {
+        return `<div class="rd-msg rd-msg--${type}" role="${type === 'error' ? 'alert' : 'status'}">
+                    ${ICONS[type]}
+                    <div><strong>${esc(title)}</strong>${esc(text)}</div>
+                </div>`;
+    }
+
+    function hasBilling(d) {
+        return d.uuid !== '' || d.rfc !== '' || d.codcli > 0 || d.nrofac > 0 || d.gasfac > 0;
+    }
+
+    function clientLabel(d) {
+        if (d.codcli <= 0) return '';
+        return d.cliente ? `${d.codcli} · ${d.cliente}` : String(d.codcli);
+    }
+
+    function field(label, value, cls = '') {
+        const shown = value === '' || value === null || value === undefined
+            ? '<span class="rd-empty-val">Sin asignar</span>'
+            : esc(value);
+        return `<div class="${cls}"><dt>${esc(label)}</dt><dd>${shown}</dd></div>`;
+    }
+
+    function renderDispatch(d, notice) {
+        const billed = hasBilling(d);
+        const station = d.station || stationName(d.codgas);
+        const billingCls = billed ? 'rd-billing' : '';
+        const factura = d.nrofac > 0 ? (d.gasfac > 0 ? `${d.nrofac} (est. ${d.gasfac})` : String(d.nrofac)) : '';
+
+        const action = billed
+            ? `<div class="rd-action">
+                    <p>Al liberar se quitan UUID, RFC, cliente y factura <strong>en la estación y en el central</strong>, para que el despacho pueda volver a facturarse.</p>
+                    <button type="button" class="btn btn-danger" id="rd-release-btn">Liberar despacho</button>
+               </div>`
+            : `<div class="rd-action">
+                    <p>Este despacho no tiene factura, UUID, RFC ni cliente en la estación: ya está libre. Si en el central aún aparece facturado, puedes liberarlo de todos modos.</p>
+                    <button type="button" class="btn btn-outline-danger" id="rd-release-btn">Liberar de todos modos</button>
+               </div>`;
+
+        $result.html(`
+            ${notice || ''}
+            <section class="rd-card" aria-labelledby="rd-title">
+                <div class="rd-head">
+                    <h2 id="rd-title">Despacho ${esc(d.nrotrn)}</h2>
+                    <span class="rd-sub">${esc(station)} · ${esc(d.fecha)}</span>
+                    <span class="rd-status ${billed ? 'rd-status--billed' : 'rd-status--free'}">${billed ? 'Facturado / asignado' : 'Libre'}</span>
+                </div>
+                <dl class="rd-fields">
+                    ${field('Litros', fmtLitros.format(d.litros), 'rd-num')}
+                    ${field('Monto', fmtMonto.format(d.monto), 'rd-num')}
+                    ${field('Última modificación', d.logfch)}
+                    ${field('Factura', factura, billingCls)}
+                    ${field('RFC', d.rfc, billingCls + ' rd-mono')}
+                    ${field('Cliente', clientLabel(d), billingCls)}
+                    ${field('UUID', d.uuid, billingCls + ' rd-mono rd-wide')}
+                </dl>
+                ${action}
+            </section>`);
+
+        $('#rd-release-btn').on('click', () => confirmRelease(d));
+    }
+
+    function search(nrotrn, codgas, notice) {
+        $result.html(`${notice || ''}<div class="rd-loading"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Buscando el despacho ${esc(nrotrn)} en ${esc(stationName(codgas))}…</div>`);
+        $('#rd-search-btn').prop('disabled', true);
+
+        return $.ajax({
+            url: '/it/datatables_release_dispatches',
+            method: 'GET',
+            dataType: 'json',
+            data: { nrotrn, codgas }
+        }).done(function (res) {
+            const rows = (res && res.data) || [];
+            if (!rows.length) {
+                $result.html((notice || '') + message('info',
+                    `No encontramos el despacho ${nrotrn} en ${stationName(codgas)}.`,
+                    ' Revisa que el número y la estación sean correctos. Si el despacho es muy reciente, puede que la estación aún no lo registre.'));
+                return;
+            }
+            renderDispatch(rows[0], notice);
+        }).fail(function (xhr) {
+            if (xhr.status === 401) return; // main.js redirige al login
+            const detail = xhr.responseJSON && xhr.responseJSON.message
+                ? ' ' + xhr.responseJSON.message
+                : ' No hubo respuesta de la base de la estación. Verifica que la estación esté en línea e inténtalo de nuevo.';
+            $result.html(message('error', 'No se pudo consultar el despacho.', detail) +
+                '<button type="button" class="btn btn-outline-primary mt-3" id="rd-retry">Reintentar</button>');
+            $('#rd-retry').on('click', () => search(nrotrn, codgas));
+        }).always(function () {
+            $('#rd-search-btn').prop('disabled', false);
+        });
+    }
+
+    function confirmRelease(d) {
+        const station = d.station || stationName(d.codgas);
+        const show = v => (v === '' || v === null) ? '<em>sin asignar</em>' : `<strong>${esc(v)}</strong>`;
+        const factura = d.nrofac > 0 ? String(d.nrofac) : '';
+
+        const body = `
+            <p>Vas a liberar el despacho <strong>${esc(d.nrotrn)}</strong> de <strong>${esc(station)}</strong>
+               (${esc(d.fecha)}, ${esc(fmtMonto.format(d.monto))}).</p>
+            <p class="mb-1">Se van a <strong>borrar</strong> estos datos:</p>
+            <ul class="mb-3">
+                <li>UUID: ${show(d.uuid)}</li>
+                <li>RFC: ${show(d.rfc)}</li>
+                <li>Cliente: ${show(clientLabel(d))}</li>
+                <li>Factura: ${show(factura)}</li>
+            </ul>
+            <p class="rd-confirm-warn" role="alert">
+                <strong>El cambio se aplica en la base de la estación Y en el central (SG12).</strong>
+                No se puede deshacer desde esta pantalla: para recuperar la factura habrá que volver a asignarla.
+            </p>`;
+
+        const dlg = alertify.confirm(
+            'Confirmar liberación del despacho',
+            body,
+            function () { release(d); },
+            function () { /* cancelado: no se modificó nada */ }
+        ).set({
+            labels: { ok: 'Sí, liberar en estación y central', cancel: 'Cancelar' },
+            defaultFocus: 'cancel'
+        });
+        // El confirm de alertify es compartido: se pintan los botones solo mientras está abierto.
+        const $btns = $(dlg.elements.buttons.primary);
+        $btns.find('.ajs-ok').addClass('btn btn-danger');
+        $btns.find('.ajs-cancel').addClass('btn btn-outline-secondary');
+        dlg.set('onclose', function () {
+            $btns.find('.ajs-button').removeClass('btn btn-danger btn-outline-secondary');
+        });
+    }
+
+    function release(d) {
+        const $btn = $('#rd-release-btn');
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Liberando…');
+
+        $.ajax({
+            url: '/it/release_dispatch',
+            method: 'POST',
+            dataType: 'json',
+            data: { nrotrn: d.nrotrn, codgas: d.codgas }
+        }).done(function (res) {
+            const status = res && res.status;
+            const msg = (res && res.message) || '';
+            if (status === 'OK') {
+                toastr.success(msg, 'Despacho liberado', { timeOut: 4000 });
+                search(d.nrotrn, d.codgas, message('ok', 'Despacho liberado.', ' ' + msg));
+            } else if (status === 'PARTIAL') {
+                search(d.nrotrn, d.codgas, message('warn', 'Liberación incompleta.', ' ' + msg));
+            } else {
+                $btn.prop('disabled', false).text('Liberar despacho');
+                $result.prepend(message('error', 'No se liberó el despacho.', ' ' + (msg || 'El servidor no confirmó el cambio. Inténtalo de nuevo.')));
+            }
+        }).fail(function (xhr) {
+            if (xhr.status === 401) return;
+            $btn.prop('disabled', false).text('Liberar despacho');
+            $result.prepend(message('error', 'No se liberó el despacho.',
+                ' El servidor no respondió. Es posible que el cambio no se haya aplicado: vuelve a buscar el despacho para ver su estado real antes de reintentar.'));
+        });
+    }
+
+    // Recordar la última estación usada
+    if (!$result.data('codgas')) {
+        try {
+            const saved = localStorage.getItem(STATION_KEY);
+            if (saved && $codgas.find(`option[value="${saved}"]`).length) {
+                $codgas.val(saved);
+                if ($.fn.selectpicker) $codgas.selectpicker('val', saved);
+            }
+        } catch (e) { /* almacenamiento no disponible */ }
+    }
+
+    $form.on('submit', function (e) {
+        const nrotrn = parseInt($nrotrn.val(), 10);
+        const codgas = parseInt($codgas.val(), 10);
+        const problems = [];
+        if (!codgas) problems.push('selecciona una estación');
+        if (!nrotrn || nrotrn < 1) problems.push('escribe un número de despacho válido');
+        if (problems.length) {
+            e.preventDefault();
+            $formError.text('Para buscar, ' + problems.join(' y ') + '.').removeAttr('hidden').addClass('text-danger');
+            (!codgas ? $codgas : $nrotrn).trigger('focus');
+            return;
+        }
+        $formError.attr('hidden', true);
+        try { localStorage.setItem(STATION_KEY, String(codgas)); } catch (err) { /* ignore */ }
+        // Se deja enviar el GET: la URL queda compartible (?codgas=..&nrotrn=..)
+    });
+
+    const initial = { nrotrn: parseInt($result.data('nrotrn'), 10), codgas: parseInt($result.data('codgas'), 10) };
+    if (initial.nrotrn > 0 && initial.codgas > 0) {
+        search(initial.nrotrn, initial.codgas);
+    }
+
+    return { search };
+})();
 
 // Tabla de despachos a marcar como jarreo
 let datatables_mark_jarreo = $('#datatables_mark_jarreo').DataTable({
@@ -1139,38 +1262,6 @@ $('#stationModal').on('show.bs.modal', function (event) {
     });
 });
 
-function release_dispatches(from, until, codgas) {
-    $('.table-responsive').addClass('loading');
-    $.ajax({
-        url: '/it/release_dispatches',
-        method: 'POST',
-        data: {
-            'from': from,
-            'until': until,
-            'codgas': codgas
-        },
-        dataType: 'json',
-        success: function(data) {
-            if (data.status === 'OK') {
-                datatables_release_dispatches.clear().draw();
-                datatables_release_dispatches.ajax.reload();
-                $('.table-responsive').removeClass('loading');
-                $('#datatables_release_dispatches').waitMe('hide');
-                alertify.myAlert(
-                    `<div class="container text-center text-success">
-                        <h4 class="mt-2 text-success">¡Éxito!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">${data.message}</p>
-                    </div>`
-                );
-            }
-        },
-        error: function(xhr, textStatus, errorThrown) {
-            console.error('AJAX error:', errorThrown);
-        }
-    });
-}
 
 // Formulario para...
 $(document).on("submit", "#userForm", function (event) {
@@ -1402,50 +1493,6 @@ $('#modalEditActivities').on('show.bs.modal', function (event) {
     });
 });
 
-function release_dispatch(nrotrn, codgas) {
-    // Primero validamos que las variables no esten vacias
-    if (nrotrn === '' || codgas === '') {
-        alertify.myAlert(
-            `<div class="container text-center text-danger">
-                <h4 class="mt-2 text-danger">¡Error!</h4>
-            </div>
-            <div class="text-dark">
-                <p class="text-center">Favor de ingresar un número de transacción y un código de gasolinera.</p>
-            </div>`
-        );
-        return;
-    }
-
-    // Ahora vamos a enviar las variables por medio de ajax de jquery a php
-    $.ajax({
-        url: '/it/release_dispatch',
-        method: 'POST',
-        data: {
-            'nrotrn': nrotrn,
-            'codgas': codgas
-        },
-        dataType: 'json',
-        success: function(data) {
-            if (data.status === 'OK') {
-                datatables_release_dispatches.clear().draw();
-                datatables_release_dispatches.ajax.reload();
-                $('.table-responsive').removeClass('loading');
-                $('#datatables_release_dispatches').waitMe('hide');
-                alertify.myAlert(
-                    `<div class="container text-center text-success">
-                        <h4 class="mt-2 text-success">¡Éxito!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">${data.message}</p>
-                    </div>`
-                );
-            }
-        },
-        error: function(xhr, textStatus, errorThrown) {
-            console.error('AJAX error:', errorThrown);
-        }
-    });
-}
 
 function out() {
     console.log("Entrabndo a la funcion");

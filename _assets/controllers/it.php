@@ -565,8 +565,8 @@ class It{
      */
     public function release_dispatches() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
-            $nrotrn = $_GET['nrotrn'] ?? false;
-            $codgas = $_GET['codgas'] ?? false;
+            $nrotrn = isset($_GET['nrotrn']) && (int)$_GET['nrotrn'] > 0 ? (int)$_GET['nrotrn'] : false;
+            $codgas = isset($_GET['codgas']) && (int)$_GET['codgas'] > 0 ? (int)$_GET['codgas'] : false;
             $stations = $this->gasolinerasModel->get_stations();
             echo $this->twig->render($this->route . 'release_dispatches.html', compact('stations', 'nrotrn', 'codgas'));
         } else {
@@ -578,43 +578,86 @@ class It{
         }
     }
 
+    /**
+     * Libera un despacho en la estación Y en el central (limpia UUID, RFC,
+     * cliente y factura para que pueda volver a facturarse).
+     */
     public function release_dispatch() : void {
-        if (!isset($_POST['nrotrn'], $_POST['codgas'])) {
-            json_output(["status" => "ERROR", "message" => "¡No se recibieron los datos necesarios!"]);
+        $nrotrn = (int)($_POST['nrotrn'] ?? 0);
+        $codgas = (int)($_POST['codgas'] ?? 0);
+        if ($nrotrn <= 0 || $codgas <= 0) {
+            json_output(["status" => "ERROR", "message" => "Falta el número de despacho o la estación. Vuelve a buscar el despacho e inténtalo de nuevo."]);
             return;
         }
 
-        if ($this->despachosModel->release_dispatch($_POST['nrotrn'], $_POST['codgas'], 1)) {
-            json_output(["status" => "OK", "message" => "¡El despacho fue liberado correctamente!"]);
+        try {
+            $result = $this->despachosModel->release_dispatch_everywhere($nrotrn, $codgas);
+        } catch (InvalidArgumentException $e) {
+            json_output(["status" => "ERROR", "message" => "La estación seleccionada no tiene base de datos configurada. No se liberó nada."]);
+            return;
+        }
+
+        $station = $result['station'];
+        $central = $result['central'];
+
+        if ($station === false && $central === false) {
+            json_output(["status" => "ERROR", "message" => "No se pudo conectar para liberar el despacho $nrotrn: no se modificó ni la estación ni el central. Inténtalo de nuevo; si el problema sigue, revisa la conexión con la estación."]);
+        } elseif ($station === false) {
+            json_output(["status" => "PARTIAL", "message" => "El despacho $nrotrn se liberó en el central, pero NO en la estación (falló la conexión). Vuelve a presionar «Liberar despacho» para completar la estación."]);
+        } elseif ($central === false) {
+            json_output(["status" => "PARTIAL", "message" => "El despacho $nrotrn se liberó en la estación, pero NO en el central (falló la conexión). Vuelve a presionar «Liberar despacho» para completar el central."]);
+        } elseif ($station === 0 && $central === 0) {
+            json_output(["status" => "ERROR", "message" => "No se encontró el despacho $nrotrn en la estación ni en el central. Verifica el número y la estación."]);
+        } elseif ($central === 0) {
+            json_output(["status" => "PARTIAL", "message" => "El despacho $nrotrn se liberó en la estación. En el central todavía no existe (probablemente aún no se replica), así que ahí no hubo nada que limpiar."]);
+        } elseif ($station === 0) {
+            json_output(["status" => "PARTIAL", "message" => "El despacho $nrotrn se liberó en el central, pero no se encontró en la base de la estación."]);
         } else {
-            json_output(["status" => "ERROR", "message" => "¡El despacho no pudo ser liberado!"]);
+            json_output(["status" => "OK", "message" => "Despacho $nrotrn liberado en la estación y en el central. Ya puede volver a facturarse."]);
         }
     }
 
     /**
+     * Datos del despacho a liberar (leídos de la base de la estación).
+     *
      * @return void
      * @throws Exception
      */
     public function datatables_release_dispatches() : void {
-        $data = [];
-        if ($despachos = $this->despachosModel->get_to_release($_GET['nrotrn'], $_GET['codgas'])) {
-            foreach ($despachos as $despacho) {
-                $data[] = array(
-                    'DESPACHO'  => $despacho['nrotrn'],
-                    'FDESPACHO' => intToDate($despacho['fchtrn']),
-                    'LITROS'    => $despacho['can'],
-                    'MONTO'     => $despacho['mto'],
-                    'FACTURA'   => $despacho['nrofac'],
-                    'FACTEST'   => $despacho['station'],
-                    'UUID'      => $despacho['satuid'],
-                    'CLIENTE'   => (int)$despacho['codcli'] > 0 ? trim($despacho['codcli']) . ' - ' . trim($despacho['cliente'] ?? '') : '',
-                    'RFC'       => $despacho['satrfc'],
-                    'LOGFECHA'  => $despacho['logfch'],
-                    'ACCIONES'  => '<a href="javascript:void(0);" onclick="release_dispatch('. (int)$_GET['nrotrn'] .', '. (int)$_GET['codgas'] .')" data-bs-toggle="tooltip" data-bs-placement="top" title="Liberación de despacho"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-skip-back align-middle me-2"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg></a>'
-                );
-            }
+        $nrotrn = (int)($_GET['nrotrn'] ?? 0);
+        $codgas = (int)($_GET['codgas'] ?? 0);
+        if ($nrotrn <= 0 || $codgas <= 0) {
+            json_output(["data" => []]);
+            return;
         }
-        json_output(array("data" => $data));
+
+        try {
+            $despachos = $this->despachosModel->get_to_release($nrotrn, $codgas);
+        } catch (InvalidArgumentException $e) {
+            http_response_code(400);
+            json_output(["data" => [], "message" => "La estación seleccionada no tiene base de datos configurada."]);
+            return;
+        }
+
+        $data = [];
+        foreach ($despachos ?: [] as $despacho) {
+            $data[] = [
+                'nrotrn'  => (int)$despacho['nrotrn'],
+                'codgas'  => $codgas,
+                'station' => trim((string)($despacho['station'] ?? '')),
+                'fecha'   => intToDate($despacho['fchtrn']),
+                'litros'  => (float)$despacho['can'],
+                'monto'   => (float)$despacho['mto'],
+                'nrofac'  => (int)$despacho['nrofac'],
+                'gasfac'  => (int)$despacho['gasfac'],
+                'uuid'    => trim((string)($despacho['satuid'] ?? '')),
+                'rfc'     => trim((string)($despacho['satrfc'] ?? '')),
+                'codcli'  => (int)$despacho['codcli'],
+                'cliente' => trim((string)($despacho['cliente'] ?? '')),
+                'logfch'  => $despacho['logfch'] !== null ? (string)$despacho['logfch'] : '',
+            ];
+        }
+        json_output(["data" => $data]);
     }
 
     /**

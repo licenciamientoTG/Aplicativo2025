@@ -340,6 +340,31 @@ class DespachosModel extends Model
     }
 
     /**
+     * Libera UN despacho en la copia de la estación Y en el central.
+     *
+     * No es una transacción distribuida (evita depender de MSDTC): liberar es
+     * idempotente, así que si una de las dos escrituras falla basta con repetir.
+     * Devuelve las filas afectadas en cada servidor, o false si esa escritura falló.
+     *
+     * @return array{station:int|false, central:int|false}
+     */
+    public function release_dispatch_everywhere(int $nrotrn, int $codgas): array
+    {
+        $set = 'SET satuid = NULL, satrfc = NULL, codcli = 0, gasfac = 0, nrofac = 0';
+
+        $station = $this->sql->updateSafe(
+            "UPDATE {$this->stationDb($codgas)}.[Despachos] $set WHERE nrotrn = ?;",
+            [$nrotrn]
+        );
+        $central = $this->sql->updateSafe(
+            "UPDATE [SG12].[dbo].[Despachos] $set WHERE nrotrn = ? AND codgas = ?;",
+            [$nrotrn, $codgas]
+        );
+
+        return ['station' => $station, 'central' => $central];
+    }
+
+    /**
      * Despachos de una estación y fecha de corte sin factura, candidatos a
      * marcarse como jarreo.
      *
