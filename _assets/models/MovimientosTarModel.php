@@ -390,46 +390,56 @@ class MovimientosTarModel extends Model{
 
     function get_valeras_report(int $fromInt, int $untilInt, int $codgas = 0) : array|false {
         $query = "
-            DECLARE @codgas INT = ?; -- 0 = todas las estaciones
+            DECLARE @codgas INT = ?, @ini INT = ?, @fin INT = ?; -- @codgas 0 = todas las estaciones
+            -- Denominaciones que sí son valeras (fuera bancarias, dólares, promociones...)
+            WITH val AS (
+                SELECT t13.cod, t13.den
+                FROM [SG12].[dbo].[Valores] t13
+                WHERE NOT EXISTS (
+                        SELECT 1 FROM (VALUES
+                            (' DOLARES'), (' SMARTBT - American Express'), (' SMARTBT - Bancarias'),
+                            (' Tarjetas Bancomer'), (' Tarjetas Santander'), (' Tarjetas Banorte'),
+                            (N'INTERL - Tarjeta de Débito'), (N'INTERL - Tarjeta de Crédito'),
+                            ('MAS QUE GAS'), (' Tarjetas Afirme'), (' Tarjetas American Express'),
+                            (' Banorte Payworks'), ('Promociones MKT'), ('Raspaditos'),
+                            (' SMARTBT - MANUAL Bancarias')
+                        ) AS excl(den)
+                        WHERE excl.den = t13.den
+                    )
+                    -- Terminales bancarias (HTI, Interlogic, Bankaool) y transferencias: no son valeras
+                    AND t13.den NOT LIKE 'HTI -%'
+                    AND t13.den NOT LIKE 'INTERL%'
+                    AND LTRIM(t13.den) NOT LIKE 'BANKAOOL%'
+                    AND LTRIM(t13.den) <> 'Transferencias'
+                    AND LTRIM(t13.den) <> 'Tarjetas Scotiabank'
+            ),
+            -- Se parte de MovimientosTar por (codbco, fchmov) con IX_MovimientosTarBco: solo toca los
+            -- movimientos de valeras en vez de recorrer ~1M despachos/mes de Despachos (150M filas).
+            -- fchmov = fchtrn del despacho; el ±1 día es margen, el filtro exacto va sobre fchtrn.
+            -- DISTINCT: MovimientosTar trae filas repetidas idénticas; cada despacho cuenta una vez por medio.
+            mv AS (
+                SELECT DISTINCT m.codgas, m.nrotrn, m.codbco
+                FROM [SG12].[dbo].[MovimientosTar] m
+                INNER JOIN val ON val.cod = m.codbco
+                WHERE m.fchmov BETWEEN @ini - 1 AND @fin + 1
+                    AND m.mto != 0
+                    AND (@codgas = 0 OR m.codgas = @codgas)
+            )
             SELECT
                 t2.abr,
                 t13.den AS denominacion,
                 YEAR(DATEADD(DAY, t1.fchtrn - 1, 0))  AS anio,
                 MONTH(DATEADD(DAY, t1.fchtrn - 1, 0)) AS mes,
                 ROUND(SUM(t1.can), 2) AS total
-            FROM [SG12].[dbo].[Despachos] t1
+            FROM mv
+            INNER JOIN [SG12].[dbo].[Despachos] t1 ON t1.nrotrn = mv.nrotrn AND t1.codgas = mv.codgas
             INNER JOIN [SG12].[dbo].[gasolineras] t2 ON t1.codgas = t2.cod
-            -- MovimientosTar trae filas repetidas idénticas (mismo despacho, medio y monto):
-            -- cada despacho cuenta una sola vez por medio de pago
-            CROSS APPLY (
-                SELECT DISTINCT m.codbco
-                FROM [SG12].[dbo].[MovimientosTar] m
-                WHERE m.nrotrn = t1.nrotrn AND m.codgas = t1.codgas AND m.mto != 0
-            ) t12
-            INNER JOIN [SG12].[dbo].[Valores] t13 ON t12.codbco = t13.cod
+            INNER JOIN val t13 ON t13.cod = mv.codbco
             WHERE
                 t1.mto != 0
-                AND t1.fchtrn BETWEEN ? AND ?
-                AND (@codgas = 0 OR t1.codgas = @codgas)
+                AND t1.fchtrn BETWEEN @ini AND @fin
                 -- Solo combustibles: en otros productos (p. ej. 163 Anticipo) 'can' son pesos o piezas
                 AND t1.codprd IN (179, 180, 181, 192, 193)
-                AND NOT EXISTS (
-                    SELECT 1 FROM (VALUES
-                        (' DOLARES'), (' SMARTBT - American Express'), (' SMARTBT - Bancarias'),
-                        (' Tarjetas Bancomer'), (' Tarjetas Santander'), (' Tarjetas Banorte'),
-                        (N'INTERL - Tarjeta de Débito'), (N'INTERL - Tarjeta de Crédito'),
-                        ('MAS QUE GAS'), (' Tarjetas Afirme'), (' Tarjetas American Express'),
-                        (' Banorte Payworks'), ('Promociones MKT'), ('Raspaditos'),
-                        (' SMARTBT - MANUAL Bancarias')
-                    ) AS excl(den)
-                    WHERE excl.den = t13.den
-                )
-                -- Terminales bancarias (HTI, Interlogic, Bankaool) y transferencias: no son valeras
-                AND t13.den NOT LIKE 'HTI -%'
-                AND t13.den NOT LIKE 'INTERL%'
-                AND LTRIM(t13.den) NOT LIKE 'BANKAOOL%'
-                AND LTRIM(t13.den) <> 'Transferencias'
-                AND LTRIM(t13.den) <> 'Tarjetas Scotiabank'
             GROUP BY
                 t2.abr, t13.den,
                 YEAR(DATEADD(DAY, t1.fchtrn - 1, 0)),

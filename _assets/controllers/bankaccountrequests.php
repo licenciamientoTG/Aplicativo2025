@@ -13,9 +13,6 @@
  */
 class BankAccountRequests
 {
-    /** Permiso de la sección Pagos extraordinarios: entrar, solicitar y ver lo propio. */
-    private const PERM_SOLICITAR = 106;
-
     /** Permiso de Tesorería (mismo que el pago de pagos extraordinarios). */
     private const PERM_TESORERIA = 109;
 
@@ -39,11 +36,9 @@ class BankAccountRequests
 
     public function __construct($twig)
     {
-        // Sin el 106 no se entra a ninguna ruta de la sección (ni siquiera con el 109).
-        if (!authorized(self::PERM_SOLICITAR)) {
-            $this->fail(403, 'No tiene permiso para acceder a este módulo.', $this->es_ajax() || $_SERVER['REQUEST_METHOD'] === 'POST');
-        }
-        $this->twig         = $twig;
+        // Sin permiso de entrada (2026-11-17): todo usuario con sesión solicita y ve todas las solicitudes.
+        // Solo aprobar/rechazar exige el 109 (Tesorería), en la ruta y en solicitud_para_decidir().
+        $this->twig        = $twig;
         $this->route        = 'views/bankaccountrequests/';
         $this->model        = new BankAccountRequestsModel();
         $this->catalogModel = new ExtraPaymentCatalogModel();

@@ -1,16 +1,16 @@
 <?php
-// Pagos extraordinarios (captura). Permiso 106 = solicitar; el detalle valida
-// 106-110 y la propiedad de la solicitud en el controlador (no en la ruta).
+// Pagos extraordinarios (captura). Cualquier usuario con sesión solicita y ve SOLO las suyas (el 106 ya no se exige,
+// 2026-11-17); 107-110 se validan en el controlador junto con el estatus y la propiedad de la solicitud.
 // 'new/' y 'save/' van antes que '<int:id>/'. Módulo nuevo: sin alias.
 return [
     group('pagos-extraordinarios/', [
         route('', [ExtraPayments::class, 'index'], name: 'extrapayments.index', methods: ['GET']),
         route('export/', [ExtraPayments::class, 'export'], name: 'extrapayments.export', methods: ['GET']),
-        route('new/', [ExtraPayments::class, 'form'], name: 'extrapayments.new', methods: ['GET'], permission: 106),
-        route('save/', [ExtraPayments::class, 'save'], name: 'extrapayments.save', methods: ['POST'], permission: 106),
-        route('proveedores/', [ExtraPayments::class, 'buscar_proveedores'], name: 'extrapayments.proveedores', methods: ['GET'], permission: 106),
-        route('<int:id>/edit/', [ExtraPayments::class, 'form'], name: 'extrapayments.edit', methods: ['GET'], permission: 106),
-        route('<int:id>/cancel/', [ExtraPayments::class, 'cancel'], name: 'extrapayments.cancel', methods: ['POST'], permission: 106),
+        route('new/', [ExtraPayments::class, 'form'], name: 'extrapayments.new', methods: ['GET']),
+        route('save/', [ExtraPayments::class, 'save'], name: 'extrapayments.save', methods: ['POST']),
+        route('proveedores/', [ExtraPayments::class, 'buscar_proveedores'], name: 'extrapayments.proveedores', methods: ['GET']),
+        route('<int:id>/edit/', [ExtraPayments::class, 'form'], name: 'extrapayments.edit', methods: ['GET']),
+        route('<int:id>/cancel/', [ExtraPayments::class, 'cancel'], name: 'extrapayments.cancel', methods: ['POST']),
         // Decisiones: el permiso (107/108/109) depende de la etapa o del
         // estatus ACTUAL de la solicitud, por eso se valida en el controlador.
         route('<int:id>/decision-modal/', [ExtraPayments::class, 'decision_modal'], name: 'extrapayments.decision_modal', methods: ['GET']),

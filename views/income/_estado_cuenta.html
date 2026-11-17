@@ -2,7 +2,7 @@
    Solo lee las fotos diarias (TG.dbo.debit/credit_clients_cierre): por cliente en un rango y, al dar clic en
    un cliente, su día por día. Tabla, totales e indicadores los arma estado_cuenta_init(t) en income.js. #}
 {% set ayer = 'now'|date_modify('-1 day')|date('Y-m-d') %}
-<div class="tab-pane active" id="edocta_{{ t }}" role="tabpanel">
+<div class="tab-pane" id="edocta_{{ t }}" role="tabpanel">
     <div class="card mb-2">
         <div class="card-body py-2">
             <div class="row g-2 align-items-end">
@@ -35,6 +35,11 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    {# Aviso del rango (p. ej. "Hay fotos desde…"): solo visual, sin ventana emergente #}
+    <div class="alert alert-info py-1 px-2 small mb-2 d-none" id="edocta_{{ t }}_aviso" role="status">
+        <i class="fas fa-info-circle me-1"></i><span></span>
     </div>
 
     {# Indicadores (sobre lo filtrado en la tabla) #}

@@ -48,12 +48,8 @@ class ExtraPayments
 
     public function __construct($twig)
     {
-        // El 106 abre la sección: sin él no se entra a ninguna ruta del módulo,
-        // aunque se tenga otro permiso (107-110) que se valida después.
-        if (!authorized(ExtraPaymentWorkflow::PERM_CREAR)) {
-            $this->fail(403, 'No tiene permiso para acceder a este módulo.', $this->es_ajax() || $_SERVER['REQUEST_METHOD'] === 'POST');
-        }
-        $this->twig               = $twig;
+        // Todo usuario con sesión entra a la sección y captura; sin 107-110 solo ve las suyas.
+        $this->twig              = $twig;
         $this->route              = 'views/extrapayments/';
         $this->requestsModel      = new ExtraPaymentRequestsModel();
         $this->catalogModel       = new ExtraPaymentCatalogModel();
@@ -68,6 +64,16 @@ class ExtraPayments
     private function user_id(): int
     {
         return (int) ($_SESSION['tg_user']['Id'] ?? 0);
+    }
+
+    /**
+     * Permisos del módulo. El 106 (solicitar) ya no se exige (decisión 2026-11-17): cualquier usuario con
+     * sesión entra, captura y ve SOLO sus solicitudes. 107 CxP, 108 Admón, 109 Tesorería y 110 ver todas
+     * se siguen validando con authorized().
+     */
+    private function puede(int $permiso): bool
+    {
+        return $permiso === ExtraPaymentWorkflow::PERM_CREAR || authorized($permiso);
     }
 
     private function es_ajax(): bool
@@ -90,7 +96,7 @@ class ExtraPayments
     private function guard(array $permisos, bool $json = false): void
     {
         foreach ($permisos as $p) {
-            if (authorized($p)) {
+            if ($this->puede($p)) {
                 return;
             }
         }
@@ -103,15 +109,16 @@ class ExtraPayments
     }
 
     /**
-     * Ve cualquier solicitud quien tenga 110 (ver todas) o algún permiso de
-     * bandeja (107 CxP / 108 Admón / 109 Tesorería); los demás, solo las propias.
+     * Ve TODAS las solicitudes (lista, cards, export y detalle) quien tenga 107 CxP, 108 Admón o 109 Tesorería;
+     * el 110 hace lo mismo y queda redundante, reservado por si un día se separa "ver todas" de las bandejas.
+     * Los demás, solo las propias. Los borradores siguen siendo privados de su dueño.
      */
     private function es_privilegiado(): bool
     {
-        return authorized(ExtraPaymentWorkflow::PERM_VER_TODAS)
-            || authorized(ExtraPaymentWorkflow::PERM_CXP)
-            || authorized(ExtraPaymentWorkflow::PERM_ADMON)
-            || authorized(ExtraPaymentWorkflow::PERM_TESORERIA);
+        return $this->puede(ExtraPaymentWorkflow::PERM_VER_TODAS)
+            || $this->puede(ExtraPaymentWorkflow::PERM_CXP)
+            || $this->puede(ExtraPaymentWorkflow::PERM_ADMON)
+            || $this->puede(ExtraPaymentWorkflow::PERM_TESORERIA);
     }
 
     private function puede_ver(array $solicitud): bool
@@ -145,8 +152,8 @@ class ExtraPayments
             return false;
         }
         return $kind === 'soporte'
-            ? $this->es_propia($solicitud) && authorized(ExtraPaymentWorkflow::PERM_CREAR)
-            : authorized(ExtraPaymentWorkflow::PERM_TESORERIA);
+            ? $this->es_propia($solicitud) && $this->puede(ExtraPaymentWorkflow::PERM_CREAR)
+            : $this->puede(ExtraPaymentWorkflow::PERM_TESORERIA);
     }
 
     /** Recorta, quita espacios y trunca al límite de la columna. */
@@ -186,12 +193,12 @@ class ExtraPayments
     {
         $atiende = [];
         foreach (self::ETAPAS as [$permiso, $status]) {
-            if (authorized($permiso)) {
+            if ($this->puede($permiso)) {
                 $atiende[] = $status;
             }
         }
-        $ver_todas   = authorized(ExtraPaymentWorkflow::PERM_VER_TODAS);
-        $puede_crear = authorized(ExtraPaymentWorkflow::PERM_CREAR);
+        $ver_todas   = $this->es_privilegiado();   // 107/108/109/110 ven todas
+        $puede_crear = $this->puede(ExtraPaymentWorkflow::PERM_CREAR);
 
         $solicitudes = $this->requestsModel->list_visible($this->user_id(), $atiende, $ver_todas);
         $lineas = $this->requestsModel->lineas_por_solicitud(array_column($solicitudes, 'id'));
@@ -235,11 +242,8 @@ class ExtraPayments
         $motivos  = $this->catalogModel->reasons();
         $empresas = $this->catalogModel->empresas();
         $estatus  = self::ESTATUS;
-        // Cards de resumen: solo quien ve todas (110) o revisa en CxP (107) / Admón (108);
-        // con solo el 106 la vista queda en sus propias solicitudes, sin cards.
-        $ver_cards = authorized(ExtraPaymentWorkflow::PERM_VER_TODAS)
-            || authorized(ExtraPaymentWorkflow::PERM_CXP)
-            || authorized(ExtraPaymentWorkflow::PERM_ADMON);
+        // Cards de resumen: quien ve todas (107/108/109/110); los demás solo ven sus solicitudes, sin cards.
+        $ver_cards = $ver_todas;
         echo $this->twig->render($this->route . 'index.html', compact(
             'solicitudes', 'ver_todas', 'puede_crear', 'atiende', 'motivos', 'empresas', 'estatus', 'ver_cards'
         ));
@@ -449,8 +453,8 @@ class ExtraPayments
 
         $status      = (int) $solicitud['status'];
         $es_propia   = $this->es_propia($solicitud);
-        $puede_editar   = $es_propia && authorized(ExtraPaymentWorkflow::PERM_CREAR) && ExtraPaymentWorkflow::can_edit($status);
-        $puede_cancelar = $es_propia && authorized(ExtraPaymentWorkflow::PERM_CREAR) && ExtraPaymentWorkflow::can_cancel($status);
+        $puede_editar   = $es_propia && $this->puede(ExtraPaymentWorkflow::PERM_CREAR) && ExtraPaymentWorkflow::can_edit($status);
+        $puede_cancelar = $es_propia && $this->puede(ExtraPaymentWorkflow::PERM_CREAR) && ExtraPaymentWorkflow::can_cancel($status);
         $adjuntos = $this->datos_adjuntos($solicitud);
         $solicitud['lines'] = $this->con_archivos_renglon($solicitud['lines'], $adjuntos['documentos']);
         echo $this->twig->render($this->route . 'detail.html', array_merge(
@@ -1213,12 +1217,12 @@ class ExtraPayments
         $requerido = ExtraPaymentWorkflow::required_permission($status);
         if ($requerido === null || $requerido === ExtraPaymentWorkflow::PERM_TESORERIA) {
             // Ya no está en una etapa de decisión (la pagó/rechazó/canceló alguien más).
-            if (!authorized(ExtraPaymentWorkflow::PERM_CXP) && !authorized(ExtraPaymentWorkflow::PERM_ADMON)) {
+            if (!$this->puede(ExtraPaymentWorkflow::PERM_CXP) && !$this->puede(ExtraPaymentWorkflow::PERM_ADMON)) {
                 $this->fail(403, 'No tiene permiso para decidir sobre esta solicitud.', $json);
             }
             $this->fail(409, self::MSG_CAMBIO_ESTADO, $json);
         }
-        if (!authorized($requerido)) {
+        if (!$this->puede($requerido)) {
             $this->fail(403, 'No tiene permiso para decidir sobre esta solicitud.', $json);
         }
         return $solicitud;

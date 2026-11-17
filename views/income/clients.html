@@ -55,19 +55,14 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 {% set ver_debito = modo == 'debito' %}
 {% set ver_credito = modo == 'credito' %}
 {% set ver_foto = modo == 'todos' %}
-{# Estado de cuenta (fotos diarias): primera pestaña y la que abre en clients-debit / clients-credit #}
+{# Estado de cuenta (fotos diarias): última pestaña en clients-debit / clients-credit; carga al abrirla #}
 {% set ver_edo = ver_debito or ver_credito %}
 {% set edo_t = ver_debito ? 'debit' : 'credit' %}
 
 <ul class="nav nav-tabs" id="myTab" role="tablist">
-    {% if ver_edo %}
-    <li class="nav-item" role="presentation">
-        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#edocta_{{ edo_t }}" type="button">Estado de cuenta</button>
-    </li>
-    {% endif %}
     {% if ver_debito %}
     <li class="nav-item" role="presentation">
-        <button class="nav-link {{ ver_edo ? '' : 'active' }}" data-bs-toggle="tab" data-bs-target="#debit_clients" type="button">Débito</button>
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#debit_clients" type="button">Débito</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#vehicles_debit" type="button">Vehículos Débito</button>
@@ -75,7 +70,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     {% endif %}
     {% if ver_credito %}
     <li class="nav-item" role="presentation">
-        <button class="nav-link {{ ver_debito or ver_edo ? '' : 'active' }}" data-bs-toggle="tab" data-bs-target="#credit_clients" type="button">Crédito</button>
+        <button class="nav-link {{ ver_debito ? '' : 'active' }}" data-bs-toggle="tab" data-bs-target="#credit_clients" type="button">Crédito</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#vehicles_credit" type="button">Vehículos Crédito</button>
@@ -110,18 +105,18 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#edo_credit_foto" type="button">Estado de Cuenta Foto Crédito</button>
     </li>
     {% endif %}
+    {% if ver_edo %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="edocta_{{ edo_t }}_tab" data-bs-toggle="tab" data-bs-target="#edocta_{{ edo_t }}" type="button">Estado de cuenta</button>
+    </li>
+    {% endif %}
 </ul>
 
 <div class="tab-content">
 
-    {% if ver_edo %}
-    {# ── TAB 0: ESTADO DE CUENTA (fotos diarias) ── #}
-    {% include 'views/income/_estado_cuenta.html' with { t: edo_t } %}
-    {% endif %}
-
     {% if ver_debito %}
     {# ── TAB 1: DÉBITO ── #}
-    <div class="tab-pane {{ ver_edo ? '' : 'active' }}" id="debit_clients" role="tabpanel">
+    <div class="tab-pane active" id="debit_clients" role="tabpanel">
         <div class="card">
             <div class="card-body">
                 <div class="row">
@@ -372,7 +367,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 
     {% if ver_credito %}
     {# ── TAB 2: CRÉDITO ── #}
-    <div class="tab-pane {{ ver_debito or ver_edo ? '' : 'active' }}" id="credit_clients" role="tabpanel">
+    <div class="tab-pane {{ ver_debito ? '' : 'active' }}" id="credit_clients" role="tabpanel">
         <div class="card">
             <div class="card-body">
                 <div class="row">
@@ -1183,6 +1178,11 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     </div>
     {% endif %}
 
+
+    {% if ver_edo %}
+    {# ── ÚLTIMA: ESTADO DE CUENTA (fotos diarias) ── #}
+    {% include 'views/income/_estado_cuenta.html' with { t: edo_t } %}
+    {% endif %}
 </div>
 
 {# ── Modal: origen de la información del resumen crédito ── #}
@@ -1700,10 +1700,10 @@ $('#btn_anticipos_cli').on('click', function () {
     anticipos_debit_table('cli');
 });
 
-// ── Estado de cuenta (fotos diarias): carga al abrir la página ──
+// ── Estado de cuenta (fotos diarias): carga la primera vez que se abre la pestaña ──
 {# (los set de block content no llegan a este bloque: se vuelve a sacar de modo) #}
 {% if modo|default('todos') in ['debito', 'credito'] %}
-estado_cuenta_init('{{ modo == 'debito' ? 'debit' : 'credit' }}');
+$('#edocta_{{ modo == 'debito' ? 'debit' : 'credit' }}_tab').one('shown.bs.tab', function () { estado_cuenta_init('{{ modo == 'debito' ? 'debit' : 'credit' }}'); });
 {% endif %}
 
 // ── Estado de Cuenta Foto ──

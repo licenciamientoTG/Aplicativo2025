@@ -1,6 +1,6 @@
 <?php
 // Alta de cuenta bancaria de proveedores (cuelga de Pagos extraordinarios).
-// Toda la sección exige el 106 (se valida en el constructor del controlador);
+// Sin permiso de entrada (2026-11-17): todos solicitan y ven todas las solicitudes;
 // aprobar/rechazar exige además el 109 y se valida junto con el estatus. 'new/', 'save/' y 'check/' van antes que
 // '<int:id>/'. Módulo nuevo: sin alias.
 return [

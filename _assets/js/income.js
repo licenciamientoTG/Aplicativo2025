@@ -4112,9 +4112,8 @@ function estado_cuenta_table(t) {
                 $('#edocta_' + t + '_ultima').text(json.ultima_corrida || '—');
                 $('#edocta_' + t + '_periodo').text(json.desde ? json.desde + ' al ' + json.hasta : '—');
                 if (json.desde) { $('#edocta_' + t + '_desde').val(json.desde); $('#edocta_' + t + '_hasta').val(json.hasta); }
-                if (json.message) {
-                    alertify.myAlert('<div class="text-center text-warning"><h5>' + edocta_esc(json.message) + '</h5></div>');
-                }
+                // Aviso del rango solo como mensaje dentro de la pestaña (sin ventana emergente)
+                $('#edocta_' + t + '_aviso').toggleClass('d-none', !json.message).find('span').text(json.message || '');
                 return (json.data || []).map(function (r) {
                     r.variacion = (r.ini_sistema === null || r.fin_sistema === null) ? null : edocta_num(r.fin_sistema) - edocta_num(r.ini_sistema);
                     if (t === 'credit') {
