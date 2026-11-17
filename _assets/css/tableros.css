@@ -1501,6 +1501,12 @@ a.boards-file-cell-name:hover { color: #d2e0ff; text-decoration: underline; }
 .boards-details-panel .boards-file-entry,
 .boards-details-panel .boards-activity-entry { border-color: #494d6b; background: #2b2f4b; }
 .boards-details-panel .boards-comment-body { color: #e0e3f2; }
+.boards-comment-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.boards-comment-action { padding: 3px 8px; border: 1px solid #737a9b; border-radius: 5px; color: inherit; background: transparent; font: inherit; font-size: .75rem; cursor: pointer; }
+.boards-comment-action:hover { background: rgba(120, 145, 220, .18); }
+.boards-comment-action.is-primary { border-color: #477cf1; color: #fff; background: #477cf1; }
+.boards-comment-action.is-danger { color: #d86a78; }
+.boards-comment-body.is-editing { min-height: 70px; padding: 8px; border: 1px solid #477cf1; border-radius: 5px; outline: none; }
 .boards-details-panel .boards-detail-status,
 .boards-details-panel .boards-detail-meta,
 .boards-details-panel .boards-detail-empty { color: #aeb2ca; }

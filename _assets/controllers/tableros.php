@@ -72,6 +72,7 @@ class Tableros
         }
         echo $this->twig->render($this->route . 'index.html', [
             'csrf_token'       => $_SESSION['tableros_csrf'],
+            'current_user_id'  => (int)($_SESSION['tg_user']['Id'] ?? 0),
             'can_create'       => $this->access->hasGlobalPermission('create'),
             'can_admin'        => $this->access->hasGlobalPermission('admin'),
             'initial_board_id' => $boardId,

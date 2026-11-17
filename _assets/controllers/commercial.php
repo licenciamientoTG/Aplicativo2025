@@ -576,6 +576,7 @@ class Commercial{
                 "San Rafael" => 36,
                 "Puertecito" => 37,
                 "Jesus Maria" => 38,
+                "Praxedis" => 40,
                 "Independencia" => 3,
                 "Colosio" => 333
             ];

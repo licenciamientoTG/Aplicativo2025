@@ -4,6 +4,7 @@ return [
         route('', [inventario_urovo::class, 'index'], name: 'inventario_urovo.index', methods: ['GET']),
         route('data/', [inventario_urovo::class, 'data'], name: 'inventario_urovo.data', methods: []),
         route('dashboard/', [inventario_urovo::class, 'dashboard'], name: 'inventario_urovo.dashboard', methods: ['GET']),
+        route('dashboard/export/', [inventario_urovo::class, 'export_dashboard'], name: 'inventario_urovo.dashboard_export', methods: ['GET']),
         route('summary/', [inventario_urovo::class, 'summary'], name: 'inventario_urovo.summary', methods: ['GET']),
         route('summary/<int:station_id>/', [inventario_urovo::class, 'summary_detail'], name: 'inventario_urovo.summary_detail', methods: ['GET']),
         route('batch/', [inventario_urovo::class, 'batch'], name: 'inventario_urovo.batch', methods: []),

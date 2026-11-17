@@ -136,8 +136,10 @@ class InventarioUrovoModel extends Model {
         if (!empty($filters['station_id'])) { $where[]='t.estacion_codigo=?'; $params[]=(int)$filters['station_id']; }
         if (!empty($filters['status'])) {
             if ($filters['status']==='sin_serie') $where[]='t.numero_serie IS NULL';
+            elseif ($filters['status']==='sin_bajas_definitivas') { $where[]='(t.ubicacion_tipo IS NULL OR t.ubicacion_tipo<>?)'; $params[]='baja_definitiva'; }
             else { $where[]='t.ubicacion_tipo=?'; $params[]=$filters['status']; }
         }
+        if (!empty($filters['condition'])) { $where[]='t.condicion=?'; $params[]=$filters['condition']; }
         if (!empty($filters['terminal_type'])) { $where[]='t.tipo_terminal=?'; $params[]=$filters['terminal_type']; }
         if (!empty($filters['q'])) { $where[]='(t.numero_serie LIKE ? OR t.modelo LIKE ? OR t.ip LIKE ? OR t.imei LIKE ?)'; $q='%'.$filters['q'].'%'; array_push($params,$q,$q,$q,$q); }
         $sqlWhere = $where ? ' WHERE '.implode(' AND ',$where) : '';
