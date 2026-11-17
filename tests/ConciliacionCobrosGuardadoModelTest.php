@@ -124,6 +124,12 @@ check('buscarMovimientos sin filtros devuelve []', $mv->buscarMovimientos([]) ==
 $f = $v->buscarFacturas(['folio' => 'I104614']);
 check('buscarFacturas I104614 devuelve 1', count($f) === 1);
 if ($f) {
+    $t0 = microtime(true);
+    $porImp = $v->buscarFacturas(['importe' => $f[0]['total']]);
+    $seg = microtime(true) - $t0;
+    printf("  buscarFacturas solo importe: %.2f s, %d filas\n", $seg, count($porImp));
+    check('buscarFacturas solo por importe encuentra I-104614 en < 5 s',
+        $seg < 5 && count(array_filter($porImp, fn($x) => (int)$x['nro'] === (int)$f[0]['nro'])) === 1);
     check('factura con folio, total y pagada', $f[0]['folio'] === 'I-104614' && isset($f[0]['total']) && array_key_exists('pagada', $f[0]) && array_key_exists('pagos', $f[0]));
     $fk = $v->facturasPorClave([$f[0]['codgas'] . '|' . $f[0]['nro']]);
     check('facturasPorClave la devuelve', count($fk) === 1 && (int)$fk[0]['nro'] === (int)$f[0]['nro']);

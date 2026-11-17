@@ -659,16 +659,21 @@ class ConciliacionVentaModel extends Model {
             $conds[] = "EXISTS (SELECT 1 FROM SG12.dbo.Clientes cx WITH (NOLOCK) WHERE cx.cod = c.codopr AND cx.den LIKE ?)";
             $params[] = '%' . $cliente . '%';
         }
+        if (!$conds && $desde === '' && $hasta === '' && !$codgas && $importe === null) return [];
+        // sin folio ni fechas: últimos 3 meses (12 meses tardaba ~16 s: el total sale de sumar Documentos por factura; sin ventana se barrería todo el historial de facturas)
+        if ($folio === '' && $desde === '' && $hasta === '') $desde = date('Y-m-d', strtotime('-3 months'));
         if ($desde !== '') { $conds[] = 'c.fch >= ?'; $params[] = dateToInt($desde); }
         if ($hasta !== '') { $conds[] = 'c.fch <= ?'; $params[] = dateToInt($hasta); }
         if ($codgas) { $conds[] = 'c.codgas = ?'; $params[] = $codgas; }
-        if (!$conds && $importe === null) return [];
-        return $this->consultaFacturas($conds ? implode(' AND ', $conds) : '1 = 1', $params, $importe, 200);
+        return $this->consultaFacturas(implode(' AND ', $conds), $params, $importe, 200);
     }
 
     private function consultaFacturas(string $where, array $params, ?float $importe = null, int $top = 0): array {
         $topSql = $top > 0 ? "TOP {$top} " : '';
-        $porImporte = $importe !== null ? 'WHERE ABS(ISNULL(t.total, 0) - ' . sprintf('%.2f', $importe) . ') < 0.005' : '';
+        // el filtro por importe se aplica ANTES de calcular las aplicaciones (#p), sobre las facturas ya acotadas por fecha
+        $porImporte = $importe !== null
+            ? 'DELETE k FROM #k k LEFT JOIN #t t ON t.codgas = k.codgas AND t.nro = k.nro WHERE ABS(ISNULL(t.total, 0) - ' . sprintf('%.2f', $importe) . ') >= 0.005;'
+            : '';
         $query = "
             SET NOCOUNT ON;
             DROP TABLE IF EXISTS #k, #t, #p;
@@ -685,7 +690,10 @@ class ConciliacionVentaModel extends Model {
               INTO #t
               FROM #k k
               JOIN SG12.dbo.Documentos d WITH (NOLOCK) ON d.nro = k.nro AND d.codgas = k.codgas AND d.tip = 3
-             GROUP BY d.codgas, d.nro;
+             GROUP BY d.codgas, d.nro
+            OPTION (RECOMPILE, LOOP JOIN);
+
+            {$porImporte}
 
             SELECT a.gasapl AS codgas, a.nroapl AS nro,
                    SUM(a.mtoapl) / 100.0 AS pagada,
@@ -694,7 +702,7 @@ class ConciliacionVentaModel extends Model {
               FROM #k k
               JOIN SG12.dbo.DocumentosA a WITH (NOLOCK) ON a.nroapl = k.nro AND a.gasapl = k.codgas AND a.tip = 4
               JOIN SG12.dbo.DocumentosC cc WITH (NOLOCK) ON cc.nro = a.nro AND cc.codgas = a.codgas AND cc.tip = 4
-             WHERE CAST(cc.txtref AS varchar(20)) NOT LIKE '@N:CANCELAD%'
+             WHERE ISNULL(CAST(cc.txtref AS varchar(20)), '') NOT LIKE '@N:CANCELAD%'
              GROUP BY a.gasapl, a.nroapl;
 
             SELECT {$topSql}k.codgas, k.nro, CONVERT(varchar(10), DATEADD(day, k.fch - 1, '19000101'), 23) AS fecha,
@@ -704,7 +712,6 @@ class ConciliacionVentaModel extends Model {
               LEFT JOIN #t t ON t.codgas = k.codgas AND t.nro = k.nro
               LEFT JOIN #p p ON p.codgas = k.codgas AND p.nro = k.nro
               LEFT JOIN SG12.dbo.Clientes cl WITH (NOLOCK) ON cl.cod = k.codopr
-              {$porImporte}
              ORDER BY k.fch DESC, k.codgas, k.nro;
 
             DROP TABLE IF EXISTS #k, #t, #p;";

@@ -34,7 +34,9 @@ class ConciliacionCobrosGuardadoModel extends Model {
             $this->sql->insert($query, [$mes, $usuario]);
             return true;
         } catch (Exception $e) {
-            return false;
+            // el handler oculta el código de error: si la fila ya existe fue la PK, si no se relanza
+            if ($this->mesGuardado($mes) !== null) return false;
+            throw $e;
         }
     }
 
