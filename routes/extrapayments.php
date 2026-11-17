@@ -9,6 +9,9 @@ return [
         route('new/', [ExtraPayments::class, 'form'], name: 'extrapayments.new', methods: ['GET']),
         route('save/', [ExtraPayments::class, 'save'], name: 'extrapayments.save', methods: ['POST']),
         route('proveedores/', [ExtraPayments::class, 'buscar_proveedores'], name: 'extrapayments.proveedores', methods: ['GET']),
+        // Layout bancario de Tesorería (renglones autorizados -> .txt Santander/Banorte); no cambia estatus.
+        route('layout/', [ExtraPayments::class, 'layout_tab'], name: 'extrapayments.layout', methods: ['GET'], permission: 109),
+        route('layout/generar/', [ExtraPayments::class, 'layout_generar'], name: 'extrapayments.layout_generar', methods: ['POST'], permission: 109),
         route('<int:id>/edit/', [ExtraPayments::class, 'form'], name: 'extrapayments.edit', methods: ['GET']),
         route('<int:id>/cancel/', [ExtraPayments::class, 'cancel'], name: 'extrapayments.cancel', methods: ['POST']),
         // Decisiones: el permiso (107/108/109) depende de la etapa o del

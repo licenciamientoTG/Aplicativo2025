@@ -244,8 +244,11 @@ class ExtraPayments
         $estatus  = self::ESTATUS;
         // Cards de resumen: quien ve todas (107/108/109/110); los demás solo ven sus solicitudes, sin cards.
         $ver_cards = $ver_todas;
+        // Tab "Layout bancario": solo Tesorería (109)
+        $es_tesoreria = $this->puede(ExtraPaymentWorkflow::PERM_TESORERIA);
+        $layout_n = $es_tesoreria ? count($this->requestsModel->lineas_para_layout()) : 0;
         echo $this->twig->render($this->route . 'index.html', compact(
-            'solicitudes', 'ver_todas', 'puede_crear', 'atiende', 'motivos', 'empresas', 'estatus', 'ver_cards'
+            'solicitudes', 'ver_todas', 'puede_crear', 'atiende', 'motivos', 'empresas', 'estatus', 'ver_cards', 'es_tesoreria', 'layout_n'
         ));
     }
 
@@ -1199,6 +1202,130 @@ class ExtraPayments
             'message' => 'Pago de la solicitud #' . $id . ' registrado. Suba el comprobante en el detalle.',
             'id'      => $id,
         ]);
+    }
+
+    /* ===================================================================== */
+    /* Layout bancario (Tesorería, 109)                                      */
+    /* ===================================================================== */
+
+    /**
+     * Revisa un renglón para el banco dado: cuenta de cargo de su empresa y cuenta destino.
+     * Devuelve [renglón del layout | null, motivo | null]. $cargoElegido: Id de cuenta Propia elegido por empresa.
+     */
+    private function renglon_layout(array $l, string $banco, array $cargo, array $cargoElegido): array
+    {
+        $emp = (int) $l['empresa_cod'];
+        if (empty($l['proveedor_cuenta_id'])) {
+            return [null, 'el renglón no tiene cuenta del proveedor (se capturó antes del buscador de cuentas)'];
+        }
+        if ((int) $l['destino_activa'] !== 1) {
+            return [null, 'la cuenta del proveedor está inactiva en el catálogo'];
+        }
+        if (trim((string) $l['destino_divisa']) === 'DOLAR AMERICANO') {
+            return [null, 'la cuenta del proveedor es en dólares (el layout solo paga en pesos)'];
+        }
+        $opciones = $cargo[$emp][$banco] ?? [];
+        $cuenta = null;
+        foreach ($opciones as $o) {
+            if (isset($cargoElegido[$emp]) && $o['id'] === $cargoElegido[$emp]) {
+                $cuenta = $o;
+                break;
+            }
+        }
+        $cuenta = $cuenta ?? ($opciones[0] ?? null);
+        $r = [
+            'cuenta_cargo'   => $cuenta['cuenta'] ?? '',
+            'cuenta_destino' => trim((string) $l['cuenta_destino']),
+            'monto'          => (float) $l['monto'],
+            'beneficiario'   => (string) $l['beneficiario'],
+            'concepto'       => 'PE' . (int) $l['folio'] . ' ' . $l['beneficiario'],
+            'clave_id'       => (string) ($l['clave_id'] ?? ''),
+            'rfc'            => '',
+        ];
+        $motivo = LayoutBancos::problema($banco, $r);
+        return $motivo === null ? [$r, null] : [null, $motivo];
+    }
+
+    /** Parcial del tab "Layout bancario": renglones autorizados con lo que le falta a cada uno para cada banco. */
+    public function layout_tab(): void
+    {
+        $this->guard([ExtraPaymentWorkflow::PERM_TESORERIA]);
+        $lineas = $this->requestsModel->lineas_para_layout();
+        $cargo  = $this->requestsModel->cuentas_cargo_layout();
+        foreach ($lineas as &$l) {
+            foreach (['SANTANDER' => 'santander', 'BANORTE' => 'banorte'] as $banco => $k) {
+                [, $motivo] = $this->renglon_layout($l, $banco, $cargo, []);
+                $l['falla_' . $k] = $motivo;
+            }
+            $l['busqueda'] = mb_strtolower('#' . $l['folio'] . ' ' . $l['proveedor'] . ' ' . $l['beneficiario'] . ' '
+                . $l['empresa_nombre'] . ' ' . $l['factura'] . ' ' . $l['cuenta_destino'] . ' ' . $l['solicitante']);
+        }
+        unset($l);
+        // Cuentas de cargo por empresa, para elegir cuando una empresa tiene más de una en el banco
+        $empresas = [];
+        foreach ($lineas as $l) {
+            $empresas[(int) $l['empresa_cod']] = (string) $l['empresa_nombre'];
+        }
+        $cuentas_cargo = [];
+        foreach ($empresas as $cod => $den) {
+            $cuentas_cargo[$cod] = ['nombre' => $den, 'SANTANDER' => $cargo[$cod]['SANTANDER'] ?? [], 'BANORTE' => $cargo[$cod]['BANORTE'] ?? []];
+        }
+        echo $this->twig->render($this->route . 'partials/layout_tab.html', compact('lineas', 'cuentas_cargo', 'empresas'));
+    }
+
+    /**
+     * Genera el .txt del banco con los renglones elegidos. No cambia ningún estatus (decisión 2026-11-17):
+     * Tesorería sigue registrando el pago en cada solicitud. Si algún renglón no cabe, no se genera nada y
+     * se devuelve la lista de motivos.
+     */
+    public function layout_generar(): void
+    {
+        $this->guard([ExtraPaymentWorkflow::PERM_TESORERIA], true);
+        $banco = strtoupper($this->texto($_POST['banco'] ?? '', 10));
+        if (!in_array($banco, ['SANTANDER', 'BANORTE'], true)) {
+            json_output(['success' => false, 'message' => 'Elija Santander o Banorte.']);
+        }
+        $ids = array_filter(array_map('intval', (array) ($_POST['line_ids'] ?? [])));
+        if (!$ids) {
+            json_output(['success' => false, 'message' => 'Seleccione al menos un renglón.']);
+        }
+        $cargoElegido = [];
+        foreach ((array) ($_POST['cuenta_cargo'] ?? []) as $emp => $cuentaId) {
+            if (is_scalar($cuentaId) && ctype_digit((string) $cuentaId)) {
+                $cargoElegido[(int) $emp] = (int) $cuentaId;
+            }
+        }
+
+        $lineas = $this->requestsModel->lineas_para_layout($ids);
+        if (count($lineas) !== count(array_unique($ids))) {
+            json_output(['success' => false, 'message' => 'Algunos renglones ya no están autorizados (alguien los pagó o cambió). Recargue el tab.']);
+        }
+        $cargo = $this->requestsModel->cuentas_cargo_layout();
+        $renglones = [];
+        $fallas = [];
+        foreach ($lineas as $l) {
+            [$r, $motivo] = $this->renglon_layout($l, $banco, $cargo, $cargoElegido);
+            if ($motivo !== null) {
+                $fallas[] = '#' . (int) $l['folio'] . ' ' . $l['empresa_nombre'] . ' → ' . $l['beneficiario'] . ': ' . $motivo;
+            } else {
+                $renglones[] = $r + ['empresa' => (string) $l['empresa_nombre']];
+            }
+        }
+        if ($fallas) {
+            json_output(['success' => false, 'message' => 'No se generó el layout de ' . ucfirst(strtolower($banco)) . '. Quite o corrija estos renglones:', 'fallas' => $fallas]);
+        }
+
+        $contenido = $banco === 'SANTANDER' ? LayoutBancos::santander($renglones) : LayoutBancos::banorte($renglones);
+        $empresasArchivo = array_unique(array_column($renglones, 'empresa'));
+        $etiqueta = count($empresasArchivo) === 1 ? LayoutBancos::limpiar((string) reset($empresasArchivo), 30) : 'MULTI EMPRESAS';
+        $archivo = 'LAYOUT_' . $banco . '_PAGOS_EXTRA_' . str_replace(' ', '_', $etiqueta) . '_' . date('YmdHis') . '.txt';
+
+        header('Content-Type: text/plain; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $archivo . '"');
+        header('Content-Length: ' . strlen($contenido));
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        echo $contenido;
+        exit;
     }
 
     /**

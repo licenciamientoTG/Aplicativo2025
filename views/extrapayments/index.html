@@ -44,6 +44,21 @@
 
     .ep-vacio .ico { width:3rem; height:3rem; border-radius:50%; background:#f1f5f9; color:#94a3b8; display:inline-flex; align-items:center; justify-content:center; font-size:1.2rem; }
     .ep-pie { background:#f8fafc; border-top:1px solid #e2e8f0; font-size:.78rem; color:#64748b; }
+
+    /* Tabs Solicitudes / Layout bancario (Tesorería) */
+    .ep-tabs-top { border-bottom:1px solid #e2e8f0; gap:.25rem; }
+    .ep-tabs-top .nav-link { border:0; border-bottom:2px solid transparent; color:#64748b; font-size:.85rem; font-weight:600; padding:.6rem .9rem; margin-bottom:-1px; background:transparent; }
+    .ep-tabs-top .nav-link.active { color:#1C4587; border-bottom-color:#1C4587; }
+    .ep-tabs-top .ep-n { display:inline-block; margin-left:.35rem; padding:0 .45rem; border-radius:1rem; background:#e2e8f0; color:#475569; font-size:.68rem; }
+    .ep-tabs-top .nav-link.active .ep-n { background:#1C4587; color:#fff; }
+
+    /* Layout bancario */
+    #tabla_layout thead th { text-transform:uppercase; font-size:.68rem; letter-spacing:.05em; color:#64748b; white-space:nowrap; background:#f8fafc; }
+    #tabla_layout tbody td { vertical-align:middle; font-size:.82rem; }
+    #tabla_layout tr.lay-sel td { background:#eef3fb; }
+    .lay-ok { color:#15803d; } .lay-mal { color:#b91c1c; cursor:help; }
+    .lay-barra { position:sticky; bottom:0; z-index:2; background:#fff; border-top:1px solid #e2e8f0; box-shadow:0 -2px 6px rgba(15,23,42,.06); }
+    .lay-cuenta { font-family:Consolas, monospace; white-space:nowrap; }
 </style>
 {% endblock %}
 {% block content %}
@@ -92,6 +107,21 @@
 </div>
 {% endif %}
 
+{% if es_tesoreria %}
+{# Tesorería: tab de layout bancario (se carga como vista parcial al abrirlo) #}
+<ul class="nav ep-tabs-top mb-3" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab_ep_solicitudes" data-bs-toggle="tab" data-bs-target="#pane_ep_solicitudes" type="button" role="tab">
+            <i class="fas fa-list me-1"></i> Solicitudes</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab_ep_layout" data-bs-toggle="tab" data-bs-target="#pane_ep_layout" type="button" role="tab">
+            <i class="fas fa-file-export me-1"></i> Layout bancario <span class="ep-n">{{ layout_n }}</span></button>
+    </li>
+</ul>
+<div class="tab-content">
+<div class="tab-pane fade show active" id="pane_ep_solicitudes" role="tabpanel">
+{% endif %}
 <div class="card border-0 shadow-sm">
     <div class="card-body py-2 px-3 d-flex align-items-center flex-wrap gap-2" id="ep_filtros" data-default="{{ por_atender > 0 ? 'atender' : (puede_crear ? 'mias' : 'todas') }}">
         {% if atiende %}<button type="button" class="ep-chip" data-vista="atender"><i class="fas fa-bell"></i> Por atender<span class="n">{{ por_atender }}</span></button>{% endif %}
@@ -179,6 +209,15 @@
         <span>Total en vista: <strong id="ep_pie_total" class="text-dark">$0.00</strong> MXN</span>
     </div>
 </div>
+{% if es_tesoreria %}
+</div>
+<div class="tab-pane fade" id="pane_ep_layout" role="tabpanel">
+    <div id="ep_layout" data-url="{{ url('extrapayments.layout') }}" data-generar="{{ url('extrapayments.layout_generar') }}">
+        <div class="text-center text-muted py-5"><i class="fas fa-spinner fa-spin"></i> Cargando renglones autorizados…</div>
+    </div>
+</div>
+</div>
+{% endif %}
 
 {# Shell fijo del modal: el contenido llega por fetch como vista parcial #}
 <div class="modal fade" id="modal_ep" tabindex="-1" aria-hidden="true">

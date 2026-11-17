@@ -301,6 +301,64 @@ class ExtraPaymentRequestsModel extends Model
             ORDER BY r.id DESC, l.id ASC', $params) ?: [];
     }
 
+    /**
+     * Renglones de solicitudes Autorizadas (estatus 3: ya pasaron CxP y Admón) para el layout bancario de
+     * Tesorería, con la cuenta destino elegida en el renglón (proveedor_cuenta_id). La cuenta destino es la
+     * CLABE (Clave, o CuentaLocal si ahí está la de 18) y si no, la cuenta corta. Con $lineIds solo esos.
+     */
+    public function lineas_para_layout(?array $lineIds = null) : array {
+        $params = [ExtraPaymentWorkflow::ST_AUTORIZADA];
+        $filtro = '';
+        if ($lineIds !== null) {
+            $lineIds = array_values(array_unique(array_filter(array_map('intval', $lineIds))));
+            if (!$lineIds) {
+                return [];
+            }
+            $filtro = ' AND l.id IN (' . implode(',', array_fill(0, count($lineIds), '?')) . ')';
+            $params = array_merge($params, $lineIds);
+        }
+        return $this->sql->select('
+            SELECT l.id AS line_id, r.id AS folio, r.fecha, l.empresa_cod, e.den AS empresa_nombre,
+                   l.proveedor, l.factura, l.descripcion, l.monto, l.fecha_pago_requerida, l.proveedor_cuenta_id,
+                   c.Banco AS destino_banco, c.Divisa AS destino_divisa, c.Activo AS destino_activa,
+                   c.IdBeneficiario AS clave_id,
+                   CASE WHEN LEN(c.Clave) = 18 THEN c.Clave
+                        WHEN LEN(c.CuentaLocal) = 18 THEN c.CuentaLocal
+                        ELSE c.CuentaLocal END AS cuenta_destino,
+                   COALESCE(NULLIF(sol.proveedor, \'\'), NULLIF(c.TitularCuenta, \'\'), c.Descripcion, l.proveedor) AS beneficiario,
+                   u.Nombre AS solicitante
+              FROM [TG].[dbo].[extra_payment_lines] l
+              JOIN [TG].[dbo].[extra_payment_requests] r ON r.id = l.request_id
+              LEFT JOIN [TG].[dbo].[razones_sociales_pago] e ON e.cod = l.empresa_cod
+              LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] c ON c.Id = l.proveedor_cuenta_id
+              LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = r.user_id
+              OUTER APPLY (SELECT TOP 1 b.proveedor FROM [TG].[dbo].[bank_account_requests] b
+                            WHERE b.catalogo_cuenta_id = c.Id AND b.status = 2 AND b.is_deleted = 0 ORDER BY b.id DESC) sol
+             WHERE r.status = ?' . $filtro . '
+             ORDER BY r.id, l.id', $params) ?: [];
+    }
+
+    /**
+     * Cuentas Propias activas en pesos de Santander y Banorte desde las que puede salir el pago, por empresa:
+     * [emp_cod => ['SANTANDER' => [cuentas], 'BANORTE' => [cuentas]]]. Solo las que tienen emp_cod.
+     */
+    public function cuentas_cargo_layout() : array {
+        $rows = $this->sql->select("
+            SELECT Id, emp_cod, UPPER(LTRIM(RTRIM(Banco))) AS banco, CuentaLocal, Descripcion
+              FROM [TG].[dbo].[CatalogosCuentasBancarias]
+             WHERE Tipo = 'Propias' AND Activo = 1 AND emp_cod IS NOT NULL
+               AND UPPER(LTRIM(RTRIM(Banco))) IN ('SANTANDER', 'BANORTE')
+               AND ISNULL(Divisa, 'NUEVO PESO MEXICANO') = 'NUEVO PESO MEXICANO'
+             ORDER BY emp_cod, Banco, Id") ?: [];
+        $map = [];
+        foreach ($rows as $r) {
+            $map[(int) $r['emp_cod']][$r['banco']][] = [
+                'id' => (int) $r['Id'], 'cuenta' => trim((string) $r['CuentaLocal']), 'descripcion' => trim((string) $r['Descripcion']),
+            ];
+        }
+        return $map;
+    }
+
     public function list_visible(int $userId, array $statuses, bool $all) : array {
         $cond = ['r.user_id = ?'];
         $params = [$userId];

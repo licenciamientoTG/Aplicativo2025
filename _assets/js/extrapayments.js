@@ -246,6 +246,164 @@
         });
     }
 
+    // ---------------- Layout bancario (Tesorería, 109) ----------------
+    // El tab se carga como vista parcial la primera vez que se abre. Generar el layout no cambia estatus.
+    var $layout = $('#ep_layout');
+    if ($layout.length) {
+        var layoutCargado = false;
+        var cuentasCargo = {};
+
+        var dinero = function (n) {
+            return '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        };
+
+        var cargarLayout = function () {
+            $layout.html('<div class="text-center text-muted py-5"><i class="fas fa-spinner fa-spin"></i> Cargando renglones autorizados…</div>');
+            $.ajax({ url: $layout.data('url'), type: 'GET', dataType: 'html' })
+                .done(function (html) {
+                    $layout.html(html);
+                    try { cuentasCargo = JSON.parse($('#lay_cuentas_cargo').text() || '{}'); } catch (e) { cuentasCargo = {}; }
+                    layoutCargado = true;
+                    filtrarLayout();
+                })
+                .fail(function (xhr) {
+                    $layout.html('<div class="alert alert-danger m-3">' + errorDe(xhr, 'No se pudo cargar el layout') + '</div>');
+                });
+        };
+
+        var filtrarLayout = function () {
+            var emp = $('#lay_empresa').val() || '';
+            var banco = $('#lay_banco_filtro').val() || '';
+            var texto = $.trim($('#lay_texto').val() || '').toLowerCase();
+            var visibles = 0;
+            $('#tabla_layout .lay-fila').each(function () {
+                var $f = $(this);
+                var s = $f.attr('data-santander') === '1', b = $f.attr('data-banorte') === '1';
+                var ok = (emp === '' || $f.attr('data-empresa') === emp)
+                    && (banco === '' || (banco === 'santander' && s) || (banco === 'banorte' && b) || (banco === 'ninguno' && !s && !b))
+                    && (texto === '' || String($f.attr('data-busqueda')).indexOf(texto) !== -1);
+                $f.toggle(ok);
+                if (ok) { visibles++; }
+            });
+            $('#lay_vacio').toggle(visibles === 0);
+            actualizarSeleccion();
+        };
+
+        // Recalcula totales, habilita cada banco solo si TODOS los seleccionados caben, y pide
+        // la cuenta de cargo cuando una empresa seleccionada tiene más de una en ese banco.
+        var actualizarSeleccion = function () {
+            var $sel = $('#tabla_layout .lay-fila').filter(function () { return $(this).find('.lay-check').prop('checked'); });
+            var total = 0, okS = $sel.length > 0, okB = $sel.length > 0, empresas = {};
+            $sel.each(function () {
+                var $f = $(this);
+                total += parseFloat($f.attr('data-monto')) || 0;
+                if ($f.attr('data-santander') !== '1') { okS = false; }
+                if ($f.attr('data-banorte') !== '1') { okB = false; }
+                empresas[$f.attr('data-empresa')] = true;
+            });
+            $('#tabla_layout .lay-fila').each(function () { $(this).toggleClass('lay-sel', $(this).find('.lay-check').prop('checked')); });
+            $('#lay_n').text($sel.length);
+            $('#lay_total').text(dinero(total));
+            $('.lay-generar[data-banco="SANTANDER"]').prop('disabled', !okS);
+            $('.lay-generar[data-banco="BANORTE"]').prop('disabled', !okB);
+            var aviso = '';
+            if ($sel.length && !okS && !okB) { aviso = 'Hay renglones seleccionados que no caben en ningún banco (pase el cursor sobre la ✗ para ver por qué).'; }
+            else if ($sel.length && (!okS || !okB)) { aviso = 'Solo ' + (okS ? 'Santander' : 'Banorte') + ' acepta todos los seleccionados.'; }
+            $('#lay_aviso').text(aviso);
+            var $visibles = $('#tabla_layout .lay-fila:visible .lay-check');
+            $('#lay_todos').prop('checked', $visibles.length > 0 && $visibles.filter(':checked').length === $visibles.length);
+
+            // Selectores de cuenta de cargo (conserva lo ya elegido)
+            var $cargo = $('#lay_cargo');
+            var elegido = {};
+            $cargo.find('select').each(function () { elegido[$(this).data('banco') + '|' + $(this).data('emp')] = $(this).val(); });
+            var html = '';
+            Object.keys(empresas).forEach(function (emp) {
+                var c = cuentasCargo[emp] || {};
+                ['SANTANDER', 'BANORTE'].forEach(function (banco) {
+                    var lista = c[banco] || [];
+                    if (lista.length < 2) { return; }
+                    var previo = elegido[banco + '|' + emp];
+                    html += '<div class="d-inline-flex align-items-center gap-1 me-3 mb-1 small"><span class="text-muted">'
+                        + escHtml(c.nombre) + ' · ' + (banco === 'SANTANDER' ? 'Santander' : 'Banorte') + ':</span>'
+                        + '<select class="form-select form-select-sm" style="width:auto" data-emp="' + escHtml(emp) + '" data-banco="' + banco + '">';
+                    lista.forEach(function (o) {
+                        html += '<option value="' + escHtml(o.id) + '"' + (String(o.id) === previo ? ' selected' : '') + '>'
+                            + escHtml(o.cuenta) + (o.descripcion ? ' — ' + escHtml(o.descripcion) : '') + '</option>';
+                    });
+                    html += '</select></div>';
+                });
+            });
+            $cargo.html(html ? '<div class="small fw-semibold mb-1">Cuenta de cargo (la empresa tiene varias en el banco):</div>' + html : '').toggle(html !== '');
+        };
+
+        $('#tab_ep_layout').on('shown.bs.tab', function () { if (!layoutCargado) { cargarLayout(); } });
+        $layout.on('change', '#lay_empresa, #lay_banco_filtro', filtrarLayout);
+        $layout.on('input', '#lay_texto', filtrarLayout);
+        $layout.on('change', '.lay-check', actualizarSeleccion);
+        $layout.on('change', '#lay_todos', function () {
+            $('#tabla_layout .lay-fila:visible .lay-check').prop('checked', this.checked);
+            actualizarSeleccion();
+        });
+        // Clic en cualquier parte de la fila marca/desmarca (menos en el enlace del folio)
+        $layout.on('click', '.lay-fila', function (e) {
+            if ($(e.target).closest('a, input, select, button').length) { return; }
+            var $c = $(this).find('.lay-check');
+            $c.prop('checked', !$c.prop('checked'));
+            actualizarSeleccion();
+        });
+
+        // Generar: si el servidor responde JSON es un error (con la lista de renglones que no caben); si no, es el .txt
+        $layout.on('click', '.lay-generar', function () {
+            var $btn = $(this);
+            var banco = $btn.data('banco');
+            var fd = new FormData();
+            fd.append('banco', banco);
+            $('#tabla_layout .lay-fila').each(function () {
+                if ($(this).find('.lay-check').prop('checked')) { fd.append('line_ids[]', $(this).attr('data-id')); }
+            });
+            $('#lay_cargo select[data-banco="' + banco + '"]').each(function () {
+                fd.append('cuenta_cargo[' + $(this).data('emp') + ']', $(this).val());
+            });
+            $('.lay-generar').prop('disabled', true);
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', $layout.data('generar'));
+            xhr.responseType = 'blob';
+            xhr.onload = function () {
+                var tipo = xhr.getResponseHeader('Content-Type') || '';
+                if (xhr.status === 200 && tipo.indexOf('text/plain') === 0) {
+                    var m = /filename="([^"]+)"/.exec(xhr.getResponseHeader('Content-Disposition') || '');
+                    var a = document.createElement('a');
+                    a.href = URL.createObjectURL(xhr.response);
+                    a.download = m ? m[1] : 'layout_' + banco.toLowerCase() + '.txt';
+                    document.body.appendChild(a);
+                    a.click();
+                    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+                    alertify.success('Layout de ' + (banco === 'SANTANDER' ? 'Santander' : 'Banorte') + ' generado. Recuerde registrar el pago en cada solicitud.');
+                    actualizarSeleccion();
+                    return;
+                }
+                xhr.response.text().then(function (txt) {
+                    var r = {};
+                    try { r = JSON.parse(txt); } catch (e) { r = { message: txt.substring(0, 200) || 'Error al generar el layout' }; }
+                    var msg = escHtml(r.message || 'No se pudo generar el layout');
+                    if (r.fallas && r.fallas.length) {
+                        msg += '<ul class="mb-0 mt-1 ps-3 small">' + r.fallas.map(function (f) { return '<li>' + escHtml(f) + '</li>'; }).join('') + '</ul>';
+                    }
+                    alertify.alert('Layout bancario', msg);
+                    if (/ya no están autorizados/.test(r.message || '')) { cargarLayout(); } else { actualizarSeleccion(); }
+                });
+            };
+            xhr.onerror = function () { alertify.error('Error de comunicación'); actualizarSeleccion(); };
+            xhr.send(fd);
+        });
+
+        if (window.location.hash === '#layout') {
+            var tabLay = document.getElementById('tab_ep_layout');
+            if (tabLay && window.bootstrap) { window.bootstrap.Tab.getOrCreateInstance(tabLay).show(); } else { cargarLayout(); }
+        }
+    }
+
     // ---------------- Formulario ----------------
     var $form = $('#form_extra');
     if (!$form.length) { return; }

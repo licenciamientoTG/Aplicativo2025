@@ -1,0 +1,91 @@
+{# Tab "Layout bancario" (Tesorería, 109). Vista parcial: se carga por fetch dentro de #ep_layout.
+   Renglones de solicitudes Autorizadas (status 3). Generar el layout NO cambia estatus. #}
+<div class="card border-0 shadow-sm">
+    <div class="card-body py-2 px-3 d-flex align-items-center flex-wrap gap-2">
+        <div class="small text-muted me-auto">
+            Renglones autorizados por CxP y Administración. Marque los que va a pagar y genere el layout del banco.
+            El layout <strong>no</strong> cambia el estatus: el pago se sigue registrando en cada solicitud.
+        </div>
+        <select id="lay_empresa" class="form-select form-select-sm" style="width:auto">
+            <option value="">Todas las empresas</option>
+            {% for cod, den in empresas %}<option value="{{ cod }}">{{ den }}</option>{% endfor %}
+        </select>
+        <select id="lay_banco_filtro" class="form-select form-select-sm" style="width:auto">
+            <option value="">Cualquier banco</option>
+            <option value="santander">Caben en Santander</option>
+            <option value="banorte">Caben en Banorte</option>
+            <option value="ninguno">No caben en ninguno</option>
+        </select>
+        <input type="search" id="lay_texto" class="form-control form-control-sm" style="width:220px" placeholder="Buscar folio, proveedor, cuenta…">
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0" id="tabla_layout">
+            <thead>
+                <tr>
+                    <th style="width:32px"><input type="checkbox" class="form-check-input" id="lay_todos" title="Seleccionar los visibles"></th>
+                    <th>Folio</th>
+                    <th>Empresa paga</th>
+                    <th>Beneficiario</th>
+                    <th>Banco / cuenta destino</th>
+                    <th class="text-end">Monto</th>
+                    <th>Fecha req.</th>
+                    <th>Solicitante</th>
+                    <th class="text-center">Santander</th>
+                    <th class="text-center">Banorte</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for l in lineas %}
+                <tr class="lay-fila" data-id="{{ l.line_id }}" data-empresa="{{ l.empresa_cod }}" data-monto="{{ l.monto }}"
+                    data-santander="{{ l.falla_santander is null ? 1 : 0 }}" data-banorte="{{ l.falla_banorte is null ? 1 : 0 }}"
+                    data-busqueda="{{ l.busqueda }}">
+                    <td><input type="checkbox" class="form-check-input lay-check"></td>
+                    <td class="text-nowrap"><a href="{{ url('extrapayments.detail', {id: l.folio}) }}" target="_blank">#{{ l.folio }}</a></td>
+                    <td>{{ l.empresa_nombre }}</td>
+                    <td>
+                        <div class="fw-semibold">{{ l.beneficiario }}</div>
+                        {% if l.factura or l.descripcion %}<div class="small text-muted">{{ l.factura }}{% if l.factura and l.descripcion %} · {% endif %}{{ l.descripcion }}</div>{% endif %}
+                    </td>
+                    <td>
+                        {% if l.proveedor_cuenta_id %}
+                            <div class="small text-muted">{{ l.destino_banco }}</div>
+                            <div class="lay-cuenta">{{ l.cuenta_destino }}</div>
+                        {% else %}
+                            <span class="badge bg-light text-danger border">Sin cuenta del proveedor</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end text-nowrap fw-semibold">${{ l.monto|number_format(2, '.', ',') }}</td>
+                    <td class="text-nowrap">{{ l.fecha_pago_requerida ? l.fecha_pago_requerida|date('d/m/Y') : '—' }}</td>
+                    <td class="small">{{ l.solicitante }}</td>
+                    <td class="text-center">
+                        {% if l.falla_santander is null %}<i class="fas fa-check-circle lay-ok" title="Cabe en Santander"></i>
+                        {% else %}<i class="fas fa-times-circle lay-mal" title="{{ l.falla_santander }}"></i>{% endif %}
+                    </td>
+                    <td class="text-center">
+                        {% if l.falla_banorte is null %}<i class="fas fa-check-circle lay-ok" title="Cabe en Banorte"></i>
+                        {% else %}<i class="fas fa-times-circle lay-mal" title="{{ l.falla_banorte }}"></i>{% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+                <tr id="lay_vacio" {% if lineas|length %}style="display:none"{% endif %}>
+                    <td colspan="10" class="text-center text-muted py-5">
+                        {% if lineas|length %}Ningún renglón coincide con los filtros.{% else %}No hay renglones autorizados pendientes de pago.{% endif %}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="lay-barra card-body py-2 px-3 d-flex align-items-center flex-wrap gap-2">
+        <span class="small text-muted">Seleccionados: <strong id="lay_n" class="text-dark">0</strong>
+            · Total: <strong id="lay_total" class="text-dark">$0.00</strong> MXN</span>
+        <span id="lay_aviso" class="small text-danger"></span>
+        <div class="ms-auto d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-outline-danger lay-generar" data-banco="SANTANDER" disabled>
+                <i class="fas fa-file-download me-1"></i> Layout Santander</button>
+            <button type="button" class="btn btn-sm btn-outline-primary lay-generar" data-banco="BANORTE" disabled>
+                <i class="fas fa-file-download me-1"></i> Layout Banorte</button>
+        </div>
+    </div>
+    <div id="lay_cargo" class="card-body pt-0 px-3" style="display:none"></div>
+</div>
+<script type="application/json" id="lay_cuentas_cargo">{{ cuentas_cargo|json_encode(constant('JSON_HEX_TAG') b-or constant('JSON_HEX_AMP'))|raw }}</script>
