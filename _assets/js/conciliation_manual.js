@@ -37,6 +37,10 @@
       }
       var g = grupos[k];
       (r.alertas || []).forEach(function (a) { if (g.alertas.indexOf(a) < 0) g.alertas.push(a); });
+      // Facturas y UUID también se juntan en filas sin cobro (depósito -> facturas)
+      [["facturas", r.facturas], ["uuids", r.uuid]].forEach(function (c) {
+        if (c[1] && g[c[0]].indexOf(c[1]) < 0) g[c[0]].push(c[1]);
+      });
       if (sinCobro) return;
       g.cobros++;
       g.monto += Number(r.monto) || 0;
@@ -44,7 +48,7 @@
       if (r.cliente && g.clientes.indexOf(r.cliente) < 0) g.clientes.push(r.cliente);
       if (g.folios.indexOf(String(r.cobro)) < 0) g.folios.push(String(r.cobro));
       if (r.fecha && (!g.fecha || r.fecha < g.fecha)) g.fecha = r.fecha;
-      [['formas', r.forma_pago], ['ordenantes', r.ordenante], ['bancos_ord', r.banco_ordenante], ['facturas', r.facturas], ['uuids', r.uuid]].forEach(function (c) {
+      [['formas', r.forma_pago], ['ordenantes', r.ordenante], ['bancos_ord', r.banco_ordenante]].forEach(function (c) {
         if (c[1] && g[c[0]].indexOf(c[1]) < 0) g[c[0]].push(c[1]);
       });
     });
@@ -66,7 +70,7 @@
   if (typeof window === 'undefined' || typeof $ === 'undefined') return;
 
   // ------------------------------------------------------------------ modal
-  var sel, sugeridos, res, previewSeq, timers;
+  var sel, sugeridos, res, timers = {}, previewSeq = 0, buscarSeq = { C: 0, M: 0, F: 0 };
 
   function filtros(extra) {
     return $.extend({ mes: $('#cvMes').val(), empresa: $('#cvEmpresa').val() }, extra || {});
@@ -95,13 +99,17 @@
       });
   }
 
+  function limpiarTimers() {
+    Object.keys(timers).forEach(function (k) { clearTimeout(timers[k]); });
+    timers = {};
+  }
+
   function iniciar() {
     var items = jsonDe($('#cmItems').text()) || [];
     sugeridos = jsonDe($('#cmSugeridos').text()) || [];
     sel = { C: [], M: [], F: [] };
     res = { C: [], M: [], F: [] };
-    timers = {};
-    previewSeq = 0;
+    limpiarTimers();
     items.forEach(function (it) { if (sel[it.tipo]) sel[it.tipo].push(it); });
     if (sugeridos.length) {
       $('#cmTotales').before('<div id="cmSugeridosBox" class="mb-2 small"></div>');
@@ -223,12 +231,12 @@
   var RUTAS = { C: 'income.conciliation_manual_search_payments', M: 'income.conciliation_manual_search_movements', F: 'income.conciliation_manual_search_invoices' };
   var FORMS = { C: '#cmBuscarCobros', M: '#cmBuscarMovs', F: '#cmBuscarFacturas' };
   function buscar(tipo) {
-    var datos = filtros({});
+    var datos = filtros({}), seq = ++buscarSeq[tipo];
     $(FORMS[tipo]).serializeArray().forEach(function (f) { if (f.value !== '') datos[f.name] = f.value; });
     $(IDS[tipo][0] + ' tbody').html('<tr><td colspan="12" class="text-muted">Buscando…</td></tr>');
     $.ajax({ url: routeUrl(RUTAS[tipo]), method: 'POST', dataType: 'json', data: datos })
-      .done(function (r) { res[tipo] = (r && r.data) || []; pintarResultados(tipo); })
-      .fail(function () { res[tipo] = []; pintarResultados(tipo); alertify.error('Error al buscar'); });
+      .done(function (r) { if (seq !== buscarSeq[tipo]) return; res[tipo] = (r && r.data) || []; pintarResultados(tipo); })
+      .fail(function (x, st) { if (seq !== buscarSeq[tipo] || st === 'abort') return; res[tipo] = []; pintarResultados(tipo); alertify.error('Error al buscar'); });
   }
 
   $(document).on('submit', '#cmBuscarCobros, #cmBuscarMovs, #cmBuscarFacturas', function (e) {
@@ -260,16 +268,17 @@
       .done(function (txt) {
         var r = jsonDe(txt);
         if (!r || !r.ok) {
-          alertify.error(r && r.error ? r.error : 'Respuesta inesperada del servidor');
+          alertify.error(r && r.error ? esc(r.error) : 'Respuesta inesperada del servidor');
           return;
         }
         alertify.success(okMsg);
         $('#modalConciliacionManual').modal('hide');
         $(document).trigger('conciliacion:guardada');
       })
-      .fail(function (x) {
+      .fail(function (x, st) {
         var r = jsonDe(x.responseText);
-        alertify.error(r && r.error ? r.error : 'Error del servidor (' + (x.status || 'sin respuesta') + '); la conciliación no se guardó');
+        if (st === 'timeout') alertify.error('No se sabe si se guardó (tiempo de espera agotado). Recarga la conciliación para verificar.');
+        else alertify.error(r && r.error ? esc(r.error) : 'Error del servidor (' + (x.status || 'sin respuesta') + '); la conciliación no se guardó');
       })
       .always(function () { $(boton).prop('disabled', false); });
   }
@@ -282,7 +291,11 @@
     if (!confirm('¿Deshacer esta conciliación manual? Sus cobros vuelven al cruce automático.')) return;
     enviar('income.conciliation_manual_undo', { grupo_id: grupoId() }, this, 'Conciliación deshecha');
   });
-  $(document).on('hidden.bs.modal', '#modalConciliacionManual', function () { $('#modalConciliacionManualCuerpo').empty(); });
+  $(document).on('hidden.bs.modal', '#modalConciliacionManual', function () {
+    limpiarTimers();
+    ++buscarSeq.C; ++buscarSeq.M; ++buscarSeq.F;
+    $('#modalConciliacionManualCuerpo').empty();
+  });
 
   API.abrir = abrir;
 })();

@@ -934,6 +934,7 @@ $(function () {
   function buscar() {
     (estado.xhrs || []).forEach(function (x) { x.abort(); });
     estado.busqueda++;
+    estado.filtrosBusqueda = filtros();   // mes/empresa de esta búsqueda (el reintento no usa lo que el usuario cambie después)
     estado.xhrs = []; estado.fin = {}; estado.resumenListo = false;
     estado.venta = []; estado.facturas = []; estado.cobros = []; estado.cortesDif = [];
 
@@ -1092,7 +1093,7 @@ $(function () {
     if (estado.reintento === estado.busqueda) return;
     estado.reintento = estado.busqueda;
     var b = estado.busqueda;
-    pedir('income.conciliation_payments_retry').done(function (r) {
+    $.ajax({ url: routeUrl('income.conciliation_payments_retry'), method: 'POST', dataType: 'json', timeout: 600000, data: estado.filtrosBusqueda }).done(function (r) {
       if (b !== estado.busqueda || !r || !(r.cambios > 0)) return;
       alertify.success('Se conciliaron ' + r.cambios + ' cobros pendientes con movimientos nuevos del banco');
       recargarCobros();

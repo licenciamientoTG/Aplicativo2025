@@ -28,4 +28,10 @@ assert.equal(g[2].monto, 0);
 assert.equal(g[3].cobros_dep, 1);             // sin grupo
 assert.equal(g[3].candidatos, null);
 
+// Fila sin cobro con facturas (depósito -> facturas)
+const g2 = CM.agruparCruce([{ ...base, grupo_id: 9, cobro: null, estacion: null, monto: null, facturas: 'I9 ($10.00)', uuid: 'u9' }]);
+assert.equal(g2[0].facturas, 'I9 ($10.00)');
+assert.equal(g2[0].uuids, 'u9');
+assert.equal(g2[0].cobros, 0);
+
 console.log('conciliation_manual_test: OK');
