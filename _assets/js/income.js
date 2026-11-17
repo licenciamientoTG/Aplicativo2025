@@ -3766,7 +3766,7 @@ function debit_snapshot_table() {
         ],
         ajax: {
             method: 'POST',
-            url: '/income/debit_snapshot_table',
+            url: routeUrl('income.debit_snapshot_table'),
             data: { fecha: $('#debit_snapshot_dia').val() },
             timeout: 60000,
             dataSrc: function (json) {
@@ -3855,7 +3855,7 @@ function credit_snapshot_table() {
         ],
         ajax: {
             method: 'POST',
-            url: '/income/credit_snapshot_table',
+            url: routeUrl('income.credit_snapshot_table'),
             data: { fecha: $('#credit_snapshot_dia').val() },
             timeout: 60000,
             dataSrc: function (json) {
@@ -3914,6 +3914,314 @@ function credit_snapshot_table() {
             });
         }
     });
+}
+
+/* =====================================================================
+ * Estado de cuenta (pestaña de /income/clients-debit/ y /income/clients-credit/)
+ * Solo lee las fotos diarias: resumen por cliente en un rango, indicadores
+ * sobre lo filtrado y, con clic en el cliente, su día por día.
+ * Vista: views/income/_estado_cuenta.html. t = 'debit' | 'credit'.
+ * ===================================================================== */
+var EDOCTA = {
+    debit: {
+        url: 'income.debit_statement', urlDetalle: 'income.debit_statement_detail',
+        // [clave, título, tipo, visible] — tipo: m = dinero (con total), t = texto, n = número, p = porcentaje
+        cols: [
+            ['codcli', 'Código', 't'], ['cliente', 'Cliente', 'cli'], ['debglo', 'Bolsa global', 'sn'],
+            ['ini_sistema', 'Saldo inicial', 'm'], ['anticipos_dia', 'Anticipos', 'm'],
+            ['consumos_desp_dia', 'Consumos (despachos)', 'm'], ['consumos_cortes_dia', 'Consumos (cortes)', 'm'],
+            ['desfase_dia', 'Desfase', 'm'], ['ajuste_retro_desp', 'Ajuste retro', 'm'],
+            ['fin_sistema', 'Saldo final', 'm'], ['variacion', 'Variación', 'm'], ['dif_periodo', 'Dif. sin explicar', 'm'],
+            ['fin_vehiculos', 'Saldo vehículos', 'm'], ['dias_mov', 'Días c/mov.', 'n'], ['ultimo_mov', 'Último mov.', 't'],
+            ['ini_calc_desp', 'Saldo ini. calc.', 'm', false], ['fin_calc_desp', 'Saldo fin calc.', 'm', false],
+            ['ajuste_retro_cortes', 'Ajuste retro (cortes)', 'm', false]
+        ],
+        detalle: [
+            ['dia', 'Fecha', 't'], ['saldo_ini_sistema', 'Saldo inicial', 'm'], ['anticipos_dia', 'Anticipos', 'm'],
+            ['consumos_desp_dia', 'Consumos (despachos)', 'm'], ['consumos_cortes_dia', 'Consumos (cortes)', 'm'],
+            ['desfase_dia', 'Desfase', 'm'], ['ajuste_retro_desp', 'Ajuste retro', 'm'],
+            ['saldo_fin_sistema', 'Saldo final', 'm'], ['saldo_fin_vehiculos', 'Saldo vehículos', 'm'],
+            ['dif_dia', 'Dif. sin explicar', 'm'], ['saldo_fin_calc_desp', 'Saldo fin calc.', 'm', false],
+            ['fecha_desde', 'Foto del', 't', false]
+        ],
+        movimientoDia: ['anticipos_dia', 'consumos_desp_dia', 'consumos_cortes_dia', 'ajuste_retro_desp', 'ajuste_retro_cortes']
+    },
+    credit: {
+        url: 'income.credit_statement', urlDetalle: 'income.credit_statement_detail',
+        cols: [
+            ['codcli', 'Código', 't'], ['cliente', 'Cliente', 'cli'], ['limite', 'Límite', 'm'],
+            ['ini_sistema', 'Saldo inicial', 'm'], ['consumos_desp_dia', 'Consumos (despachos)', 'm'],
+            ['consumos_cortes_dia', 'Consumos (cortes)', 'm'], ['desfase_dia', 'Desfase', 'm'],
+            ['cobros_dia', 'Cobros', 'm'], ['notas_dia', 'Notas crédito', 'm'], ['facturado_dia', 'Facturado', 'm'],
+            ['ajuste_retro_desp', 'Ajuste retro', 'm'], ['fin_sistema', 'Saldo final', 'm'],
+            ['disponible', 'Disponible', 'm'], ['pct_uso', '% uso', 'p'], ['variacion', 'Variación', 'm'],
+            ['dif_periodo', 'Dif. sin explicar', 'm'], ['dias_mov', 'Días c/mov.', 'n'], ['ultimo_mov', 'Último mov.', 't'],
+            ['fin_vehiculos', 'Contador vehículos', 'm', false], ['ini_calc_desp', 'Saldo ini. calc.', 'm', false],
+            ['fin_calc_desp', 'Saldo fin calc.', 'm', false], ['ajuste_retro_cortes', 'Ajuste retro (cortes)', 'm', false],
+            ['debglo', 'Bolsa global', 'sn', false]
+        ],
+        detalle: [
+            ['dia', 'Fecha', 't'], ['saldo_ini_sistema', 'Saldo inicial', 'm'],
+            ['consumos_desp_dia', 'Consumos (despachos)', 'm'], ['consumos_cortes_dia', 'Consumos (cortes)', 'm'],
+            ['desfase_dia', 'Desfase', 'm'], ['cobros_dia', 'Cobros', 'm'], ['notas_dia', 'Notas crédito', 'm'],
+            ['facturado_dia', 'Facturado', 'm'], ['ajuste_retro_desp', 'Ajuste retro', 'm'],
+            ['saldo_fin_sistema', 'Saldo final', 'm'], ['disponible', 'Disponible', 'm'],
+            ['dif_dia', 'Dif. sin explicar', 'm'], ['saldo_fin_calc_desp', 'Saldo fin calc.', 'm', false],
+            ['limite', 'Límite', 'm', false], ['fecha_desde', 'Foto del', 't', false]
+        ],
+        movimientoDia: ['consumos_desp_dia', 'consumos_cortes_dia', 'cobros_dia', 'notas_dia', 'facturado_dia', 'ajuste_retro_desp', 'ajuste_retro_cortes']
+    }
+};
+
+function edocta_esc(v) { return $('<div>').text(v == null ? '' : String(v)).html(); }
+function edocta_num(v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; }
+function edocta_money(n) {
+    return '$' + (Math.round(n * 100) / 100).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Columnas de DataTables a partir de la definición [clave, título, tipo, visible]. */
+function edocta_columns(defs, t) {
+    var numFmt = $.fn.dataTable.render.number(',', '.', 2, '$');
+    return defs.map(function (d) {
+        var col = { data: d[0], title: d[1], visible: d[3] !== false, defaultContent: '' };
+        if (d[2] === 'm') {
+            col.className = 'text-nowrap text-end';
+            col.render = function (v, type) {
+                if (v === null || v === undefined || v === '') return type === 'display' ? '<span class="text-muted">—</span>' : '';
+                if (type !== 'display') return parseFloat(v);
+                var n = parseFloat(v);
+                // Diferencias y ajustes en color solo cuando no son 0
+                if ((d[0] === 'dif_periodo' || d[0] === 'dif_dia' || d[0].indexOf('ajuste_retro') === 0) && Math.abs(n) >= 0.01) {
+                    return '<span class="fw-bold text-warning">' + numFmt.display(n) + '</span>';
+                }
+                if ((d[0] === 'disponible' || d[0] === 'fin_sistema' && t === 'debit') && n < 0) {
+                    return '<span class="text-danger">' + numFmt.display(n) + '</span>';
+                }
+                return numFmt.display(n);
+            };
+        } else if (d[2] === 'p') {
+            col.className = 'text-nowrap text-end';
+            col.render = function (v, type) {
+                if (v === null || v === undefined) return type === 'display' ? '<span class="text-muted">—</span>' : '';
+                if (type !== 'display') return v;
+                var cls = v > 100 ? 'text-danger fw-bold' : (v >= 90 ? 'text-warning fw-bold' : '');
+                return '<span class="' + cls + '">' + v.toFixed(1) + '%</span>';
+            };
+        } else if (d[2] === 'n') {
+            col.className = 'text-center';
+        } else if (d[2] === 'sn') {
+            col.className = 'text-center';
+            col.render = function (v) { return parseInt(v, 10) === 1 ? 'Sí' : 'No'; };
+        } else if (d[2] === 'cli') {
+            // El nombre viene de ControlGas (captura libre): siempre escapado
+            col.className = 'text-nowrap';
+            col.render = function (v, type) {
+                if (type !== 'display') return v;
+                return '<a href="#" class="edocta-cli" title="Ver día por día">' + edocta_esc(v) + '</a>';
+            };
+        } else {
+            col.className = 'text-nowrap';
+            col.render = $.fn.dataTable.render.text();
+        }
+        return col;
+    });
+}
+
+/** Encabezado con filtros por columna + pie para totales (DataTables pone los títulos). */
+function edocta_preparar_tabla($t, defs) {
+    if ($.fn.DataTable.isDataTable($t)) {
+        $t.DataTable().destroy();
+    }
+    $t.empty();
+    var ths = defs.map(function () { return '<th></th>'; }).join('');
+    $t.append('<thead><tr>' + ths + '</tr></thead><tbody></tbody><tfoot><tr>' + ths + '</tr></tfoot>');
+}
+
+function edocta_rango(t, rango) {
+    var hasta = new Date(); hasta.setDate(hasta.getDate() - 1);
+    var desde = new Date(hasta);
+    var fmt = function (d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+    if (rango === '7') { desde.setDate(desde.getDate() - 6); }
+    else if (rango === 'mes') { desde.setDate(1); }
+    else if (rango === 'mes_ant') { desde = new Date(hasta.getFullYear(), hasta.getMonth() - 1, 1); hasta = new Date(hasta.getFullYear(), hasta.getMonth(), 0); }
+    $('#edocta_' + t + '_desde').val(fmt(desde));
+    $('#edocta_' + t + '_hasta').val(fmt(hasta));
+}
+
+/** Indicadores sobre las filas filtradas de la tabla. */
+function edocta_kpis(t, rows) {
+    var s = function (k) { return rows.reduce(function (a, r) { return a + edocta_num(r[k]); }, 0); };
+    var conMov = rows.filter(function (r) { return parseInt(r.dias_mov, 10) > 0; }).length;
+    var conDif = rows.filter(function (r) { return Math.abs(edocta_num(r.dif_periodo)) >= 0.01; });
+    var card = function (titulo, valor, sub, cls) {
+        return '<div class="col-6 col-md-4 col-xl"><div class="card mb-0 h-100"><div class="card-body py-2">'
+            + '<div class="small text-muted">' + titulo + '</div>'
+            + '<div class="fs-5 fw-bold ' + (cls || '') + '">' + valor + '</div>'
+            + (sub ? '<div class="small text-muted">' + sub + '</div>' : '') + '</div></div></div>';
+    };
+    var html = card('Clientes', rows.length.toLocaleString('es-MX'), conMov.toLocaleString('es-MX') + ' con movimiento')
+        + card('Saldo inicial', edocta_money(s('ini_sistema')));
+    if (t === 'debit') {
+        var neg = rows.filter(function (r) { return edocta_num(r.fin_sistema) < 0; });
+        html += card('Anticipos', edocta_money(s('anticipos_dia')))
+            + card('Consumos', edocta_money(s('consumos_desp_dia')), 'Cortes ' + edocta_money(s('consumos_cortes_dia')))
+            + card('Saldo final', edocta_money(s('fin_sistema')))
+            + card('Saldo negativo', neg.length.toLocaleString('es-MX') + ' clientes',
+                   edocta_money(neg.reduce(function (a, r) { return a + edocta_num(r.fin_sistema); }, 0)), neg.length ? 'text-danger' : '');
+    } else {
+        var exc = rows.filter(function (r) { return edocta_num(r.limite) > 0 && edocta_num(r.disponible) < 0; });
+        html += card('Consumos', edocta_money(s('consumos_desp_dia')), 'Cortes ' + edocta_money(s('consumos_cortes_dia')))
+            + card('Cobros + NC', edocta_money(s('cobros_dia') + s('notas_dia')), 'Facturado ' + edocta_money(s('facturado_dia')))
+            + card('Saldo final', edocta_money(s('fin_sistema')), 'Límite ' + edocta_money(s('limite')))
+            + card('Pasados del límite', exc.length.toLocaleString('es-MX') + ' clientes',
+                   'Exceso ' + edocta_money(-exc.reduce(function (a, r) { return a + edocta_num(r.disponible); }, 0)), exc.length ? 'text-danger' : '');
+    }
+    html += card('Dif. sin explicar', conDif.length.toLocaleString('es-MX') + ' clientes',
+                 edocta_money(conDif.reduce(function (a, r) { return a + edocta_num(r.dif_periodo); }, 0)), conDif.length ? 'text-warning' : '');
+    $('#edocta_' + t + '_kpis').html(html);
+}
+
+function estado_cuenta_table(t) {
+    var cfg = EDOCTA[t];
+    var $t = $('#edocta_' + t + '_table');
+    edocta_preparar_tabla($t, cfg.cols);
+    var moneyIdx = [];
+    cfg.cols.forEach(function (d, i) { if (d[2] === 'm') moneyIdx.push(i); });
+
+    $t.DataTable({
+        ordering: true,
+        order: [[1, 'asc']],
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        lengthMenu: [[50, 100, 500, -1], [50, 100, 500, 'Todos']],
+        deferRender: true,
+        columns: edocta_columns(cfg.cols, t),
+        buttons: [
+            { extend: 'excel', className: 'btn btn-success', text: ' Excel', title: 'Estado de cuenta ' + (t === 'credit' ? 'crédito' : 'débito'),
+              exportOptions: { columns: ':visible', orthogonal: 'export' } },
+            { extend: 'colvis', className: 'btn btn-secondary', text: 'Columnas' }
+        ],
+        ajax: {
+            method: 'POST',
+            url: routeUrl(cfg.url),
+            data: function () { return { desde: $('#edocta_' + t + '_desde').val(), hasta: $('#edocta_' + t + '_hasta').val() }; },
+            timeout: 60000,
+            dataSrc: function (json) {
+                $('#edocta_' + t + '_primera').text(json.primera_corrida || '—');
+                $('#edocta_' + t + '_ultima').text(json.ultima_corrida || '—');
+                $('#edocta_' + t + '_periodo').text(json.desde ? json.desde + ' al ' + json.hasta : '—');
+                if (json.desde) { $('#edocta_' + t + '_desde').val(json.desde); $('#edocta_' + t + '_hasta').val(json.hasta); }
+                if (json.message) {
+                    alertify.myAlert('<div class="text-center text-warning"><h5>' + edocta_esc(json.message) + '</h5></div>');
+                }
+                return (json.data || []).map(function (r) {
+                    r.variacion = (r.ini_sistema === null || r.fin_sistema === null) ? null : edocta_num(r.fin_sistema) - edocta_num(r.ini_sistema);
+                    if (t === 'credit') {
+                        r.pct_uso = edocta_num(r.limite) > 0 && r.fin_sistema !== null ? edocta_num(r.fin_sistema) / edocta_num(r.limite) * 100 : null;
+                    }
+                    return r;
+                });
+            },
+            error: function () {
+                $('.table-responsive').removeClass('loading');
+                alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No se pudo consultar el estado de cuenta.</p></div>');
+            },
+            beforeSend: function () { $('.table-responsive').addClass('loading'); }
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // Filtro por columna en una segunda fila del encabezado
+            var api = this.api();
+            var $f = $('<tr class="filter"></tr>');
+            api.columns().every(function () {
+                var c = this;
+                var $in = $('<input type="text" class="form-control form-control-sm" placeholder="Filtrar">')
+                    .on('keyup change', function () { if (c.search() !== this.value) c.search(this.value).draw(); });
+                $f.append($('<th></th>').append($in).toggle(c.visible()));
+            });
+            $(api.table().header()).append($f);
+            // Al mostrar/ocultar columnas (botón Columnas) el filtro sigue a su columna
+            api.on('column-visibility.dt', function (e, s, col, vis) { $f.children().eq(col).toggle(vis); });
+        },
+        footerCallback: function () {
+            var api = this.api();
+            var rows = api.rows({ search: 'applied' }).data().toArray();
+            moneyIdx.forEach(function (idx) {
+                var key = cfg.cols[idx][0];
+                var total = rows.reduce(function (a, r) { return a + edocta_num(r[key]); }, 0);
+                $(api.column(idx).footer()).html(edocta_money(total));
+            });
+            $(api.column(1).footer()).html('Total');
+            edocta_kpis(t, rows);
+        }
+    });
+}
+
+/** Día por día de un cliente en el periodo consultado. */
+function estado_cuenta_detalle(t, row) {
+    var cfg = EDOCTA[t];
+    var $t = $('#edocta_' + t + '_detalle');
+    $('#edocta_' + t + '_modal_titulo').text(row.codcli + ' · ' + row.cliente);
+    $('#edocta_' + t + '_modal_periodo').text($('#edocta_' + t + '_desde').val() + ' al ' + $('#edocta_' + t + '_hasta').val());
+    edocta_preparar_tabla($t, cfg.detalle);
+    var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('edocta_' + t + '_modal'));
+    $('#edocta_' + t + '_modal').one('shown.bs.modal', function () { if ($.fn.DataTable.isDataTable($t)) $t.DataTable().columns.adjust(); });
+    modal.show();
+    var hayMov = function (r) { return cfg.movimientoDia.some(function (k) { return Math.abs(edocta_num(r[k])) >= 0.01; }) || Math.abs(edocta_num(r.dif_dia)) >= 0.01; };
+    var datos = [];
+    var dt = $t.DataTable({
+        ordering: true,
+        order: [[0, 'asc']],
+        dom: '<"top"B>rt<"bottom"i>',
+        paging: false,
+        columns: edocta_columns(cfg.detalle, t),
+        data: [],
+        buttons: [{ extend: 'excel', className: 'btn btn-success btn-sm', text: ' Excel',
+                    title: 'Estado de cuenta ' + row.codcli + ' ' + row.cliente, exportOptions: { columns: ':visible', orthogonal: 'export' } }],
+        language: { emptyTable: 'Cargando…', info: '_TOTAL_ días' }
+    });
+    var pintar = function () {
+        var solo = $('#edocta_' + t + '_modal_mov').is(':checked');
+        dt.clear().rows.add(solo ? datos.filter(hayMov) : datos).draw();
+    };
+    $('#edocta_' + t + '_modal_mov').off('change').on('change', pintar);
+    $.post(routeUrl(cfg.urlDetalle), {
+        codcli: row.codcli, desde: $('#edocta_' + t + '_desde').val(), hasta: $('#edocta_' + t + '_hasta').val()
+    }, function (json) {
+        datos = (json.data || []).map(function (r) {
+            // Lo que ControlGas movió ese día y la foto no explica: Δ sistema − (movimientos + ajuste)
+            r.dif_dia = (r.saldo_ini_sistema === null || r.saldo_fin_sistema === null) ? null
+                : Math.round(((edocta_num(r.saldo_fin_sistema) - edocta_num(r.saldo_ini_sistema))
+                    - (edocta_num(r.saldo_fin_calc_desp) - edocta_num(r.saldo_ini_calc_desp) + edocta_num(r.ajuste_retro_desp))) * 100) / 100;
+            return r;
+        });
+        dt.settings()[0].oLanguage.sEmptyTable = 'Sin movimientos en el periodo';
+        pintar();
+    }, 'json').fail(function () {
+        alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No se pudo consultar el detalle.</p></div>');
+    });
+}
+
+function estado_cuenta_init(t) {
+    var $t = $('#edocta_' + t + '_table');
+    $('#edocta_' + t + '_btn').on('click', function () { estado_cuenta_table(t); });
+    $('.edocta-rango[data-t="' + t + '"]').on('click', function () { edocta_rango(t, $(this).data('rango')); estado_cuenta_table(t); });
+    // Filtros de la tabla (solo afectan a esta tabla)
+    $.fn.dataTable.ext.search.push(function (settings, _data, _i, r) {
+        if (settings.nTable.id !== 'edocta_' + t + '_table') return true;
+        if ($('#edocta_' + t + '_f_mov').is(':checked') && !(parseInt(r.dias_mov, 10) > 0)) return false;
+        if ($('#edocta_' + t + '_f_dif').is(':checked') && !(Math.abs(edocta_num(r.dif_periodo)) >= 0.01)) return false;
+        if ($('#edocta_' + t + '_f_lim').is(':checked') && !(r.pct_uso !== null && r.pct_uso >= 90)) return false;
+        if ($('#edocta_' + t + '_f_neg').is(':checked') && !(edocta_num(r.fin_sistema) < 0)) return false;
+        return true;
+    });
+    $('.edocta-filtro[data-t="' + t + '"]').on('change', function () { $t.DataTable().draw(); });
+    $t.on('click', 'a.edocta-cli', function (e) {
+        e.preventDefault();
+        estado_cuenta_detalle(t, $t.DataTable().row($(this).closest('tr')).data());
+    });
+    estado_cuenta_table(t);
 }
 
 // cargarGraficaDesdeController();

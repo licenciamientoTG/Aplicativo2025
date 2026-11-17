@@ -55,11 +55,19 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 {% set ver_debito = modo == 'debito' %}
 {% set ver_credito = modo == 'credito' %}
 {% set ver_foto = modo == 'todos' %}
+{# Estado de cuenta (fotos diarias): primera pestaña y la que abre en clients-debit / clients-credit #}
+{% set ver_edo = ver_debito or ver_credito %}
+{% set edo_t = ver_debito ? 'debit' : 'credit' %}
 
 <ul class="nav nav-tabs" id="myTab" role="tablist">
+    {% if ver_edo %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#edocta_{{ edo_t }}" type="button">Estado de cuenta</button>
+    </li>
+    {% endif %}
     {% if ver_debito %}
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#debit_clients" type="button">Débito</button>
+        <button class="nav-link {{ ver_edo ? '' : 'active' }}" data-bs-toggle="tab" data-bs-target="#debit_clients" type="button">Débito</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#vehicles_debit" type="button">Vehículos Débito</button>
@@ -67,7 +75,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     {% endif %}
     {% if ver_credito %}
     <li class="nav-item" role="presentation">
-        <button class="nav-link {{ ver_debito ? '' : 'active' }}" data-bs-toggle="tab" data-bs-target="#credit_clients" type="button">Crédito</button>
+        <button class="nav-link {{ ver_debito or ver_edo ? '' : 'active' }}" data-bs-toggle="tab" data-bs-target="#credit_clients" type="button">Crédito</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link" data-bs-toggle="tab" data-bs-target="#vehicles_credit" type="button">Vehículos Crédito</button>
@@ -106,9 +114,14 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 
 <div class="tab-content">
 
+    {% if ver_edo %}
+    {# ── TAB 0: ESTADO DE CUENTA (fotos diarias) ── #}
+    {% include 'views/income/_estado_cuenta.html' with { t: edo_t } %}
+    {% endif %}
+
     {% if ver_debito %}
     {# ── TAB 1: DÉBITO ── #}
-    <div class="tab-pane active" id="debit_clients" role="tabpanel">
+    <div class="tab-pane {{ ver_edo ? '' : 'active' }}" id="debit_clients" role="tabpanel">
         <div class="card">
             <div class="card-body">
                 <div class="row">
@@ -359,7 +372,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 
     {% if ver_credito %}
     {# ── TAB 2: CRÉDITO ── #}
-    <div class="tab-pane {{ ver_debito ? '' : 'active' }}" id="credit_clients" role="tabpanel">
+    <div class="tab-pane {{ ver_debito or ver_edo ? '' : 'active' }}" id="credit_clients" role="tabpanel">
         <div class="card">
             <div class="card-body">
                 <div class="row">
@@ -1364,6 +1377,40 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 </div>
 
 {# ── Modal: origen de la información de la foto ── #}
+{% if ver_edo %}
+<div class="modal fade" id="edocta_info" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">¿Cómo leer el estado de cuenta?</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body small">
+                <p>Sale de la <b>foto diaria</b> que guarda la tarea programada cada mañana a las 08:00 con el cierre del día anterior
+                   (TG.dbo.{{ ver_debito ? 'debit' : 'credit' }}_clients_cierre). No consulta ControlGas en vivo, por eso carga en segundos.</p>
+                <ul>
+                    <li><b>Saldo inicial</b>: saldo de ControlGas al inicio del primer día del periodo. <b>Saldo final</b>: al cierre del último día.</li>
+                    {% if ver_debito %}
+                    <li><b>Anticipos</b>: depósitos del periodo (mismas reglas que Edo. Cuenta Débito). Suben el saldo.</li>
+                    <li><b>Consumos</b>: despachos del periodo (por fecha de despacho) y, aparte, lo cobrado en los cortes. Bajan el saldo.</li>
+                    {% else %}
+                    <li><b>Consumos</b>: despachos del periodo (por fecha de despacho) y, aparte, lo cobrado en los cortes. Suben lo que debe el cliente.</li>
+                    <li><b>Cobros</b> y <b>Notas de crédito</b>: bajan lo que debe. <b>Facturado</b> es informativo: facturar no mueve el saldo.</li>
+                    <li><b>Disponible</b> = límite − saldo final; <b>% uso</b> = saldo final / límite.</li>
+                    {% endif %}
+                    <li><b>Desfase</b> = despachos − cortes: consumos todavía no cortados (o cortados con otra fecha).</li>
+                    <li><b>Ajuste retro</b>: lo que llegó con fecha atrasada después de tomada la foto (cobros capturados tarde, despachos quitados, cortes tardíos).</li>
+                    <li><b>Variación</b> = saldo final − saldo inicial.</li>
+                    <li><b>Dif. sin explicar</b>: lo que ControlGas movió en el saldo y no corresponde a ningún movimiento del periodo
+                        (ajustes manuales, bonificaciones, movimientos que no cumplen las reglas). Lo normal es $0.</li>
+                </ul>
+                <p class="mb-0">Clic en el nombre del cliente para ver su día por día.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="modal fade" id="modal_info_debit_snapshot" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
@@ -1652,6 +1699,12 @@ $('#btn_anticipos_all').on('click', function () {
 $('#btn_anticipos_cli').on('click', function () {
     anticipos_debit_table('cli');
 });
+
+// ── Estado de cuenta (fotos diarias): carga al abrir la página ──
+{# (los set de block content no llegan a este bloque: se vuelve a sacar de modo) #}
+{% if modo|default('todos') in ['debito', 'credito'] %}
+estado_cuenta_init('{{ modo == 'debito' ? 'debit' : 'credit' }}');
+{% endif %}
 
 // ── Estado de Cuenta Foto ──
 $('#btn_debit_snapshot').on('click', function () {

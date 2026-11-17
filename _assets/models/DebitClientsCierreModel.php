@@ -27,6 +27,9 @@ class DebitClientsCierreModel extends Model
         'saldo_fin_calc_desp', 'saldo_fin_calc_cortes', 'saldo_fin_sistema', 'saldo_fin_vehiculos',
     ];
 
+    /** Columnas extra del cierre que regresa estadoCuenta (crédito: límite y disponible). */
+    const COLUMNAS_FIN_EXTRA = [];
+
     /** Columnas de datos que se insertan/actualizan (sin id, fechas ni updated_at). */
     const COLUMNAS = [
         'codcli', 'cliente', 'debglo',
@@ -147,6 +150,120 @@ class DebitClientsCierreModel extends Model
         ) ?: [];
         $l = static::LOGICA;
         return array_map(fn($r) => $l::filaParaDia($r, $dia), $rows);
+    }
+
+    /**
+     * Estado de cuenta por cliente en el rango [$desde, $hasta] ('Y-m-d'),
+     * solo con las fotos (rápido, no toca SG12): saldo al inicio de $desde,
+     * suma de los movimientos del rango (los de LOGICA::MOVIMIENTOS: cada fila
+     * los trae de su fecha_desde) y saldo al cierre de $hasta. El calculado
+     * inicial va sin el ajuste retro de $desde, para que
+     * fin calc = ini calc + movimientos + ajustes del rango.
+     * dif_periodo = lo que ControlGas movió y la foto no explica.
+     * Las columnas salen de constantes de clase (nunca de la petición).
+     */
+    public function estadoCuenta(string $desde, string $hasta): array
+    {
+        $l    = static::LOGICA;
+        $movs = $l::MOVIMIENTOS;
+        $sum  = implode(",\n                   ", array_map(fn($c) => "SUM($c) AS $c", $movs));
+        $hayMov = implode(' OR ', array_map(fn($c) => "$c <> 0", array_diff($movs, ['desfase_dia'])));
+        $extra  = implode('', array_map(fn($c) => ", f.$c", static::COLUMNAS_FIN_EXTRA));
+        $t = static::TABLA;
+        $query = "
+            DECLARE @desde date = ?, @hasta date = ?;
+            WITH ini AS (
+                SELECT codcli,
+                       CASE WHEN fecha_desde = @desde THEN saldo_ini_sistema ELSE saldo_fin_sistema END AS ini_sistema,
+                       CASE WHEN fecha_desde = @desde THEN saldo_ini_calc_desp - ISNULL(ajuste_retro_desp, 0) ELSE saldo_fin_calc_desp END AS ini_calc_desp,
+                       CASE WHEN fecha_desde = @desde THEN saldo_ini_calc_cortes - ISNULL(ajuste_retro_cortes, 0) ELSE saldo_fin_calc_cortes END AS ini_calc_cortes
+                  FROM $t
+                 WHERE fecha_desde <= @desde AND (fecha_hasta IS NULL OR fecha_hasta >= @desde)
+            ),
+            -- Clientes que empiezan dentro del rango: su primera fila da el inicial
+            primera AS (
+                SELECT codcli, saldo_ini_sistema AS ini_sistema,
+                       saldo_ini_calc_desp - ISNULL(ajuste_retro_desp, 0) AS ini_calc_desp,
+                       saldo_ini_calc_cortes - ISNULL(ajuste_retro_cortes, 0) AS ini_calc_cortes,
+                       ROW_NUMBER() OVER (PARTITION BY codcli ORDER BY fecha_desde) AS rn
+                  FROM $t
+                 WHERE fecha_desde > @desde AND fecha_desde <= @hasta
+            ),
+            mov AS (
+                SELECT codcli,
+                   $sum,
+                       SUM(CASE WHEN $hayMov THEN 1 ELSE 0 END) AS dias_mov,
+                       CONVERT(varchar(10), MAX(CASE WHEN $hayMov THEN fecha_desde END), 23) AS ultimo_mov
+                  FROM $t
+                 WHERE fecha_desde BETWEEN @desde AND @hasta
+                 GROUP BY codcli
+            )
+            SELECT f.codcli, f.cliente, f.debglo,
+                   COALESCE(i.ini_sistema, p.ini_sistema) AS ini_sistema,
+                   COALESCE(i.ini_calc_desp, p.ini_calc_desp) AS ini_calc_desp,
+                   COALESCE(i.ini_calc_cortes, p.ini_calc_cortes) AS ini_calc_cortes,
+                   " . implode(', ', array_map(fn($c) => "ISNULL(m.$c, 0) AS $c", $movs)) . ",
+                   ISNULL(m.dias_mov, 0) AS dias_mov, m.ultimo_mov,
+                   f.saldo_fin_sistema AS fin_sistema, f.saldo_fin_calc_desp AS fin_calc_desp,
+                   f.saldo_fin_calc_cortes AS fin_calc_cortes, f.saldo_fin_vehiculos AS fin_vehiculos$extra
+              FROM $t f
+              LEFT JOIN ini i ON i.codcli = f.codcli
+              LEFT JOIN primera p ON p.codcli = f.codcli AND p.rn = 1
+              LEFT JOIN mov m ON m.codcli = f.codcli
+             WHERE f.fecha_desde <= @hasta AND (f.fecha_hasta IS NULL OR f.fecha_hasta >= @hasta)
+             ORDER BY f.cliente";
+        $rows = $this->sql->select($query, [$desde, $hasta]) ?: [];
+        foreach ($rows as &$r) {
+            $r['dif_periodo'] = ($r['ini_sistema'] === null || $r['fin_sistema'] === null) ? null
+                : round(((float)$r['fin_sistema'] - (float)$r['ini_sistema'])
+                      - ((float)$r['fin_calc_desp'] - (float)$r['ini_calc_desp']), 2);
+        }
+        return $rows;
+    }
+
+    /**
+     * Día por día de un cliente en [$desde, $hasta]: la fila vigente de cada
+     * día procesado, proyectada con filaParaDia (los días sin cambio salen con
+     * movimientos en 0). Solo días con corrida OK.
+     */
+    public function detalleCliente(int $codcli, string $desde, string $hasta): array
+    {
+        $filas = $this->sql->select(
+            "SELECT codcli, cliente, debglo,
+                    CONVERT(varchar(10), fecha_desde, 23) AS fecha_desde,
+                    CONVERT(varchar(10), fecha_hasta, 23) AS fecha_hasta,
+                    " . implode(', ', static::COLUMNAS_FOTO) . "
+               FROM " . static::TABLA . "
+              WHERE codcli = ? AND fecha_desde <= ? AND (fecha_hasta IS NULL OR fecha_hasta >= ?)
+              ORDER BY fecha_desde",
+            [$codcli, $hasta, $desde]
+        ) ?: [];
+        $ok = array_flip(array_column($this->sql->select(
+            "SELECT CONVERT(varchar(10), fecha_dia, 23) AS d FROM " . static::TABLA_RUNS . "
+              WHERE ok = 1 AND fecha_dia BETWEEN ? AND ?", [$desde, $hasta]
+        ) ?: [], 'd'));
+        $l = static::LOGICA;
+        $dias = [];
+        foreach ($filas as $f) {
+            $d   = new DateTime(max($desde, $f['fecha_desde']));
+            $fin = new DateTime(min($hasta, $f['fecha_hasta'] ?? $hasta));
+            for (; $d <= $fin; $d->modify('+1 day')) {
+                $dia = $d->format('Y-m-d');
+                if (isset($ok[$dia])) {
+                    $dias[] = ['dia' => $dia] + $l::filaParaDia($f, $dia);
+                }
+            }
+        }
+        return $dias;
+    }
+
+    /** Primer día procesado sin error ('Y-m-d') o null: desde cuándo hay fotos. */
+    public function primeraCorridaOk(): ?string
+    {
+        $r = $this->sql->select(
+            "SELECT CONVERT(varchar(10), MIN(fecha_dia), 23) AS f FROM " . static::TABLA_RUNS . " WHERE ok = 1"
+        );
+        return $r[0]['f'] ?? null;
     }
 
     /** ¿El día tiene corrida OK en la bitácora? */

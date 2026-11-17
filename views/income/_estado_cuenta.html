@@ -1,0 +1,92 @@
+{# Pestaña "Estado de cuenta" de /income/clients-debit/ (t = 'debit') y /income/clients-credit/ (t = 'credit').
+   Solo lee las fotos diarias (TG.dbo.debit/credit_clients_cierre): por cliente en un rango y, al dar clic en
+   un cliente, su día por día. Tabla, totales e indicadores los arma estado_cuenta_init(t) en income.js. #}
+{% set ayer = 'now'|date_modify('-1 day')|date('Y-m-d') %}
+<div class="tab-pane active" id="edocta_{{ t }}" role="tabpanel">
+    <div class="card mb-2">
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label class="col-form-label-sm mb-0" for="edocta_{{ t }}_desde">Desde</label>
+                    <input type="date" class="form-control form-control-sm" id="edocta_{{ t }}_desde"
+                           value="{{ 'now'|date_modify('-1 day')|date('Y-m-01') }}" max="{{ ayer }}">
+                </div>
+                <div class="col-auto">
+                    <label class="col-form-label-sm mb-0" for="edocta_{{ t }}_hasta">Hasta</label>
+                    <input type="date" class="form-control form-control-sm" id="edocta_{{ t }}_hasta"
+                           value="{{ ayer }}" max="{{ ayer }}">
+                </div>
+                <div class="col-auto">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Rangos rápidos">
+                        <button type="button" class="btn btn-outline-secondary edocta-rango" data-t="{{ t }}" data-rango="ayer">Ayer</button>
+                        <button type="button" class="btn btn-outline-secondary edocta-rango" data-t="{{ t }}" data-rango="7">7 días</button>
+                        <button type="button" class="btn btn-outline-secondary edocta-rango" data-t="{{ t }}" data-rango="mes">Este mes</button>
+                        <button type="button" class="btn btn-outline-secondary edocta-rango" data-t="{{ t }}" data-rango="mes_ant">Mes anterior</button>
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <button id="edocta_{{ t }}_btn" class="btn btn-sm btn-primary"><i class="fas fa-search"></i> Consultar</button>
+                </div>
+                <div class="col text-end small text-muted">
+                    Fotos desde <strong id="edocta_{{ t }}_primera">—</strong>
+                    · Último cierre <strong id="edocta_{{ t }}_ultima">—</strong>
+                    · Periodo <strong id="edocta_{{ t }}_periodo">—</strong>
+                    <a href="#" class="ms-1" data-bs-toggle="modal" data-bs-target="#edocta_info" title="¿Cómo leer este estado de cuenta?"><i class="fas fa-question-circle"></i></a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Indicadores (sobre lo filtrado en la tabla) #}
+    <div class="row g-2 mb-2" id="edocta_{{ t }}_kpis"></div>
+
+    <div class="card">
+        <div class="card-header py-2 d-flex flex-wrap gap-3 align-items-center">
+            <h5 class="card-title mb-0 me-auto">Estado de cuenta — Clientes {{ t == 'credit' ? 'Crédito' : 'Débito' }}</h5>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input edocta-filtro" type="checkbox" id="edocta_{{ t }}_f_mov" data-t="{{ t }}">
+                <label class="form-check-label small" for="edocta_{{ t }}_f_mov">Solo con movimiento</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input edocta-filtro" type="checkbox" id="edocta_{{ t }}_f_dif" data-t="{{ t }}">
+                <label class="form-check-label small" for="edocta_{{ t }}_f_dif">Solo con diferencia sin explicar</label>
+            </div>
+            {% if t == 'credit' %}
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input edocta-filtro" type="checkbox" id="edocta_{{ t }}_f_lim" data-t="{{ t }}">
+                <label class="form-check-label small" for="edocta_{{ t }}_f_lim">Solo arriba del 90% del límite</label>
+            </div>
+            {% else %}
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input edocta-filtro" type="checkbox" id="edocta_{{ t }}_f_neg" data-t="{{ t }}">
+                <label class="form-check-label small" for="edocta_{{ t }}_f_neg">Solo saldo negativo</label>
+            </div>
+            {% endif %}
+        </div>
+        <div class="card-body table-responsive">
+            <table id="edocta_{{ t }}_table" class="table table-hover table-sm w-100"></table>
+        </div>
+    </div>
+</div>
+
+{# Día por día de un cliente #}
+<div class="modal fade" id="edocta_{{ t }}_modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen-lg-down modal-xl">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title"><span id="edocta_{{ t }}_modal_titulo"></span>
+                    <small class="text-muted ms-2" id="edocta_{{ t }}_modal_periodo"></small></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-check form-check-inline mb-2">
+                    <input class="form-check-input" type="checkbox" id="edocta_{{ t }}_modal_mov" checked>
+                    <label class="form-check-label small" for="edocta_{{ t }}_modal_mov">Solo días con movimiento</label>
+                </div>
+                <div class="table-responsive">
+                    <table id="edocta_{{ t }}_detalle" class="table table-hover table-sm w-100"></table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

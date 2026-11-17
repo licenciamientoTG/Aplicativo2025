@@ -4,10 +4,11 @@
  * AYER en TG.dbo.debit_clients_cierre (bitácora en debit_clients_cierre_runs)
  * y, después, la de clientes crédito en TG.dbo.credit_clients_cierre
  * (bitácora en credit_clients_cierre_runs; spec 2026-11-12-credit-...).
- * Recupera solos los días que no se procesaron (hasta 31).
+ * Recupera solos los días que no se procesaron (hasta 31). Si algo falla
+ * avisa por correo (Income::FOTO_ALERTA_CORREOS); si todo sale bien, no manda nada.
  * Spec: docs/superpowers/specs/2026-11-11-debit-clients-cierre-diario-design.md
  *
- * Tarea sya_debit_snapshot_diario en 192.168.0.3, diaria a las 08:00 AM
+ * Tarea sya_debit_snapshot_diario en 192.168.0.3, diaria a las 08:00 hora local (sin sincronizar zona: también en horario de verano)
  * (el último corte del día, turno 41, se cierra a las 06:00):
  *   cmd.exe /d /c C:\php\php.exe cron\debit_snapshot_diario.php >> logs\debit_snapshot_diario.log 2>&1
  *   Iniciar en: C:\inetpub\wwwroot\TG_PHP
@@ -36,6 +37,20 @@ spl_autoload_register(function ($class) {
 });
 
 echo "[" . date('Y-m-d H:i:s') . "] Iniciando snapshot diario de clientes débito y crédito\n";
+
+// Fatal de PHP (memoria, clase faltante, error de sintaxis en un include...):
+// no pasa por los try del controlador, así que se avisa por correo desde aquí.
+// Las fallas normales las avisa Income::avisarFallaFoto() al terminar.
+register_shutdown_function(function () {
+    $e = error_get_last();
+    if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        $msg = "{$e['message']} en {$e['file']}:{$e['line']}";
+        echo "[" . date('Y-m-d H:i:s') . "] FATAL: $msg\n";
+        if (class_exists('Income')) {
+            Income::avisarFallaFoto(date('Y-m-d', strtotime('-1 day')), null, $msg);
+        }
+    }
+});
 
 // El controlador autoriza el cron por token; en CLI lo pasamos por $_GET.
 $_GET['cron_token'] = CRON_SECRET;

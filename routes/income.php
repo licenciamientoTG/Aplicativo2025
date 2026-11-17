@@ -57,6 +57,15 @@ return [
         route('clients-debit/', [Income::class, 'clients_debit'], name: 'income.clients_debit', methods: ['GET'], permission: 14),
         route('clients-credit/', [Income::class, 'clients_credit'], name: 'income.clients_credit', methods: ['GET'], permission: 14),
         route('clients-credit/vehicles/', [Income::class, 'clients_credit_vehicles'], name: 'income.clients_credit_vehicles', methods: ['POST'], permission: 14),
+        // Estado de cuenta (fotos diarias TG.dbo.debit/credit_clients_cierre): resumen por rango y día por día de un cliente
+        route('clients-debit/statement/', [Income::class, 'debit_statement'], name: 'income.debit_statement', methods: ['POST'], permission: 14),
+        route('clients-debit/statement/detail/', [Income::class, 'debit_statement_detail'], name: 'income.debit_statement_detail', methods: ['POST'], permission: 14),
+        route('clients-credit/statement/', [Income::class, 'credit_statement'], name: 'income.credit_statement', methods: ['POST'], permission: 14),
+        route('clients-credit/statement/detail/', [Income::class, 'credit_statement_detail'], name: 'income.credit_statement_detail', methods: ['POST'], permission: 14),
+        // Antes pasaban por el fallback legacy SIN permiso (auditoría 2026-11-17): misma URL, ahora con permiso 14
+        route('clients', [Income::class, 'clients'], name: 'income.clients', methods: ['GET'], permission: 14),
+        route('debit_snapshot_table', [Income::class, 'debit_snapshot_table'], name: 'income.debit_snapshot_table', methods: ['POST'], permission: 14),
+        route('credit_snapshot_table', [Income::class, 'credit_snapshot_table'], name: 'income.credit_snapshot_table', methods: ['POST'], permission: 14),
         // Modal "Cortes que no cuadran" de Consumos Débito/Crédito: mismos tabs que el modal de Conciliación crédito
         route('clients/dispatches-invoice/', [Income::class, 'clients_dispatches_invoice'], name: 'income.clients_dispatches_invoice', methods: ['POST'], permission: 14),
         route('clients/dispatches-vs-cuts/', [Income::class, 'clients_dispatches_vs_cuts'], name: 'income.clients_dispatches_vs_cuts', methods: ['POST'], permission: 14),

@@ -399,14 +399,20 @@ class MovimientosTarModel extends Model{
                 ROUND(SUM(t1.can), 2) AS total
             FROM [SG12].[dbo].[Despachos] t1
             INNER JOIN [SG12].[dbo].[gasolineras] t2 ON t1.codgas = t2.cod
-            INNER JOIN [SG12].[dbo].[Productos] t8 ON t1.codprd = t8.cod
-            INNER JOIN [SG12].[dbo].[MovimientosTar] t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas AND t12.mto != 0
+            -- MovimientosTar trae filas repetidas idénticas (mismo despacho, medio y monto):
+            -- cada despacho cuenta una sola vez por medio de pago
+            CROSS APPLY (
+                SELECT DISTINCT m.codbco
+                FROM [SG12].[dbo].[MovimientosTar] m
+                WHERE m.nrotrn = t1.nrotrn AND m.codgas = t1.codgas AND m.mto != 0
+            ) t12
             INNER JOIN [SG12].[dbo].[Valores] t13 ON t12.codbco = t13.cod
             WHERE
                 t1.mto != 0
                 AND t1.fchtrn BETWEEN ? AND ?
                 AND (@codgas = 0 OR t1.codgas = @codgas)
-                AND t8.den IS NOT NULL
+                -- Solo combustibles: en otros productos (p. ej. 163 Anticipo) 'can' son pesos o piezas
+                AND t1.codprd IN (179, 180, 181, 192, 193)
                 AND NOT EXISTS (
                     SELECT 1 FROM (VALUES
                         (' DOLARES'), (' SMARTBT - American Express'), (' SMARTBT - Bancarias'),
@@ -418,6 +424,12 @@ class MovimientosTarModel extends Model{
                     ) AS excl(den)
                     WHERE excl.den = t13.den
                 )
+                -- Terminales bancarias (HTI, Interlogic, Bankaool) y transferencias: no son valeras
+                AND t13.den NOT LIKE 'HTI -%'
+                AND t13.den NOT LIKE 'INTERL%'
+                AND LTRIM(t13.den) NOT LIKE 'BANKAOOL%'
+                AND LTRIM(t13.den) <> 'Transferencias'
+                AND LTRIM(t13.den) <> 'Tarjetas Scotiabank'
             GROUP BY
                 t2.abr, t13.den,
                 YEAR(DATEADD(DAY, t1.fchtrn - 1, 0)),

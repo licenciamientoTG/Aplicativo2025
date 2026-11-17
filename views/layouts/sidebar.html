@@ -556,9 +556,11 @@
           <span class="align-middle">Conciliación clientes</span>
         </a>
         <ul id="income_clients_conc" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          {# 2026-11-17: el estado de cuenta (fotos) vive en Clientes débito / Clientes crédito; /income/clients sigue
+             accesible con permiso 14 mientras se retira.
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/income/clients">Clientes</a>
-          </li>
+            <a class="sidebar-link" href="{{ url('income.clients') }}">Clientes</a>
+          </li> #}
           <li class="sidebar-item">
             <a class="sidebar-link" href="{{ url('income.clients_debit') }}">Clientes débito</a>
           </li>

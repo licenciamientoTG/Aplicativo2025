@@ -297,7 +297,7 @@ class CuentasBancariasModel extends Model {
             OUTER APPLY (
                 SELECT TOP 1 r.id, r.proveedor
                 FROM [TG].[dbo].[bank_account_requests] r
-                WHERE r.catalogo_cuenta_id = c.Id AND r.status = 2
+                WHERE r.catalogo_cuenta_id = c.Id AND r.status = 2 AND r.is_deleted = 0
                 ORDER BY r.id DESC
             ) sol
             ORDER BY c.Id DESC

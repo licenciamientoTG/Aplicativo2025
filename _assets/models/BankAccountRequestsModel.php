@@ -65,16 +65,21 @@ class BankAccountRequestsModel extends Model
         return (3 * ($d[0] + $d[3] + $d[6]) + 7 * ($d[1] + $d[4] + $d[7]) + ($d[2] + $d[5] + $d[8])) % 10 === 0;
     }
 
+    /**
+     * Borrado lógico (is_deleted/deleted_at/deleted_by; docs/sql/alta_cuenta_soft_delete.sql): una solicitud
+     * borrada no se lista, no se abre, no se decide y no cuenta como duplicado. Toda consulta nueva debe filtrar
+     * r.is_deleted = 0.
+     */
     public function get(int $id): ?array
     {
-        $r = $this->sql->select(self::SELECT . ' WHERE r.id = ?;', [$id]);
+        $r = $this->sql->select(self::SELECT . ' WHERE r.id = ? AND r.is_deleted = 0;', [$id]);
         return $r ? $r[0] : null;
     }
 
     /** Todas las solicitudes; el borrador es siempre privado de su dueño. */
     public function list_visible(int $userId): array
     {
-        $where = ' WHERE (r.status <> ' . self::ST_BORRADOR . ' OR r.user_id = ?)';
+        $where = ' WHERE r.is_deleted = 0 AND (r.status <> ' . self::ST_BORRADOR . ' OR r.user_id = ?)';
         return $this->sql->select(self::SELECT . $where . ' ORDER BY r.id DESC;', [$userId]) ?: [];
     }
 
@@ -91,7 +96,7 @@ class BankAccountRequestsModel extends Model
         ) ?: [];
         $sol = $this->sql->select(
             'SELECT id, proveedor, banco FROM [TG].[dbo].[bank_account_requests]
-             WHERE (clabe = ? OR (clabe IS NULL AND num_cuenta = ?)) AND status = ? AND id <> ?;',
+             WHERE (clabe = ? OR (clabe IS NULL AND num_cuenta = ?)) AND status = ? AND id <> ? AND is_deleted = 0;',
             [$cuenta, $cuenta, self::ST_PENDIENTE, $exceptRequestId]
         ) ?: [];
         return ['catalogo' => $cat, 'solicitudes' => $sol];
@@ -136,7 +141,7 @@ class BankAccountRequestsModel extends Model
             if ($soloBanco !== null) { $params[] = $soloBanco; }
             $sol = $this->sql->select(
                 'SELECT TOP 1 id, proveedor, status FROM [TG].[dbo].[bank_account_requests]
-                  WHERE id <> ? AND status IN (?, ?, ?) AND (clabe = ? OR num_cuenta = ?)' . $filtroBanco . '
+                  WHERE id <> ? AND is_deleted = 0 AND status IN (?, ?, ?) AND (clabe = ? OR num_cuenta = ?)' . $filtroBanco . '
                   ORDER BY id DESC;',
                 $params
             );

@@ -27,6 +27,8 @@ class CreditClientsCierreModel extends DebitClientsCierreModel
         'acum_desp', 'acum_cortes', 'acum_abonos',
     ];
 
+    const COLUMNAS_FIN_EXTRA = ['limite', 'disponible'];
+
     const COLUMNAS_FOTO = [
         'limite',
         'saldo_ini_sistema', 'saldo_ini_calc_desp', 'saldo_ini_calc_cortes',

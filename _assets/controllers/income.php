@@ -1444,16 +1444,21 @@ public function balance_age()
         // La v1 (ClientesModel::refresh_debit_snapshot) ya no se llena.
         // Spec: docs/superpowers/specs/2026-11-11-debit-clients-cierre-diario-design.md
         $ayer = date('Y-m-d', strtotime('-1 day'));
-        $debito = (new DebitClientsCierreModel)->procesar($ayer);
-        // Crédito en la misma tarea, después de débito y en su propia
-        // transacción: si uno falla el otro igual se guarda.
-        // Spec: docs/superpowers/specs/2026-11-12-credit-clients-cierre-diario-design.md
-        try {
-            $credito = (new CreditClientsCierreModel)->procesar($ayer);
-        } catch (Throwable $e) {
-            $credito = ['success' => false, 'mensaje' => mb_substr($e->getMessage(), 0, 1000)];
-        }
+        // Cada foto en su propio try y su propia transacción: si débito truena
+        // (aunque sea antes de empezar, p. ej. sin conexión a TG) crédito igual corre.
+        // Spec crédito: docs/superpowers/specs/2026-11-12-credit-clients-cierre-diario-design.md
+        $correr = function (string $clase) use ($ayer): array {
+            try {
+                return (new $clase)->procesar($ayer);
+            } catch (Throwable $e) {
+                return ['success' => false, 'dias' => [], 'mensaje' => mb_substr($e->getMessage(), 0, 1000)];
+            }
+        };
+        $debito  = $correr(DebitClientsCierreModel::class);
+        $credito = $correr(CreditClientsCierreModel::class);
         $resumen = ['success' => $debito['success'] && $credito['success'], 'debito' => $debito, 'credito' => $credito];
+        // Aviso por correo SOLO si algo falló o se saltaron días
+        self::avisarFallaFoto($ayer, $resumen);
         if (PHP_SAPI === 'cli') {
             // Corrida por Task Scheduler: evita el warning "headers already
             // sent" de json_output() (ya hubo un echo previo) — mismo criterio
@@ -1503,6 +1508,138 @@ public function balance_age()
             $salida['message'] = "El cierre del $fecha no está procesado (última corrida: " . ($ultima ?? 'ninguna') . ').';
         }
         json_output($salida);
+    }
+
+    /** A quién avisa la tarea de las fotos cuando falla. */
+    const FOTO_ALERTA_CORREOS = ['alejandro.martinez@totalgas.com'];
+
+    /**
+     * Correo de aviso de la tarea sya_debit_snapshot_diario: solo si una foto
+     * falló o se saltaron días (mensaje). Con $error (fatal de PHP capturado
+     * en cron/debit_snapshot_diario.php) avisa aunque no haya resumen.
+     * Nunca lanza: un fallo del correo no debe tumbar la corrida.
+     */
+    public static function avisarFallaFoto(string $dia, ?array $resumen, ?string $error = null): void
+    {
+        $partes = [];
+        foreach (['debito' => 'Débito', 'credito' => 'Crédito'] as $k => $titulo) {
+            $r = $resumen[$k] ?? null;
+            if ($r === null || (($r['success'] ?? false) && empty($r['mensaje']))) {
+                continue;
+            }
+            $estado = ($r['success'] ?? false) ? 'terminó con aviso' : 'FALLÓ';
+            $dias = implode('', array_map(fn($d) => '<li>' . htmlspecialchars($d['fecha'] ?? '?') . ': '
+                . (!empty($d['ok']) ? 'ok' : 'error — ' . htmlspecialchars((string)($d['mensaje'] ?? ''))) . '</li>', $r['dias'] ?? []));
+            $partes[] = "<h3>Foto $titulo: $estado</h3>"
+                . (!empty($r['mensaje']) ? '<p>' . htmlspecialchars((string)$r['mensaje']) . '</p>' : '')
+                . ($dias ? "<ul>$dias</ul>" : '');
+        }
+        if ($error !== null) {
+            $partes[] = '<h3>La tarea se detuvo con un error de PHP</h3><pre>' . htmlspecialchars($error) . '</pre>';
+        }
+        if (!$partes) {
+            return;
+        }
+        $html = '<p>La tarea programada <b>sya_debit_snapshot_diario</b> (servidor 192.168.0.3) tuvo un problema '
+              . 'con el cierre del <b>' . htmlspecialchars($dia) . '</b>.</p>' . implode('', $partes)
+              . '<p>Bitácoras: TG.dbo.debit_clients_cierre_runs y credit_clients_cierre_runs. '
+              . 'Log: C:\\inetpub\\wwwroot\\TG_PHP\\logs\\debit_snapshot_diario.log. '
+              . 'Los días que falten se recuperan solos en la siguiente corrida (hasta 31).</p>';
+        try {
+            $err = null;
+            if (!send_mail("⚠ Foto de clientes: falla en el cierre del $dia", $html, self::FOTO_ALERTA_CORREOS, MAIL_FROM, false, false, $err)) {
+                error_log("avisarFallaFoto: no se pudo enviar el correo: $err");
+            }
+        } catch (Throwable $e) {
+            error_log('avisarFallaFoto: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Estado de cuenta (pestaña "Estado de cuenta" de /income/clients-debit/ y
+     * -credit/): por cliente en un rango, solo con las fotos.
+     * POST desde, hasta ('Y-m-d').
+     */
+    public function debit_statement(): void
+    {
+        $this->statement_output(new DebitClientsCierreModel);
+    }
+
+    public function credit_statement(): void
+    {
+        $this->statement_output(new CreditClientsCierreModel);
+    }
+
+    /** Día por día de un cliente en el rango. POST codcli, desde, hasta. */
+    public function debit_statement_detail(): void
+    {
+        $this->statement_detail_output(new DebitClientsCierreModel);
+    }
+
+    public function credit_statement_detail(): void
+    {
+        $this->statement_detail_output(new CreditClientsCierreModel);
+    }
+
+    /**
+     * Rango pedido acotado a lo que tiene fotos: desde >= primera corrida OK,
+     * hasta <= última corrida OK. Regresa [desde, hasta, primera, ultima, aviso]
+     * o null con fechas inválidas.
+     */
+    private function statement_rango(DebitClientsCierreModel $model): ?array
+    {
+        $ok = fn($v) => is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) && strtotime($v) !== false;
+        $desde = $_POST['desde'] ?? null;
+        $hasta = $_POST['hasta'] ?? null;
+        if (!$ok($desde) || !$ok($hasta) || $desde > $hasta) {
+            return null;
+        }
+        $primera = $model->primeraCorridaOk();
+        $ultima  = $model->ultimaCorridaOk();
+        $avisos = [];
+        if ($primera !== null && $desde < $primera) {
+            $avisos[] = "Hay fotos desde el $primera; se tomó ese día como inicio.";
+            $desde = $primera;
+        }
+        if ($ultima !== null && $hasta > $ultima) {
+            $avisos[] = "El último cierre procesado es el $ultima; se tomó como fin.";
+            $hasta = $ultima;
+        }
+        return [$desde, max($desde, $hasta), $primera, $ultima, implode(' ', $avisos)];
+    }
+
+    private function statement_output(DebitClientsCierreModel $model): void
+    {
+        $rango = $this->statement_rango($model);
+        if ($rango === null) {
+            json_output(['data' => [], 'message' => 'Rango de fechas inválido']);
+            return;
+        }
+        [$desde, $hasta, $primera, $ultima, $aviso] = $rango;
+        json_output([
+            'data'            => $ultima === null ? [] : $model->estadoCuenta($desde, $hasta),
+            'desde'           => $desde,
+            'hasta'           => $hasta,
+            'primera_corrida' => $primera,
+            'ultima_corrida'  => $ultima,
+            'message'         => $ultima === null ? 'Todavía no hay fotos procesadas.' : $aviso,
+        ]);
+    }
+
+    private function statement_detail_output(DebitClientsCierreModel $model): void
+    {
+        $codcli = filter_var($_POST['codcli'] ?? null, FILTER_VALIDATE_INT);
+        $rango  = $this->statement_rango($model);
+        if ($codcli === false || $rango === null) {
+            json_output(['data' => [], 'message' => 'Cliente o rango inválido']);
+            return;
+        }
+        [$desde, $hasta] = $rango;
+        // Tope de un año de días para el detalle
+        if ((strtotime($hasta) - strtotime($desde)) / 86400 > 366) {
+            $desde = date('Y-m-d', strtotime($hasta . ' -366 day'));
+        }
+        json_output(['data' => $model->detalleCliente((int)$codcli, $desde, $hasta), 'desde' => $desde, 'hasta' => $hasta]);
     }
 
     /**
