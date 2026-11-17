@@ -214,7 +214,21 @@
 
         // Razones sociales que pueden pagar: casillas, al menos una
         var $pagadores = $('#ba_pagadores');
-        $pagadores.on('change', 'input', function () { $pagadores.removeClass('is-invalid'); });
+        var $todas = $('#ba_pagadores_todas');
+        // "Seleccionar todas": marcada si están todas, a medias (indeterminate) si solo algunas
+        var marcarTodas = function () {
+            var $c = $pagadores.find('input[type=checkbox]');
+            var n = $c.filter(':checked').length;
+            $todas.prop('checked', $c.length > 0 && n === $c.length).prop('indeterminate', n > 0 && n < $c.length);
+            $('#ba_pagadores_n').text('(' + n + ' de ' + $c.length + ')');
+        };
+        $todas.on('change', function () {
+            $pagadores.find('input[type=checkbox]').prop('checked', this.checked);
+            $pagadores.removeClass('is-invalid');
+            marcarTodas();
+        });
+        $pagadores.on('change', 'input', function () { $pagadores.removeClass('is-invalid'); marcarTodas(); });
+        marcarTodas();
 
         $form.on('submit', function (e) {
             e.preventDefault();

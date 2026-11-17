@@ -12,6 +12,7 @@
     .ba-pagador { display:flex; align-items:center; gap:.4rem; padding:.2rem .25rem; border-radius:.25rem; cursor:pointer; }
     .ba-pagador:hover { background:#f1f5f9; }
     .ba-pagador .form-check-input { float:none; margin:0; }
+    .ba-todas { font-size:.85rem; font-weight:600; color:#1C4587; }
     .ba-form .select2-container .select2-selection--single { height:calc(1.5em + .75rem + 2px); border-color:#ced4da; border-radius:.375rem; }
     .ba-form .select2-container .select2-selection--single .select2-selection__rendered { line-height:calc(1.5em + .75rem); font-size:1rem; padding-left:.75rem; }
     .ba-form .select2-container .select2-selection--single .select2-selection__arrow { height:calc(1.5em + .75rem); }
@@ -55,7 +56,13 @@
     <div class="card border-0 shadow-sm mb-3"><div class="card-body">
         <h6 class="mb-3">Cuenta</h6>
         <div class="row g-3">
-            <div class="col-12"><label>Razones sociales que pueden pagarle <span class="ba-req">*</span></label>
+            <div class="col-12"><div class="d-flex align-items-center flex-wrap gap-3 mb-1">
+                    <label class="mb-0">Razones sociales que pueden pagarle <span class="ba-req">*</span></label>
+                    <label class="form-check ba-pagador ba-todas mb-0 ms-auto">
+                        <input class="form-check-input" type="checkbox" id="ba_pagadores_todas">
+                        <span class="form-check-label">Seleccionar todas <span class="text-muted" id="ba_pagadores_n"></span></span>
+                    </label>
+                </div>
                 <div class="ba-pagadores" id="ba_pagadores">
                     {% for e in empresas %}
                     <label class="form-check ba-pagador mb-0">
