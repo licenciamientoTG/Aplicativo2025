@@ -8,7 +8,11 @@ require_once __DIR__ . '/DebitCierre.class.php';
  * Hereda de DebitCierre el cambio (hayCambio), el día en medio (filaParaDia)
  * y los días pendientes; cambia las columnas, la reconstrucción del cierre y
  * el saldo calculado, que aquí va ENCADENADO (el histórico no reconstruye
- * cresdo). Claves = columnas de TG.dbo.credit_clients_cierre.
+ * cresdo). Para que el encadenado no se pierda lo que llega con fecha
+ * atrasada (cobros capturados después, despachos quitados, cortes tardíos),
+ * cada fila guarda lo acumulado hasta su día (acum_*) y la del día siguiente
+ * lo compara contra el histórico de hoy (hist_*): la diferencia es el ajuste
+ * retro, como en débito. Claves = columnas de TG.dbo.credit_clients_cierre.
  * Spec: docs/superpowers/specs/2026-11-12-credit-clients-cierre-diario-design.md
  */
 class CreditCierre extends DebitCierre
@@ -16,12 +20,15 @@ class CreditCierre extends DebitCierre
     const MONTOS = [
         'limite',
         'saldo_ini_sistema', 'saldo_ini_calc_desp', 'saldo_ini_calc_cortes',
+        'ajuste_retro_desp', 'ajuste_retro_cortes',
         'cobros_dia', 'notas_dia', 'facturado_dia',
         'consumos_desp_dia', 'consumos_cortes_dia', 'desfase_dia',
         'saldo_fin_calc_desp', 'saldo_fin_calc_cortes', 'saldo_fin_sistema', 'saldo_fin_vehiculos',
+        'acum_desp', 'acum_cortes', 'acum_abonos',
     ];
 
     const MOVIMIENTOS = [
+        'ajuste_retro_desp', 'ajuste_retro_cortes',
         'cobros_dia', 'notas_dia', 'facturado_dia',
         'consumos_desp_dia', 'consumos_cortes_dia', 'desfase_dia',
     ];
@@ -46,10 +53,36 @@ class CreditCierre extends DebitCierre
     }
 
     /**
+     * Ajustes retro contra la fila anterior: lo que hoy existe ANTES del día
+     * (hist_*) menos lo que esa fila tenía acumulado (acum_*). Despachos y
+     * cortes de más suben el saldo; abonos de más lo bajan. NULL si la
+     * anterior no trae acumulados (filas previas al cambio) o el cálculo no
+     * trae histórico. Menos de medio centavo es redondeo, no ajuste.
+     */
+    public static function ajustesRetro(array $calc, array $anterior): array
+    {
+        $nulos = ['ajuste_retro_desp' => null, 'ajuste_retro_cortes' => null];
+        foreach (['desp', 'cortes', 'abonos'] as $k) {
+            if (!isset($anterior["acum_$k"]) || !isset($calc["hist_$k"])) {
+                return $nulos;
+            }
+        }
+        $dif = function (string $k) use ($calc, $anterior): float {
+            $d = (float)$calc["hist_$k"] - (float)$anterior["acum_$k"];
+            return abs($d) < self::TOLERANCIA ? 0.0 : $d;
+        };
+        $abonos = $dif('abonos');
+        return [
+            'ajuste_retro_desp'   => round($dif('desp') - $abonos, 2) + 0.0,
+            'ajuste_retro_cortes' => round($dif('cortes') - $abonos, 2) + 0.0,
+        ];
+    }
+
+    /**
      * Fila del cliente para el día. Con fila anterior, los iniciales calculados
-     * son sus finales calculados; sin anterior se siembran con el saldo
-     * sistema al inicio del día (así el día de siembra calculado = sistema),
-     * o con 0 si no hay lectura.
+     * son sus finales calculados más el ajuste retro; sin anterior se siembran
+     * con el saldo sistema al inicio del día (así el día de siembra calculado
+     * = sistema), o con 0 si no hay lectura.
      */
     public static function armarFila(array $calc, ?array $anterior): array
     {
@@ -68,9 +101,11 @@ class CreditCierre extends DebitCierre
         );
         $finSis = $cierre['saldo_fin_sistema'];
 
+        $ajustes = ['ajuste_retro_desp' => null, 'ajuste_retro_cortes' => null];
         if ($anterior) {
-            $iniDesp   = (float)$anterior['saldo_fin_calc_desp'];
-            $iniCortes = (float)$anterior['saldo_fin_calc_cortes'];
+            $ajustes   = self::ajustesRetro($calc, $anterior);
+            $iniDesp   = (float)$anterior['saldo_fin_calc_desp'] + ($ajustes['ajuste_retro_desp'] ?? 0.0);
+            $iniCortes = (float)$anterior['saldo_fin_calc_cortes'] + ($ajustes['ajuste_retro_cortes'] ?? 0.0);
             $antFinSis = $num($anterior['saldo_fin_sistema'] ?? null);
         } else {
             $base      = $finSis === null ? null : $finSis + $cobros + $notas;
@@ -87,6 +122,8 @@ class CreditCierre extends DebitCierre
             'saldo_ini_sistema'     => $antFinSis === null ? null : round($antFinSis, 2),
             'saldo_ini_calc_desp'   => round($iniDesp, 2),
             'saldo_ini_calc_cortes' => round($iniCortes, 2),
+            'ajuste_retro_desp'     => $ajustes['ajuste_retro_desp'],
+            'ajuste_retro_cortes'   => $ajustes['ajuste_retro_cortes'],
             'cobros_dia'            => round($cobros, 2),
             'notas_dia'             => round($notas, 2),
             'facturado_dia'         => round((float)$calc['facturado_dia'], 2),
@@ -98,6 +135,10 @@ class CreditCierre extends DebitCierre
             'saldo_fin_sistema'     => $finSis,
             'saldo_fin_vehiculos'   => $cierre['saldo_fin_vehiculos'],
             'disponible'            => ($limite > 0 && $finSis !== null) ? round($limite - $finSis, 2) : null,
+            // Lo acumulado hasta el día tal como se conoce hoy: base del ajuste retro de mañana
+            'acum_desp'             => isset($calc['acum_desp'])   ? round((float)$calc['acum_desp'], 4)   : null,
+            'acum_cortes'           => isset($calc['acum_cortes']) ? round((float)$calc['acum_cortes'], 4) : null,
+            'acum_abonos'           => isset($calc['acum_abonos']) ? round((float)$calc['acum_abonos'], 4) : null,
             'lectura_cresdo'        => $num($calc['lectura_cresdo'] ?? null),
             'lectura_vehiculos'     => $num($calc['lectura_vehiculos'] ?? null),
             'consumos_post_cierre'  => $num($calc['consumos_post_cierre'] ?? null),

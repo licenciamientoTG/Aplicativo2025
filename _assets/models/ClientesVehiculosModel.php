@@ -392,6 +392,62 @@ class ClientesVehiculosModel extends Model{
     }
 
     /**
+     * Vehículos de un cliente crédito (tab "Vehículos Crédito"): límites de
+     * litros por carga/día/semana/mes (pantalla "Controles" de ControlGas) y
+     * saldos. Los acumulados (acudia/acusem/acumes) se guardan desde la última
+     * carga y ControlGas no los reinicia en la tabla, por eso aquí se ponen en 0
+     * cuando la última carga (ultcar, serial Excel) ya no es de hoy / esta
+     * semana (lunes a domingo) / este mes, igual que lo muestra ControlGas.
+     * Saldo Global = Clientes.cresdo (lo que debe el cliente); el saldo del
+     * vehículo es ClientesVehiculos.debsdo.
+     */
+    public function getCreditVehiclesByClient(int $codcli) : array|false {
+        $query = "
+            SELECT
+                t1.cod AS codcli,
+                t1.den AS cliente,
+                t2.nroveh,
+                t2.tar,
+                RTRIM(t2.plc) AS plc,
+                RTRIM(t2.den) AS den,
+                RTRIM(t2.nroeco) AS nroeco,
+                CASE t2.est
+                    WHEN 1 THEN N'Habilitado'
+                    WHEN 2 THEN N'Cargando'
+                    WHEN 3 THEN N'Suspendido'
+                    WHEN 4 THEN N'Uso interno'
+                    WHEN 5 THEN N'Verificación pendiente'
+                    WHEN 6 THEN N'Baja administrativa'
+                    ELSE N'Desconocido'
+                END AS estado,
+                t2.carmax,
+                t2.candia,
+                t2.cansem,
+                t2.canmes,
+                CASE WHEN t2.ultcar = f.hoy   THEN t2.acudia ELSE 0 END AS acudia,
+                CASE WHEN t2.ultcar >= f.lunes THEN t2.acusem ELSE 0 END AS acusem,
+                CASE WHEN t2.ultcar >= f.mes1  THEN t2.acumes ELSE 0 END AS acumes,
+                CASE WHEN t2.ultcar > 0
+                     THEN CONVERT(varchar(10), DATEADD(DAY, t2.ultcar - 1, '19000101'), 23)
+                     ELSE NULL END AS ultima_carga,
+                t2.ultcan,
+                t2.debsdo,
+                t1.debglo,
+                t1.cresdo AS saldo_global
+            FROM [SG12].[dbo].[Clientes] t1 WITH (NOLOCK)
+                JOIN [SG12].[dbo].[ClientesVehiculos] t2 WITH (NOLOCK) ON t1.cod = t2.codcli
+                -- Fechas en serial Excel (como ultcar): hoy, lunes de esta semana y día 1 del mes
+                CROSS APPLY (SELECT DATEDIFF(DAY, '19000101', CAST(GETDATE() AS date)) AS d) x
+                CROSS APPLY (SELECT x.d + 1 AS hoy,
+                                    x.d + 1 - (x.d % 7) AS lunes,
+                                    DATEDIFF(DAY, '19000101', DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)) + 1 AS mes1) f
+            WHERE t1.cod = ? AND t1.tipval = 3
+            ORDER BY t2.nroveh;
+        ";
+        return ($this->sql->select($query, [$codcli])) ?: false;
+    }
+
+    /**
      * Clientes débito con al menos un despacho cuyo nrofac quedó ligado a la
      * factura de un cliente distinto al propio despacho (Factura Global u otro
      * tercero) en vez de facturarse a su propio nombre. No depende de la
