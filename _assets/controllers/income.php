@@ -702,10 +702,11 @@ class Income{
 
     /**
      * POST (mes): reintento diario de los grupos auto pendientes del mes (ConciliacionCobrosGuardado::REINTENTAR),
-     * lo llama la vista sola después de pintar. Solo el primer llamado del día cruza: los demás regresan cambios 0
-     * sin consultar. Bolsa = depósitos de esos cobros menos los fijos (ocupados por otros grupos activos de
-     * cualquier mes), más los que ya tenían (ConciliacionCobrosGuardado::bolsaReintento). No se rehacen los
-     * grupos con un cobro cancelado o que ya no existe, ni los que tomarían un depósito fijo.
+     * lo llama la vista sola después de pintar. Solo el primer llamado del día cruza: si reintento_fecha ya es hoy
+     * regresa cambios 0 sin cruzar. El plan es ConciliacionCobrosGuardado::planReintento (bolsa sin los fijos;
+     * un depósito junta cobros de varios grupos viejos; no se rehacen grupos con cobros cancelados o borrados).
+     * tomarReintento, las bajas y los grupos nuevos van en la misma transacción con candado: si se deshace,
+     * el día no se gasta.
      */
     public function conciliation_payments_retry() : void {
         set_time_limit(300);
@@ -713,7 +714,8 @@ class Income{
         $mes      = substr($desde, 0, 7);
         $guardado = new ConciliacionCobrosGuardadoModel;
         $sinCambios = ['cambios' => 0, 'detalle' => []];
-        if (!$guardado->tomarReintento($mes)) { json_output($sinCambios); return; }
+        $fila = $guardado->mesGuardado($mes);
+        if ($fila === null || $fila['reintento_fecha'] === date('Y-m-d')) { json_output($sinCambios); return; }
 
         $pendientes = array_values(array_filter($guardado->gruposActivos($mes), fn($g) => $g['origen'] === 'auto' && $g['mes'] === $mes
             && in_array($g['estatus'], ConciliacionCobrosGuardado::REINTENTAR, true)));
@@ -730,39 +732,42 @@ class Income{
                 $antes[$k] = ['estatus' => $g['estatus'], 'deposito_id' => $dep];
             }
         }
-        if (!$claves) { json_output($sinCambios); return; }
+        $plan = ['cruce' => [], 'componentes' => []];
+        if ($claves) {
+            $model = new ConciliacionVentaModel;
+            $cobros = $this->conciliationConMov($model->cobrosPorClave($claves));
+            $depositos = $this->conciliationDepositos($model, $cobros, $desde, $hasta);
+            $fijosDb = $guardado->movimientosOcupadosEntre(
+                array_merge(array_map(fn($d) => (int)$d['id'], $depositos), array_keys($actuales)),
+                array_map(fn($g) => (int)$g['id'], $pendientes)
+            );
+            $actualesPorId = [];
+            foreach ($actuales ? $guardado->movimientosPorId(array_keys($actuales)) : [] as $m) $actualesPorId[(int)$m['id']] = $m;
+            $plan = ConciliacionCobrosGuardado::planReintento($pendientes, $cobros, $depositos, $actualesPorId, $fijosDb, $mes);
+        }
 
-        $model = new ConciliacionVentaModel;
-        $cobros = $this->conciliationConMov($model->cobrosPorClave($claves));
-        $cobrosPorClave = [];
-        foreach ($cobros as $c) $cobrosPorClave[ConciliacionCobrosGuardado::claveDoc((int)$c['codgas'], (int)$c['nro'])] = $c;
-        $depositos = $this->conciliationDepositos($model, $cobros, $desde, $hasta);
-        $fijos = $guardado->movimientosOcupadosEntre(
-            array_merge(array_map(fn($d) => (int)$d['id'], $depositos), array_keys($actuales)),
-            array_map(fn($g) => (int)$g['id'], $pendientes)
-        );
-        $bolsa = ConciliacionCobrosGuardado::bolsaReintento($depositos, $actuales ? $guardado->movimientosPorId(array_keys($actuales)) : [], $fijos);
-        $cruce = ConciliacionCobros::conciliar($cobros, $bolsa);
-
-        $reintentables = ConciliacionCobrosGuardado::gruposReintentables($pendientes, $cruce, $cobrosPorClave, $fijos);
-        $cambios = ConciliacionCobrosGuardado::cambiosReintento($reintentables, $cruce);
-        if (!$cambios) { json_output($sinCambios); return; }
-
-        // Un grupo partido aparece varias veces: una baja por grupo viejo, todos los nuevos se guardan.
-        // Si otra sesión ya cambió alguno de los grupos viejos o tomó un movimiento, no se escribe nada.
-        $bajas = array_values(array_unique(array_map(fn($c) => (int)$c['grupo_id'], $cambios)));
-        $nuevos = array_column($cambios, 'nuevo');
-        $movsNuevos = array_keys(ConciliacionCobrosGuardado::movimientosOcupados($nuevos));
-        $guardo = $this->conciliationTransaccion($guardado, $mes, function () use ($guardado, $bajas, $nuevos, $movsNuevos, $mes) {
+        // Dentro del candado: marca el día y aplica los componentes que siguen sin conflicto (los que chocan con
+        // un movimiento que otra sesión ocupó se quedan como estaban; el resto sí se guarda)
+        $hechos = [];
+        $ok = $this->conciliationTransaccion($guardado, $mes, function () use ($guardado, $plan, $mes, &$hechos) {
+            if (!$guardado->tomarReintento($mes)) return false;
+            $comps = $plan['componentes'];
+            if (!$comps) return true;
+            $movs = array_keys(ConciliacionCobrosGuardado::movimientosOcupados(array_merge(...array_column($comps, 'nuevos'))));
+            $ocupados = $guardado->movimientosOcupadosEntre($movs, array_merge(...array_column($comps, 'bajas')));
+            $comps = ConciliacionCobrosGuardado::componentesSinConflicto($comps, $ocupados);
+            if (!$comps) return true;
+            $bajas = array_merge(...array_column($comps, 'bajas'));
             if ($guardado->darDeBaja($bajas, $this->conciliationUsuario()) !== count($bajas)) return false;
-            if ($movsNuevos && $guardado->movimientosOcupadosEntre($movsNuevos)) return false;
-            $guardado->guardarGrupos($nuevos, $mes, 'sistema');
+            $guardado->guardarGrupos(array_merge(...array_column($comps, 'nuevos')), $mes, 'sistema');
+            $hechos = $comps;
             return true;
         });
-        if (!$guardo) { json_output($sinCambios); return; }
+        if (!$ok || !$hechos) { json_output($sinCambios); return; }
 
+        $cruce = $plan['cruce'];
         $rehechos = [];
-        foreach ($nuevos as $g) {
+        foreach (array_merge(...array_column($hechos, 'nuevos')) as $g) {
             foreach ($g['items'] as $it) {
                 if ($it['tipo'] === 'C') $rehechos[ConciliacionCobrosGuardado::claveDoc((int)$it['codgas'], (int)$it['nro'])] = true;
             }

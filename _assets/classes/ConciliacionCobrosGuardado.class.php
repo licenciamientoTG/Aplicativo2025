@@ -246,6 +246,137 @@ class ConciliacionCobrosGuardado {
     }
 
     /**
+     * Plan del reintento diario (sin BD). $pendientes: grupos auto pendientes con id; $cobros: filas frescas
+     * de sus cobros (con mov); $depositos: bolsa de depositos(); $actualesPorId: id => fila de los movimientos
+     * que ya tienen los pendientes; $fijosDb: id => true, ocupa = 1 en grupos activos que no son pendientes.
+     * Solo se rehacen los pendientes elegibles (gruposReintentables); los movimientos ocupa = 1 de los que no
+     * se rehacen también son fijos y no entran a la bolsa. Se repite hasta que los elegibles no cambian.
+     * @return array{cruce: array, componentes: array} componentes de componentesReintento ya sin conflictos.
+     */
+    public static function planReintento(array $pendientes, array $cobros, array $depositos, array $actualesPorId, array $fijosDb, string $mes): array {
+        $cobrosPorClave = [];
+        foreach ($cobros as $c) $cobrosPorClave[self::claveDoc((int)$c['codgas'], (int)$c['nro'])] = $c;
+        $elegibles = self::gruposReintentables($pendientes, [], $cobrosPorClave, []);   // sin cancelados ni borrados
+        $cruce = [];
+        $fijos = $fijosDb;
+        for ($vuelta = 0; $vuelta < 10; $vuelta++) {
+            $ids = array_flip(array_map(fn($g) => (int)$g['id'], $elegibles));
+            $fijos = $fijosDb;
+            $actuales = $claves = [];
+            foreach ($pendientes as $g) {
+                $eleg = isset($ids[(int)$g['id']]);
+                foreach ($g['items'] as $it) {
+                    if ($it['tipo'] === 'M') {
+                        $id = (int)$it['movimiento_id'];
+                        if (!$eleg && (int)$it['ocupa'] === 1) $fijos[$id] = true;
+                        elseif ($eleg && isset($actualesPorId[$id])) $actuales[$id] = $actualesPorId[$id];
+                    } elseif ($it['tipo'] === 'C' && $eleg) {
+                        $claves[self::claveDoc((int)$it['codgas'], (int)$it['nro'])] = true;
+                    }
+                }
+            }
+            $cobrosEleg = array_values(array_filter($cobros, fn($c) => isset($claves[self::claveDoc((int)$c['codgas'], (int)$c['nro'])])));
+            $cruce = $cobrosEleg ? ConciliacionCobros::conciliar($cobrosEleg, self::bolsaReintento($depositos, array_values($actuales), $fijos)) : [];
+            $siguen = self::gruposReintentables($elegibles, $cruce, $cobrosPorClave, $fijos);
+            if (count($siguen) === count($elegibles)) break;
+            $elegibles = $siguen;
+        }
+        return ['cruce' => $cruce, 'componentes' => self::componentesSinConflicto(self::componentesReintento($elegibles, $cruce, $mes), $fijos)];
+    }
+
+    /**
+     * Grupos nuevos de los pendientes elegibles, armados con UN solo gruposDesdeCruce (un depósito junta cobros
+     * de varios grupos viejos). Componente = grupos viejos unidos por algún grupo nuevo + esos grupos nuevos: se
+     * dan de baja y se guardan juntos. Solo regresa los componentes con algún cobro de otro estatus o depósito.
+     * @return array<int, array{bajas: int[], viejosM: int[], nuevos: array}> viejosM = movimientos ocupa = 1 de las bajas
+     */
+    public static function componentesReintento(array $elegibles, array $cruceNuevo, string $mes): array {
+        $viejoDe = $antes = $padre = [];
+        foreach ($elegibles as $g) {
+            $id = (int)$g['id'];
+            $padre[$id] = $id;
+            $dep = null;
+            foreach ($g['items'] as $it) {
+                if ($it['tipo'] === 'M') { $dep = (int)$it['movimiento_id']; break; }
+            }
+            foreach ($g['items'] as $it) {
+                if ($it['tipo'] !== 'C') continue;
+                $k = self::claveDoc((int)$it['codgas'], (int)$it['nro']);
+                $viejoDe[$k] = $id;
+                $antes[$k] = [(string)$g['estatus'], $dep];
+            }
+        }
+        $raiz = function (int $x) use (&$padre): int {
+            while ($padre[$x] !== $x) $x = $padre[$x];
+            return $x;
+        };
+        $filas = array_values(array_filter($cruceNuevo, fn($r) => isset($viejoDe[self::claveDoc((int)$r['codgas'], (int)$r['nro'])])));
+        $nuevos = self::gruposDesdeCruce($filas, $mes);
+        $viejosDeNuevo = [];
+        foreach ($nuevos as $i => $n) {
+            $vs = [];
+            foreach ($n['items'] as $it) {
+                if ($it['tipo'] === 'C') $vs[] = $viejoDe[self::claveDoc((int)$it['codgas'], (int)$it['nro'])];
+            }
+            $viejosDeNuevo[$i] = $vs;
+            $r0 = $raiz($vs[0]);
+            foreach ($vs as $v) $padre[$raiz($v)] = $r0;
+        }
+
+        $comps = [];
+        foreach ($elegibles as $g) {
+            $r = $raiz((int)$g['id']);
+            $comps[$r] ??= ['bajas' => [], 'viejosM' => [], 'nuevos' => [], 'cambio' => false];
+            $comps[$r]['bajas'][] = (int)$g['id'];
+            foreach ($g['items'] as $it) {
+                if ($it['tipo'] === 'M' && (int)$it['ocupa'] === 1) $comps[$r]['viejosM'][] = (int)$it['movimiento_id'];
+            }
+        }
+        foreach ($nuevos as $i => $n) $comps[$raiz($viejosDeNuevo[$i][0])]['nuevos'][] = $n;
+        foreach ($filas as $f) {
+            $k = self::claveDoc((int)$f['codgas'], (int)$f['nro']);
+            $dep = ($f['deposito_id'] ?? null) === null ? null : (int)$f['deposito_id'];
+            if ([(string)$f['estatus'], $dep] !== $antes[$k]) $comps[$raiz($viejoDe[$k])]['cambio'] = true;
+        }
+
+        $out = [];
+        foreach ($comps as $c) {
+            if (!$c['cambio']) continue;
+            sort($c['bajas']);
+            unset($c['cambio']);
+            $out[] = $c;
+        }
+        return $out;
+    }
+
+    /**
+     * Red final antes de guardar: quita los componentes con un movimiento ocupa = 1 que esté en $ocupados o en
+     * más de un grupo nuevo. Sus grupos viejos siguen activos, así que sus movimientos (viejosM) quedan ocupados
+     * y se vuelve a revisar el resto (cascada).
+     */
+    public static function componentesSinConflicto(array $componentes, array $ocupados): array {
+        do {
+            $cuenta = [];
+            foreach ($componentes as $c) {
+                foreach (array_keys(self::movimientosOcupados($c['nuevos'])) as $m) $cuenta[$m] = ($cuenta[$m] ?? 0) + 1;
+            }
+            $quedan = [];
+            $tirados = false;
+            foreach ($componentes as $c) {
+                $choca = false;
+                foreach (array_keys(self::movimientosOcupados($c['nuevos'])) as $m) {
+                    if ($cuenta[$m] > 1 || isset($ocupados[$m])) { $choca = true; break; }
+                }
+                if (!$choca) { $quedan[] = $c; continue; }
+                $tirados = true;
+                foreach ($c['viejosM'] as $m) $ocupados[$m] = true;
+            }
+            $componentes = $quedan;
+        } while ($tirados && $componentes);
+        return $componentes;
+    }
+
+    /**
      * Grupos nuevos que todavía se pueden guardar: ninguno de sus cobros está ya en un grupo activo
      * ($activos, leídos dentro del candado) y ninguno de sus movimientos con ocupa = 1 está en $movOcupados.
      */

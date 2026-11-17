@@ -159,4 +159,41 @@ $libres = ConciliacionCobrosGuardado::gruposLibres($nuevosG, $activos, [5 => tru
 check('gruposLibres: quita cobro ya agrupado y M ocupado; ocupa 0 no choca',
     array_map(fn($g) => $g['items'][0]['nro'], $libres) === [12, 13]);
 
+// planReintento: dos cobros del mismo MOV guardados como 2 "Sin banco"; llega el depósito → 1 grupo nuevo, 2 bajas
+$cobrosDup = [c(1, 500, 100.0), c(2, 500, 200.0)];
+$g0 = ConciliacionCobrosGuardado::gruposDesdeCruce(ConciliacionCobros::conciliar($cobrosDup, []), '2026-10');
+foreach ($g0 as $i => &$gg) $gg['id'] = $i + 1;
+unset($gg);
+$plan = ConciliacionCobrosGuardado::planReintento($g0, $cobrosDup, [d(9, 500, 300.0)], [], [], '2026-10');
+$comps = $plan['componentes'];
+$n0 = $comps[0]['nuevos'][0] ?? ['items' => [], 'estatus' => ''];
+check('planReintento: un solo componente con las 2 bajas', count($comps) === 1 && $comps[0]['bajas'] === [1, 2]);
+check('planReintento: un grupo Cuadra con los 2 cobros y un M 9 ocupa 1',
+    count($comps[0]['nuevos']) === 1 && $n0['estatus'] === 'Cuadra' && count(itemsTipo($n0, 'C')) === 2
+    && count(itemsTipo($n0, 'M')) === 1 && itemsTipo($n0, 'M')[0]['movimiento_id'] === 9 && itemsTipo($n0, 'M')[0]['ocupa'] === 1);
+$sinCambio = ConciliacionCobrosGuardado::planReintento($g0, $cobrosDup, [], [], [], '2026-10');
+check('planReintento: sin depósitos nuevos = sin componentes', $sinCambio['componentes'] === []);
+
+// planReintento: el depósito de un pendiente que no se rehace (cobro cancelado) queda fijo
+$cCan = c(10, null, 300.0); $cCan['cancelado'] = 1;
+$pendFijo = [
+    ['id' => 1, 'origen' => 'auto', 'estatus' => 'Cuadra por importe (sin MOV)', 'items' => [
+        ['tipo' => 'C', 'codgas' => 2, 'nro' => 10, 'movimiento_id' => null, 'monto' => 300.0, 'mes' => '2026-10', 'ocupa' => 1],
+        ['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => 7, 'monto' => 300.0, 'mes' => '2026-10', 'ocupa' => 1]]],
+    ['id' => 2, 'origen' => 'auto', 'estatus' => 'Sin banco', 'items' => [
+        ['tipo' => 'C', 'codgas' => 2, 'nro' => 11, 'movimiento_id' => null, 'monto' => 300.0, 'mes' => '2026-10', 'ocupa' => 1]]],
+];
+$plan = ConciliacionCobrosGuardado::planReintento($pendFijo, [$cCan, c(11, 999, 300.0)], [d(7, 70, 300.0)], [7 => d(7, 70, 300.0)], [], '2026-10');
+$sinFijo = ConciliacionCobros::conciliar([c(11, 999, 300.0)], [d(7, 70, 300.0)]);
+check('control: sin la regla, el cobro 11 sí tomaría el depósito 7', $sinFijo[0]['deposito_id'] === 7);
+check('planReintento: el cobro 11 no toma el depósito del grupo que no se rehace', $plan['componentes'] === []);
+
+// componentesSinConflicto
+$comp = fn(array $bajas, array $movs, array $viejosM = []) => ['bajas' => $bajas, 'viejosM' => $viejosM, 'nuevos' => [['origen' => 'auto', 'estatus' => 'Cuadra', 'items' => array_map(
+    fn($m) => ['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => $m, 'monto' => 1.0, 'mes' => '2026-10', 'ocupa' => 1], $movs)]]];
+$r = ConciliacionCobrosGuardado::componentesSinConflicto([$comp([1], [9]), $comp([2], [9]), $comp([3], [4])], []);
+check('componentesSinConflicto: el mismo M en dos componentes tira los dos', array_column($r, 'bajas') === [[3]]);
+$r = ConciliacionCobrosGuardado::componentesSinConflicto([$comp([1], [5], [7]), $comp([2], [7]), $comp([3], [8])], [5 => true]);
+check('componentesSinConflicto: M ocupado tira el componente y su depósito viejo sigue ocupado (cascada)', array_column($r, 'bajas') === [[3]]);
+
 finish();
