@@ -118,6 +118,10 @@
             $clabe.prop('disabled', usd);
             $('#ba_grp_routing').toggleClass('d-none', !usd);
             $routing.prop('disabled', !usd);
+            // Dirección: obligatoria solo en cuentas en dólares
+            $form.find('[name=direccion]').prop('required', usd);
+            $('#ba_req_direccion').toggleClass('d-none', !usd);
+            $('#ba_opc_direccion').toggleClass('d-none', usd);
             avisoDuplicado();
         }
 

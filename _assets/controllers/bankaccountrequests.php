@@ -247,8 +247,9 @@ class BankAccountRequests
             return [$d, 'Escriba el nombre del proveedor.'];
         }
         $direccion = $this->texto($_POST['direccion'] ?? '', self::LIM_DIRECCION);
-        if ($direccion === '') {
-            return [$d, 'Escriba la dirección completa del proveedor.'];
+        // La dirección solo es obligatoria en cuentas en dólares (la pide el banco para transferencias internacionales).
+        if ($direccion === '' && $d['moneda'] === 'DOLARES') {
+            return [$d, 'Escriba la dirección completa del proveedor (obligatoria en cuentas en dólares).'];
         }
         // Los datos del layout bancario (beneficiario, plaza, sucursal…) ya no se piden al solicitante;
         // las columnas siguen en la tabla y se llenan con los valores fijos del Excel.

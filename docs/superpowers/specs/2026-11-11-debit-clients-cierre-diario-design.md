@@ -223,3 +223,15 @@ Pestaña "Estado de Cuenta Foto" de `/income/clients` (hoy la única visible ah�
 Nombres internos de métodos, la forma exacta de la consulta (CTEs, tablas
 temporales), el tipo exacto de `debglo`, el diseño visual del selector de
 fecha y si las columnas ocultas se muestran con un botón de columnas.
+
+## Anticipos posteriores al cierre (2026-11-17)
+
+La lectura de las 08:00 ya trae los anticipos con fecha de HOY capturados
+antes de esa hora; suben bolsa y vehículos (medido: JAIRO GONZALEZ y LOHU
+CONSTRUCCION, +5,000 en ambos) y el cierre de AYER los tomaba como suyos
+(se compensaba solo al día siguiente). `DebitCierre::reconstruir` ahora resta
+`anticipos_post_cierre` (mismas reglas de anticipo, fecha > día) del sistema y
+de vehículos, igual que regresa los despachos posteriores. Columna nueva en
+`docs/sql/debit_clients_cierre_anticipos_post.sql` (aplicada el 2026-11-17).
+Corrida en seco del 16-nov a las ~10:00: 68 clientes con $657,645.03 de
+anticipos posteriores, todos descontados; solo cambian los 2 clientes medidos.

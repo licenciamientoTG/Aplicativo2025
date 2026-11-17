@@ -22,6 +22,16 @@ check('fin sistema = lectura + post', $f['saldo_fin_sistema'] == 740.0);
 check('fin vehiculos sin bolsa global = lectura + post', $f['saldo_fin_vehiculos'] == 740.0);
 check('bolsa global: vehiculos tambien suman post (medido 2026-11-11)', DebitCierre::reconstruir(700.0, 50.0, 40.0, 1)['saldo_fin_vehiculos'] == 90.0);
 check('sin lectura: fin sistema NULL', DebitCierre::reconstruir(null, null, null, 0)['saldo_fin_sistema'] === null);
+// Anticipo con fecha posterior al día capturado antes de la lectura (medido 2026-11-17:
+// sube bolsa y vehículos): se le quita a los dos para no adelantarlo al cierre
+$r = DebitCierre::reconstruir(5024.34, 5024.34, 0.0, 0, 5000.0);
+check('anticipo posterior: se resta del sistema', $r['saldo_fin_sistema'] == 24.34);
+check('anticipo posterior: se resta de vehiculos', $r['saldo_fin_vehiculos'] == 24.34);
+check('anticipo posterior y despacho posterior juntos', DebitCierre::reconstruir(1000.0, 900.0, 40.0, 0, 300.0)['saldo_fin_sistema'] == 740.0);
+check('sin anticipo posterior (null) = como antes', DebitCierre::reconstruir(700.0, 700.0, 40.0, 0, null)['saldo_fin_sistema'] == 740.0);
+$fa = DebitCierre::armarFila(array_merge($calc, ['anticipos_post_cierre'=>100.0]), null);
+check('armarFila usa anticipos posteriores', $fa['saldo_fin_sistema'] == 640.0 && $fa['anticipos_post_cierre'] == 100.0);
+check('armarFila sin anticipos posteriores: NULL guardado', $f['anticipos_post_cierre'] === null);
 check('conserva lecturas crudas', $f['lectura_debsdo'] == 700.0 && $f['consumos_post_cierre'] == 40.0 && $f['lectura_at'] === '2026-11-12 08:00:00');
 
 $ant = $f + ['fecha_desde'=>'2026-11-10'];

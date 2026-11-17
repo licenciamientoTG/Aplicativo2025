@@ -33,13 +33,16 @@ class DebitCierre
      * lectura. Medido en vivo el 2026-11-11 (3 de 3 clientes, con y sin bolsa
      * global): cada despacho baja la bolsa Y la tarjeta, así que a los dos se
      * les regresa. $debglo se conserva en la firma por si eso cambia.
+     * Los anticipos con fecha posterior al día ya capturados a la hora de la
+     * lectura también suben bolsa y vehículos (medido 2026-11-17, dos
+     * clientes +5,000 en ambos): se les quitan para no adelantarlos al cierre.
      */
-    public static function reconstruir(?float $lecturaDebsdo, ?float $lecturaVeh, ?float $postCierre, int $debglo): array
+    public static function reconstruir(?float $lecturaDebsdo, ?float $lecturaVeh, ?float $postCierre, int $debglo, ?float $anticiposPost = null): array
     {
         if ($lecturaDebsdo === null) {
             return ['saldo_fin_sistema' => null, 'saldo_fin_vehiculos' => null];
         }
-        $post = $postCierre ?? 0.0;
+        $post = ($postCierre ?? 0.0) - ($anticiposPost ?? 0.0);
         $veh  = $lecturaVeh ?? 0.0;
         return [
             'saldo_fin_sistema'   => round($lecturaDebsdo + $post, 2),
@@ -62,7 +65,8 @@ class DebitCierre
             $num($calc['lectura_debsdo'] ?? null),
             $num($calc['lectura_vehiculos'] ?? null),
             $num($calc['consumos_post_cierre'] ?? null),
-            $debglo
+            $debglo,
+            $num($calc['anticipos_post_cierre'] ?? null)
         );
 
         $antFinSis = $anterior ? $num($anterior['saldo_fin_sistema'] ?? null) : null;
@@ -87,6 +91,7 @@ class DebitCierre
             'lectura_debsdo'        => $num($calc['lectura_debsdo'] ?? null),
             'lectura_vehiculos'     => $num($calc['lectura_vehiculos'] ?? null),
             'consumos_post_cierre'  => $num($calc['consumos_post_cierre'] ?? null),
+            'anticipos_post_cierre' => $num($calc['anticipos_post_cierre'] ?? null),
             'lectura_at'            => $calc['lectura_at'] ?? null,
         ];
     }

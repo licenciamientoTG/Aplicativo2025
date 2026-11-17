@@ -34,15 +34,15 @@ class DebitClientsCierreModel extends Model
         'ajuste_retro_desp', 'ajuste_retro_cortes',
         'anticipos_dia', 'consumos_desp_dia', 'consumos_cortes_dia', 'desfase_dia',
         'saldo_fin_calc_desp', 'saldo_fin_calc_cortes', 'saldo_fin_sistema', 'saldo_fin_vehiculos',
-        'lectura_debsdo', 'lectura_vehiculos', 'consumos_post_cierre', 'lectura_at',
+        'lectura_debsdo', 'lectura_vehiculos', 'consumos_post_cierre', 'anticipos_post_cierre', 'lectura_at',
     ];
 
     /**
      * Una fila por cliente débito (tipval 4, codest <> -1) para el día $dia
      * ('Y-m-d'): históricos ANTES del día (anticipos, despachos, cortes), los
      * movimientos DEL día y, con $conLectura, la lectura actual de la bolsa,
-     * la suma de vehículos y los despachos posteriores al día (para
-     * reconstruir el cierre). Sin lectura esas cuatro columnas van NULL.
+     * la suma de vehículos y los despachos y anticipos posteriores al día
+     * (para reconstruir el cierre). Sin lectura esas columnas van NULL.
      */
     public function calcularDia(string $dia, bool $conLectura): array
     {
@@ -61,14 +61,14 @@ class DebitClientsCierreModel extends Model
             -- Anticipos: mismas reglas que Edo. Cuenta Débito y la foto v1
             SELECT t2.codopr AS cod,
                    SUM(CASE WHEN t1.fch <  @d THEN t2.mtoori + t2.mtoiva ELSE 0 END) / 100.0 AS hist,
-                   SUM(CASE WHEN t1.fch =  @d THEN t2.mtoori + t2.mtoiva ELSE 0 END) / 100.0 AS dia
+                   SUM(CASE WHEN t1.fch =  @d THEN t2.mtoori + t2.mtoiva ELSE 0 END) / 100.0 AS dia,
+                   SUM(CASE WHEN t1.fch >  @d THEN t2.mtoori + t2.mtoiva ELSE 0 END) / 100.0 AS post
               INTO #ant
               FROM [SG12].dbo.DocumentosC t1 WITH (NOLOCK)
               JOIN [SG12].dbo.Documentos t2 WITH (NOLOCK)
                 ON t1.nro = t2.nro AND t1.codgas = t2.codgas AND t1.tip = t2.tip
               JOIN #u ON #u.cod = t2.codopr
-             WHERE t1.fch <= @d
-               AND t2.mtoiva > 0
+             WHERE t2.mtoiva > 0
                AND t2.codprd NOT IN (1,2,3,-64,179,180,181,192,193)
                AND t2.mto > 100
                AND ISNULL(t1.flgcon, 0) <> 141
@@ -106,6 +106,7 @@ class DebitClientsCierreModel extends Model
                    CASE WHEN @lec = 1 THEN u.debsdo END AS lectura_debsdo,
                    CASE WHEN @lec = 1 THEN ISNULL(v.s, 0) END AS lectura_vehiculos,
                    CASE WHEN @lec = 1 THEN CAST(ISNULL(de.post, 0) AS decimal(18,2)) END AS consumos_post_cierre,
+                   CASE WHEN @lec = 1 THEN CAST(ISNULL(a.post, 0)  AS decimal(18,2)) END AS anticipos_post_cierre,
                    CASE WHEN @lec = 1 THEN CONVERT(varchar(19), GETDATE(), 120) END AS lectura_at
               FROM #u u
               LEFT JOIN #ant a  ON a.cod  = u.cod
