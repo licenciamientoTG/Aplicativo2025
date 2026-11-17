@@ -124,7 +124,7 @@ class inventario_urovo {
             $this->authorize(); $body=$this->jsonPost(); $this->csrf(); $location=$this->location($body);
             $condition=(string)($body['status']??''); $reason=trim((string)($body['reason']??''));
             if (!in_array($condition,self::CONDITIONS,true)) throw new InvalidArgumentException('Condición inválida.');
-            if ($reason==='' || mb_strlen($reason)>500) throw new InvalidArgumentException('El motivo es obligatorio (máximo 500 caracteres).');
+            if (mb_strlen($reason)>500) throw new InvalidArgumentException('El motivo debe tener máximo 500 caracteres.');
             $damageTypes=$this->damageTypes($body['damage_types']??[],$condition);
             $ticket=$this->ticketNumber($body['mojo_ticket_number']??'');
             $this->model->moveTerminal($id,$location,$condition,$reason,$this->actor(),$damageTypes,$ticket); $this->respond(['success'=>true]);
