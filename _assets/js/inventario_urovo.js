@@ -205,6 +205,42 @@
     $('#urovoRefresh').on('click', load); $('#urovoStation,#urovoStatus,#urovoCondition,#urovoType').on('change', function(){currentPage=1;load();}); $('#urovoSearch').on('input', function () { currentPage=1;clearTimeout(searchTimer); searchTimer = setTimeout(load, 250); }); $('#urovoPagePrev').on('click',function(){if(currentPage>1){currentPage--;renderRows();}}); $('#urovoPageNext').on('click',function(){if(currentPage<Math.ceil(rows.length/pageSize)){currentPage++;renderRows();}});
     $('#urovoAddBatch').on('click', function () { $('#urovoCaptureRows').html(captureRow()).removeClass('show-advanced'); $('.urovo-capture').removeClass('show-advanced'); $('#urovoToggleAdvanced').attr('aria-expanded','false').text('Mostrar campos opcionales'); $('#urovoBatchStation').val(selectedStation()); batchLocation(); showModal('urovoBatchModal'); });
     function batchMessage(text,type) { toast(text,type); }
+    function clearBatchFieldError($field) {
+      var errorId=$field.attr('aria-describedby');
+      if(errorId) $field.attr('aria-describedby',errorId.split(/\s+/).filter(function(id){return id&&id!==$field.data('batch-error-id');}).join(' '));
+      $field.removeAttr('aria-invalid').removeData('batch-error-id');
+      $field.closest('.urovo-batch-field').find('.urovo-field-error').remove();
+      $field.closest('td').find('.urovo-field-error').remove();
+    }
+    function batchFieldError($field,text) {
+      if(!$field||!$field.length)return;
+      clearBatchFieldError($field);
+      var id='urovoBatchError'+Math.random().toString(36).slice(2), $error=$('<span class="urovo-field-error" role="alert"></span>').attr('id',id).text(text);
+      var $container=$field.closest('td');
+      if(!$container.length)$container=$field.closest('.urovo-batch-field');
+      if(!$container.length)$container=$field.parent();
+      $container.prepend($error);
+      var describedBy=String($field.attr('aria-describedby')||'').trim();
+      $field.attr('aria-invalid','true').attr('aria-describedby',(describedBy?describedBy+' ':'')+id).data('batch-error-id',id);
+      $field.trigger('focus');
+    }
+    function clearBatchErrors() { $('#urovoBatchModal .urovo-field-error').remove(); $('#urovoBatchModal [aria-invalid="true"]').removeAttr('aria-invalid').each(function(){var $field=$(this),id=$field.data('batch-error-id'),described=String($field.attr('aria-describedby')||'').split(/\s+/).filter(function(value){return value&&value!==id;}).join(' ');if(described)$field.attr('aria-describedby',described);else$field.removeAttr('aria-describedby');$field.removeData('batch-error-id');}); }
+    function showBatchFailure(text) {
+      var normalized=String(text||'').toLowerCase(), $field;
+      if(/estaci[oó]n/.test(normalized)) $field=$('#urovoBatchStation');
+      else if(/proveedor/.test(normalized)) $field=$('#urovoBatchProvider');
+      else if(/problema|daño|dañ/.test(normalized)) $field=$('#urovoCaptureRows [data-damage-other]').first();
+      else if(/garant[ií]a/.test(normalized)) $field=$('#urovoCaptureRows [data-field="warranty_until"]').first();
+      else if(/fecha de compra|compra/.test(normalized)) $field=$('#urovoCaptureRows [data-field="purchase_date"]').first();
+      else if(/\bip\b/.test(normalized)) $field=$('#urovoCaptureRows [data-field="ip"]').first();
+      else if(/\bmac\b/.test(normalized)) $field=$('#urovoCaptureRows [data-field="mac"]').first();
+      else if(/imei/.test(normalized)) $field=$('#urovoCaptureRows [data-field="imei"]').first();
+      else if(/condici[oó]n/.test(normalized)) $field=$('#urovoCaptureRows [data-field="condition"]').first();
+      else if(/tipo de terminal/.test(normalized)) $field=$('#urovoCaptureRows [data-field="terminal_type"]').first();
+      else $field=$('#urovoCaptureRows [data-field="serial"]:enabled').first();
+      if(!$field.length)$field=$('#urovoBatchLocation');
+      batchFieldError($field,text);
+    }
     function modalMessage(id,text,type) { toast(text,type); }
     $('#urovoAddRow').on('click', function () { var advancedOpen=$('#urovoToggleAdvanced').attr('aria-expanded')==='true';var $row=$(captureRow()).toggleClass('show-advanced',advancedOpen);$row.find('.js-row-options').attr('aria-expanded',String(advancedOpen)).text(advancedOpen?'Ocultar campos opcionales':'Campos opcionales');$('#urovoCaptureRows').append($row);$('#urovoCaptureRows tr:last [data-field="serial"]').trigger('focus'); });
     $('#urovoCaptureRows').on('click','.js-row-options',function(){var $button=$(this),$row=$button.closest('tr'),open=!$row.hasClass('show-advanced');$row.toggleClass('show-advanced',open);$button.attr('aria-expanded',String(open)).text(open?'Ocultar campos opcionales':'Campos opcionales');var allOpen=$('#urovoCaptureRows tr').length>0&&$('#urovoCaptureRows tr').filter(function(){return !$(this).hasClass('show-advanced');}).length===0;$('#urovoToggleAdvanced').attr('aria-expanded',String(allOpen)).text(allOpen?'Ocultar campos opcionales':'Mostrar campos opcionales');$('#urovoCaptureRows').toggleClass('show-advanced',allOpen);$('.urovo-capture').toggleClass('show-advanced',allOpen);});
@@ -213,7 +249,41 @@
     $('#urovoToggleAdvanced').on('click', function () { var show = $(this).attr('aria-expanded') !== 'true'; $(this).attr('aria-expanded', String(show)).text(show ? 'Ocultar campos opcionales' : 'Mostrar campos opcionales'); $('#urovoCaptureRows tr').toggleClass('show-advanced', show); $('#urovoCaptureRows .js-row-options').attr('aria-expanded', String(show)).text(show ? 'Ocultar campos opcionales' : 'Campos opcionales'); $('#urovoCaptureRows,.urovo-capture').toggleClass('show-advanced', show); });
     $('#urovoCaptureRows').on('click', '.urovo-remove-row', function () { if ($('#urovoCaptureRows tr').length > 1) $(this).closest('tr').remove(); else $(this).closest('tr').find('input').val(''); });
     $('#urovoBatchLocation').on('change', batchLocation); $('#urovoCaptureRows').on('change','[data-field=condition]',function(){toggleDamage($(this));}); $('#urovoMoveStatus').on('change',function(){toggleDamage($(this));}); $('#urovoDetailFields').on('change','[data-field=condition]',function(){toggleDamage($(this));}); $('#urovoDetailFields').on('input','[data-field=mojo_ticket_number]',function(){var n=String($(this).val()||'').replace(/\D/g,'');$('#urovoDetailFields .urovo-ticket-link').html(mojoLink(n));}); $('#urovoMoveTicket').on('input',function(){var n=String($(this).val()||'').replace(/\D/g,'');$('#urovoMoveTicketLink').html(mojoLink(n));});
-    $('#urovoSaveBatch').on('click', function () { var invalidOther=false; $('#urovoCaptureRows tr').each(function(){if(hasIncompleteOther($(this)))invalidOther=true;}); if(invalidOther){batchMessage('Describe el problema marcado como “Otro”.','error');return;} var items = $('#urovoCaptureRows tr').map(function () { var $row=$(this), item = {}; $row.find('[data-field]').each(function () { item[$(this).data('field')] = $(this).val(); }); item.no_serial=$row.find('[data-no-serial]').is(':checked'); item.serial=item.no_serial?'':String(item.serial||'').trim(); item.damage_types=selectedDamages($row); item.mojo_ticket_number=String(item.mojo_ticket_number||'').replace(/\D/g,''); return item; }).get().filter(function (i) { return i.no_serial || i.serial !== ''; }); if (!items.length) { batchMessage('Agrega al menos una terminal.', 'error'); return; } var type = $('#urovoBatchLocation').val(); var payload = locationPayload('urovoBatch', type); payload.items = items; $('#urovoSaveBatch').prop('disabled', true); request('/inventario-urovo/batch/', 'POST', payload).done(function (d) { $('#urovoSaveBatch').prop('disabled', false); if (!d || d.success !== true) { batchMessage(d && d.message || 'No fue posible guardar los equipos.', 'error'); return; } var inserted=d.inserted||[], skipped=d.skipped||[], summary=inserted.length+' equipos guardados.'; if(skipped.length)summary+=' Omitidos: '+skipped.map(function(x){return (x.serial||'Sin serie')+' ('+(x.reason||'duplicado')+')';}).join(', '); $('#urovoBatchModal').one('hidden.bs.modal',function(){toast(summary,skipped.length?'warning':'success');}); load(); hideModal('urovoBatchModal'); }).fail(function (xhr) { $('#urovoSaveBatch').prop('disabled', false); batchMessage(xhr.responseJSON && xhr.responseJSON.message || 'Error al guardar los equipos.', 'error'); }); });
+    $('#urovoSaveBatch').on('click', function () {
+      clearBatchErrors();
+      var $rows=$('#urovoCaptureRows tr'), rowItems=[];
+      for(var rowIndex=0;rowIndex<$rows.length;rowIndex++){
+        var $row=$($rows[rowIndex]);
+        if(hasIncompleteOther($row)){batchFieldError($row.find('[data-damage-other]'),'Describe el daño seleccionado como “Otro”.');return;}
+        var item={};
+        $row.find('[data-field]').each(function(){item[$(this).data('field')]=$(this).val();});
+        item.no_serial=$row.find('[data-no-serial]').is(':checked');
+        item.serial=item.no_serial?'':String(item.serial||'').trim();
+        item.damage_types=selectedDamages($row);
+        item.mojo_ticket_number=String(item.mojo_ticket_number||'').replace(/\D/g,'');
+        if(item.no_serial||item.serial!=='')rowItems.push({row:$row,item:item});
+      }
+      if(!rowItems.length){batchFieldError($('#urovoCaptureRows tr:first [data-field="serial"]'),'Captura el número de serie o marca “Sin número de serie”.');return;}
+      var type=$('#urovoBatchLocation').val(),payload=locationPayload('urovoBatch',type);
+      payload.items=rowItems.map(function(entry){return entry.item;});
+      $('#urovoSaveBatch').prop('disabled',true);
+      request('/inventario-urovo/batch/','POST',payload).done(function(d){
+        $('#urovoSaveBatch').prop('disabled',false);
+        if(!d||d.success!==true){showBatchFailure(d&&d.message||'No fue posible guardar los equipos.');return;}
+        var inserted=d.inserted||[],skipped=d.skipped||[];
+        if(skipped.length){
+          var insertedCounts={},skippedCounts={},consumed={};
+          inserted.forEach(function(entry){var key=String(entry.serial||'').trim().toLocaleUpperCase();insertedCounts[key]=(insertedCounts[key]||0)+1;});
+          skipped.forEach(function(entry){var key=String(entry.serial||'').trim().toLocaleUpperCase();skippedCounts[key]=(skippedCounts[key]||0)+1;});
+          rowItems.forEach(function(candidate){var key=candidate.item.serial.toLocaleUpperCase(),used=consumed[key]||0;consumed[key]=used+1;if(used<(insertedCounts[key]||0))candidate.row.remove();else if(used<(insertedCounts[key]||0)+(skippedCounts[key]||0))batchFieldError(candidate.row.find('[data-field="serial"]'),'Esta serie ya está registrada. Captura una serie distinta.');});
+          load();return;
+        }
+        $('#urovoBatchModal').one('hidden.bs.modal',function(){toast(inserted.length+' equipos guardados.','success');});
+        load();hideModal('urovoBatchModal');
+      }).fail(function(xhr){$('#urovoSaveBatch').prop('disabled',false);showBatchFailure(xhr.responseJSON&&xhr.responseJSON.message||'Error al guardar los equipos.');});
+    });
+    $('#urovoCaptureRows').on('input change','[data-field],[data-no-serial],[data-damage-other]',function(){clearBatchFieldError($(this));});
+    $('#urovoBatchStation,#urovoBatchProvider,#urovoBatchLocation').on('input change',function(){clearBatchFieldError($(this));});
     $('#urovoRows').on('click', '.js-urovo-detail', function () { openDetail($(this).data('id')); });
     $('#urovoDetailFields').on('click', '#urovoSaveEdit', function () { if(hasIncompleteOther($('#urovoDetailFields'))){modalMessage('#urovoDetailNotice','Describe el problema marcado como “Otro”.','error');return;} var payload = {}; $('#urovoDetailFields .js-urovo-edit').each(function () { payload[$(this).data('field')] = $(this).val(); }); payload.damage_types=selectedDamages($('#urovoDetailFields')); payload.mojo_ticket_number=String(payload.mojo_ticket_number||'').replace(/\D/g,''); request('/inventario-urovo/terminal/' + encodeURIComponent(currentTerminal) + '/edit/', 'POST', payload).done(function (d) { if (!d || d.success !== true) { modalMessage('#urovoDetailNotice',d && d.message || 'No fue posible guardar los datos.','error'); return; } var current = rows.filter(function (r) { return String(val(r,['id','Id','terminal_id'])) === String(currentTerminal); })[0] || {}; var updated = $.extend({},current,payload,d.row || {}); openDetail(currentTerminal,updated,'Datos actualizados.'); load(); }).fail(function () { modalMessage('#urovoDetailNotice','Error al actualizar los datos.','error'); }); });
     $('#urovoMoveLocation').on('change', moveLocation); $('#urovoSaveMove').on('click', function () { if(hasIncompleteOther($('.urovo-move-form'))){modalMessage('#urovoDetailNotice','Describe el problema marcado como “Otro”.','error');return;} var type = $('#urovoMoveLocation').val(), payload = locationPayload('urovoMove', type); payload.status = $('#urovoMoveStatus').val(); payload.damage_types=selectedDamages($('.urovo-move-form')); payload.mojo_ticket_number=String($('#urovoMoveTicket').val()||'').replace(/\D/g,''); payload.reason = $('#urovoMoveReason').val(); if (!payload.reason.trim() || (type === 'estacion' && !payload.station_id) || (type === 'reparacion' && !payload.provider.trim())) { modalMessage('#urovoDetailNotice','Completa destino y motivo del movimiento.','error'); return; } request('/inventario-urovo/terminal/' + encodeURIComponent(currentTerminal) + '/move/', 'POST', payload).done(function (d) { if (!d || d.success !== true) { modalMessage('#urovoDetailNotice',d && d.message || 'No fue posible registrar el movimiento.','error'); return; } $('#urovoDetailModal').one('hidden.bs.modal',function(){message('Movimiento registrado.', 'success');}); hideModal('urovoDetailModal'); load(); }).fail(function () { modalMessage('#urovoDetailNotice','Error al registrar el movimiento.','error'); }); });
