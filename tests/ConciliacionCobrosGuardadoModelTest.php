@@ -59,12 +59,20 @@ try {
     check('gruposQueOcupan por movimiento ocupa=1', $m->gruposQueOcupan([], [987654321], []) === [$ids[0]]);
     check('gruposQueOcupan sin nada', $m->gruposQueOcupan([], [], []) === []);
 
-    $m->darDeBaja([$ids[0]], 'test');
+    $m->bloquearMes($MES);
+    check('bloquearMes dentro de la transacción no falla', true);
+    check('movimientosOcupadosEntre solo ocupa=1', $m->movimientosOcupadosEntre([987654321, 987654322, 0]) === [987654321 => true]);
+    check('movimientosOcupadosEntre excluyendo el grupo', $m->movimientosOcupadosEntre([987654321], [$ids[0]]) === []);
+    check('movimientosOcupadosEntre sin ids', $m->movimientosOcupadosEntre([]) === []);
+
+    check('darDeBaja devuelve filas afectadas', $m->darDeBaja([$ids[0]], 'test') === 1);
+    check('darDeBaja de uno ya dado de baja = 0', $m->darDeBaja([$ids[0]], 'test') === 0);
     $act = $m->gruposActivos($MES);
     check('darDeBaja deja 1 activo', count($act) === 1 && $act[0]['id'] === $ids[1]);
     check('gruposQueOcupan ignora dados de baja', $m->gruposQueOcupan(['7|990001'], [], []) === []);
+    check('movimientosOcupadosEntre ignora dados de baja', $m->movimientosOcupadosEntre([987654321]) === []);
 
-    $m->bajaAutoDelMes($MES, 'test');
+    check('bajaAutoDelMes devuelve filas afectadas', $m->bajaAutoDelMes($MES, 'test') === 1);
     check('bajaAutoDelMes', $m->gruposActivos($MES) === []);
     $m->marcarRecalculado($MES, 'test');
     $fila = $m->mesGuardado($MES);

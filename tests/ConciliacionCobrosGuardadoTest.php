@@ -111,4 +111,52 @@ $igual = [['id' => 4, 'origen' => 'auto', 'estatus' => 'Cuadra por importe (sin 
     ['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => 9100, 'monto' => 800.0, 'mes' => '2026-10', 'ocupa' => 1]]]];
 check('reintento: mismo estatus y depósito = 0 cambios', count(ConciliacionCobrosGuardado::cambiosReintento($igual, $nuevo)) === 0);
 
+// bolsaReintento: sin los fijos; los depósitos actuales de los pendientes regresan aunque sean fijos (referencia de una Diferencia)
+$bolsa = ConciliacionCobrosGuardado::bolsaReintento(
+    [d(1, 11, 100.0), d(2, 12, 200.0), d(3, 13, 300.0)],
+    [d(3, 13, 300.0), d(4, 14, 400.0)],
+    [2 => true, 4 => true]
+);
+$idsBolsa = array_map(fn($x) => (int)$x['id'], $bolsa);
+sort($idsBolsa);
+check('bolsaReintento: quita fijos, regresa actuales sin duplicar', $idsBolsa === [1, 3, 4]);
+check('bolsaReintento: sin fijos ni actuales = depósitos', count(ConciliacionCobrosGuardado::bolsaReintento([d(1, 11, 1.0)], [], [])) === 1);
+
+// gruposReintentables
+$gC = fn(int $id, string $estatus, array $nros, ?int $mov = null) => ['id' => $id, 'origen' => 'auto', 'estatus' => $estatus, 'items' => array_merge(
+    array_map(fn($n) => ['tipo' => 'C', 'codgas' => 2, 'nro' => $n, 'movimiento_id' => null, 'monto' => 1.0, 'mes' => '2026-10', 'ocupa' => 1], $nros),
+    $mov === null ? [] : [['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => $mov, 'monto' => 1.0, 'mes' => '2026-10', 'ocupa' => 0]]
+)];
+$pend = [$gC(1, 'Sin banco', [10]), $gC(2, 'Sin banco', [20, 21]), $gC(3, 'Sin banco', [30]), $gC(4, 'Diferencia', [40], 7), $gC(5, 'Sin banco', [50])];
+$cobrosK = [
+    '2|10' => ['cancelado' => 0], '2|20' => ['cancelado' => 0], '2|21' => ['cancelado' => 1],
+    '2|30' => ['cancelado' => 0], '2|40' => ['cancelado' => 0], '2|50' => ['cancelado' => 0],
+];
+$cruceR = [
+    ['codgas' => 2, 'nro' => 10, 'estatus' => 'Cuadra por importe (sin MOV)', 'deposito_id' => 8],
+    ['codgas' => 2, 'nro' => 20, 'estatus' => 'Cuadra por importe (sin MOV)', 'deposito_id' => 9],
+    ['codgas' => 2, 'nro' => 21, 'estatus' => 'Cancelado', 'deposito_id' => null],
+    ['codgas' => 2, 'nro' => 30, 'estatus' => 'Cuadra por importe (sin MOV)', 'deposito_id' => 7],
+    ['codgas' => 2, 'nro' => 40, 'estatus' => 'Diferencia', 'deposito_id' => 7],
+];
+unset($cobrosK['2|50']);   // el cobro 50 ya no existe
+$ok = array_map(fn($g) => $g['id'], ConciliacionCobrosGuardado::gruposReintentables($pend, $cruceR, $cobrosK, [7 => true]));
+check('gruposReintentables: solo el 1 y la Diferencia sobre un fijo', $ok === [1, 4]);
+
+// gruposLibres: nuevos que no chocan con grupos activos ni movimientos ocupados
+$activos = [$gC(1, 'Cuadra', [10])];
+$nuevosG = [
+    ['origen' => 'auto', 'estatus' => 'Sin banco', 'items' => [['tipo' => 'C', 'codgas' => 2, 'nro' => 10, 'movimiento_id' => null, 'monto' => 1.0, 'mes' => '2026-10', 'ocupa' => 1]]],
+    ['origen' => 'auto', 'estatus' => 'Cuadra', 'items' => [
+        ['tipo' => 'C', 'codgas' => 2, 'nro' => 11, 'movimiento_id' => null, 'monto' => 1.0, 'mes' => '2026-10', 'ocupa' => 1],
+        ['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => 5, 'monto' => 1.0, 'mes' => '2026-10', 'ocupa' => 1]]],
+    ['origen' => 'auto', 'estatus' => 'Diferencia', 'items' => [
+        ['tipo' => 'C', 'codgas' => 2, 'nro' => 12, 'movimiento_id' => null, 'monto' => 1.0, 'mes' => '2026-10', 'ocupa' => 1],
+        ['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => 5, 'monto' => 1.0, 'mes' => '2026-10', 'ocupa' => 0]]],
+    ['origen' => 'auto', 'estatus' => 'Sin banco', 'items' => [['tipo' => 'C', 'codgas' => 2, 'nro' => 13, 'movimiento_id' => null, 'monto' => 1.0, 'mes' => '2026-10', 'ocupa' => 1]]],
+];
+$libres = ConciliacionCobrosGuardado::gruposLibres($nuevosG, $activos, [5 => true]);
+check('gruposLibres: quita cobro ya agrupado y M ocupado; ocupa 0 no choca',
+    array_map(fn($g) => $g['items'][0]['nro'], $libres) === [12, 13]);
+
 finish();

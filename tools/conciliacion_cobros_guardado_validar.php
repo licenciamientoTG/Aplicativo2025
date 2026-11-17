@@ -47,6 +47,10 @@ $depositos = $model->depositos(
     $dias($desde, -ConciliacionCobros::DIAS_ANTES), $dias($hasta, ConciliacionCobros::DIAS_DESPUES),
     $dias($desde, -ConciliacionCobros::DIAS_IMPORTE), $dias($hasta, ConciliacionCobros::DIAS_IMPORTE)
 );
+// Como el controlador: sin los movimientos que ya ocupa un grupo guardado de cualquier mes (solo SELECT)
+$ocupados = (new ConciliacionCobrosGuardadoModel)->movimientosOcupadosEntre(array_map(fn($d) => (int)$d['id'], $depositos));
+if ($ocupados) $depositos = array_values(array_filter($depositos, fn($d) => !isset($ocupados[(int)$d['id']])));
+echo "-- informativo: depósitos de la bolsa ya ocupados por grupos guardados: " . count($ocupados) . "\n";
 $cruce = ConciliacionCobros::conciliar($cobros, $depositos);
 
 // Guardado en memoria: grupos con ids de mentira → filas

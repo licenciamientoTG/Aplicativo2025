@@ -206,4 +206,62 @@ class ConciliacionCobrosGuardado {
         }
         return $out;
     }
+
+    /**
+     * Bolsa del reintento: $depositos sin los $fijos (id => true, ocupa = 1 en grupos activos que no se
+     * reintentan), más los depósitos que ya tenían los pendientes ($actuales) que no estén. Los actuales
+     * regresan aunque sean fijos (la referencia ocupa = 0 de una Diferencia), para que la Diferencia
+     * se siga viendo igual; gruposReintentables impide que otro estatus se quede con un fijo.
+     */
+    public static function bolsaReintento(array $depositos, array $actuales, array $fijos): array {
+        $out = [];
+        foreach ($depositos as $d) {
+            if (!isset($fijos[(int)$d['id']])) $out[(int)$d['id']] = $d;
+        }
+        foreach ($actuales as $d) {
+            if (!isset($out[(int)$d['id']])) $out[(int)$d['id']] = $d;
+        }
+        return array_values($out);
+    }
+
+    /**
+     * Pendientes que sí se pueden rehacer con el cruce nuevo. Se quedan como están (la alerta lo avisa)
+     * los que tienen un cobro cancelado o que ya no existe ($cobrosPorClave), y los que tienen un cobro
+     * que en el cruce nuevo toma un depósito fijo con un estatus que no es Diferencia (lo usaría doble).
+     */
+    public static function gruposReintentables(array $pendientes, array $cruceNuevo, array $cobrosPorClave, array $fijos): array {
+        $porClave = [];
+        foreach ($cruceNuevo as $r) $porClave[self::claveDoc((int)$r['codgas'], (int)$r['nro'])] = $r;
+        return array_values(array_filter($pendientes, function ($g) use ($porClave, $cobrosPorClave, $fijos) {
+            foreach ($g['items'] as $it) {
+                if ($it['tipo'] !== 'C') continue;
+                $k = self::claveDoc((int)$it['codgas'], (int)$it['nro']);
+                $c = $cobrosPorClave[$k] ?? null;
+                if ($c === null || !empty($c['cancelado'])) return false;
+                $n = $porClave[$k] ?? null;
+                if ($n !== null && $n['estatus'] !== 'Diferencia' && ($n['deposito_id'] ?? null) !== null && isset($fijos[(int)$n['deposito_id']])) return false;
+            }
+            return true;
+        }));
+    }
+
+    /**
+     * Grupos nuevos que todavía se pueden guardar: ninguno de sus cobros está ya en un grupo activo
+     * ($activos, leídos dentro del candado) y ninguno de sus movimientos con ocupa = 1 está en $movOcupados.
+     */
+    public static function gruposLibres(array $nuevos, array $activos, array $movOcupados): array {
+        $usados = [];
+        foreach ($activos as $g) {
+            foreach ($g['items'] as $it) {
+                if ($it['tipo'] === 'C') $usados[self::claveDoc((int)$it['codgas'], (int)$it['nro'])] = true;
+            }
+        }
+        return array_values(array_filter($nuevos, function ($g) use ($usados, $movOcupados) {
+            foreach ($g['items'] as $it) {
+                if ($it['tipo'] === 'C' && isset($usados[self::claveDoc((int)$it['codgas'], (int)$it['nro'])])) return false;
+                if ($it['tipo'] === 'M' && (int)$it['ocupa'] === 1 && isset($movOcupados[(int)$it['movimiento_id']])) return false;
+            }
+            return true;
+        }));
+    }
 }

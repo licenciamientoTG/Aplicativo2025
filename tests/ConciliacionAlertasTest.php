@@ -67,6 +67,14 @@ $a = ConciliacionAlertas::deGrupo($g, ctx(['cobros' => ['2|64100' => fc(64100, 5
 check('ordenante parecido sin acentos', !tiene($a, 'ordenante'));
 $a = ConciliacionAlertas::deGrupo($g, ctx(['cobros' => ['2|64100' => fc(64100, 500.00, 23196, '2026-10-07', 'ZZZ')], 'movs' => [5 => fm(5, 500.00, 23196, '2026-10-07', '111', '')]]));
 check('contraparte vacía no alerta', !tiene($a, 'ordenante'));
+// Ordenante en auto: solo "Cuadra por importe…" y "Sin MOV"
+$ctxOrd = ctx(['cobros' => ['2|64100' => fc(64100, 500.00, 23196, '2026-10-07', 'TRANSPORTES DEL NORTE')], 'movs' => [5 => fm(5, 500.00, 23196, '2026-10-07', '111', 'JUAN PEREZ')]]);
+$gAuto = fn(string $estatus) => ['origen' => 'auto', 'estatus' => $estatus, 'items' => [ic(64100, 500.00), im(5, 500.00)]];
+check('ordenante: auto Cuadra no alerta', !tiene(ConciliacionAlertas::deGrupo($gAuto('Cuadra'), $ctxOrd), 'ordenante'));
+check('ordenante: auto Cuadra (MOV compartido) no alerta', !tiene(ConciliacionAlertas::deGrupo($gAuto('Cuadra (MOV compartido)'), $ctxOrd), 'ordenante'));
+check('ordenante: auto Cuadra por importe alerta', tiene(ConciliacionAlertas::deGrupo($gAuto('Cuadra por importe'), $ctxOrd), 'ordenante'));
+check('ordenante: auto Cuadra por importe (sin MOV) alerta', tiene(ConciliacionAlertas::deGrupo($gAuto('Cuadra por importe (sin MOV)'), $ctxOrd), 'ordenante'));
+check('ordenante: auto Sin MOV alerta', tiene(ConciliacionAlertas::deGrupo($gAuto('Sin MOV'), $ctxOrd), 'ordenante'));
 
 // Otra conciliación
 $a = ConciliacionAlertas::deGrupo($ok, array_merge($ctxOk, ['otrosGrupos' => ['C|2|1' => ['id' => 7, 'origen' => 'auto'], 'M|9' => ['id' => 7, 'origen' => 'auto'], 'C|2|2' => ['id' => 8, 'origen' => 'manual']]]));
@@ -107,6 +115,9 @@ check('factura de otro cliente', tiene($a, 'Factura I104614 de otro cliente'));
 $g = ['origen' => 'manual', 'estatus' => 'Manual', 'items' => [ic(64221, 500.00), im(5, 500.00)]];
 $a = ConciliacionAlertas::deGrupo($g, ctx(['cobros' => ['2|64221' => fc(64221, 500.00, 100, '2026-10-07', 'ACME SA DE CV', 1)], 'movs' => [5 => fm(5, 500.00)]]));
 check('cobro cancelado después', tiene($a, 'Cambió después de conciliar: cobro 64221 cancelado'));
+$gCan = ['origen' => 'auto', 'estatus' => 'Cancelado', 'items' => [ic(64221, 500.00)]];
+$a = ConciliacionAlertas::deGrupo($gCan, ctx(['cobros' => ['2|64221' => fc(64221, 500.00, 100, '2026-10-07', 'ACME SA DE CV', 1)]]));
+check('grupo Cancelado: cobro cancelado no alerta', !tiene($a, 'cancelado'));
 $a = ConciliacionAlertas::deGrupo($g, ctx(['cobros' => ['2|64221' => null], 'movs' => [5 => fm(5, 500.00)]]));
 check('cobro ya no existe', tiene($a, 'Cambió después de conciliar: cobro 64221 ya no existe'));
 $a = ConciliacionAlertas::deGrupo($g, ctx(['cobros' => ['2|64221' => fc(64221, 450.00, 100)], 'movs' => [5 => fm(5, 500.00)]]));

@@ -7,6 +7,8 @@
  * Los métodos que escriben varias filas (guardarGrupos, darDeBaja, bajaAutoDelMes) NO abren transacción:
  * el controlador las envuelve. Las listas IN van en línea ya saneadas (intval): SG12 está en nivel de
  * compatibilidad 110, sin STRING_SPLIT, y se parten en bloques de hasta 1000.
+ * Las lecturas que deciden escrituras (mesGuardado, gruposActivos, gruposQueOcupan, movimientosOcupadosEntre)
+ * van sin NOLOCK: el controlador las repite dentro de bloquearMes() para no guardar dos veces lo mismo.
  */
 class ConciliacionCobrosGuardadoModel extends Model {
 
@@ -20,7 +22,7 @@ class ConciliacionCobrosGuardadoModel extends Model {
                          CONVERT(varchar(19), guardado_en, 120) AS guardado_en, guardado_por,
                          CONVERT(varchar(19), recalculado_en, 120) AS recalculado_en, recalculado_por,
                          CONVERT(varchar(10), reintento_fecha, 23) AS reintento_fecha
-                    FROM " . self::MES . " WITH (NOLOCK)
+                    FROM " . self::MES . "
                    WHERE mes = ?";
         $r = $this->sql->select($query, [$mes]);
         return $r ? $r[0] : null;
@@ -100,10 +102,10 @@ class ConciliacionCobrosGuardadoModel extends Model {
         $query = "SELECT g.id AS grupo_id, g.mes AS grupo_mes, g.origen, g.estatus, g.comentario, g.creado_por,
                          CONVERT(varchar(19), g.creado_en, 120) AS creado_en,
                          i.tipo, i.codgas, i.nro, i.movimiento_id, i.monto, i.mes AS item_mes, i.ocupa
-                    FROM " . self::GRUPO . " g WITH (NOLOCK)
-                    JOIN " . self::ITEM . " i WITH (NOLOCK) ON i.grupo_id = g.id
+                    FROM " . self::GRUPO . " g
+                    JOIN " . self::ITEM . " i ON i.grupo_id = g.id
                    WHERE g.activo = 1
-                     AND EXISTS (SELECT 1 FROM " . self::ITEM . " x WITH (NOLOCK) WHERE x.grupo_id = g.id AND x.mes = ?)
+                     AND EXISTS (SELECT 1 FROM " . self::ITEM . " x WHERE x.grupo_id = g.id AND x.mes = ?)
                    ORDER BY g.id, i.id";
         $grupos = [];
         foreach ($this->sql->select($query, [$mes]) ?: [] as $r) {
@@ -152,8 +154,8 @@ class ConciliacionCobrosGuardadoModel extends Model {
         // un SELECT por cada 20 condiciones para no armar un OR enorme
         foreach (array_chunk($partes, 20) as $grupoPartes) {
             $query = "SELECT DISTINCT g.id
-                        FROM " . self::ITEM . " i WITH (NOLOCK)
-                        JOIN " . self::GRUPO . " g WITH (NOLOCK) ON g.id = i.grupo_id
+                        FROM " . self::ITEM . " i
+                        JOIN " . self::GRUPO . " g ON g.id = i.grupo_id
                        WHERE g.activo = 1 AND i.ocupa = 1
                          AND (" . implode(' OR ', $grupoPartes) . ")";
             foreach ($this->sql->select($query) ?: [] as $r) $ids[(int)$r['id']] = (int)$r['id'];
@@ -163,25 +165,62 @@ class ConciliacionCobrosGuardadoModel extends Model {
         return $ids;
     }
 
-    /** Da de baja los grupos (activo = 0). Sin transacción propia. */
-    public function darDeBaja(array $ids, string $usuario): void {
+    /** Da de baja los grupos (activo = 0). Sin transacción propia. Devuelve cuántos estaban activos y se dieron de baja. */
+    public function darDeBaja(array $ids, string $usuario): int {
         $ids = array_values(array_unique(array_filter(array_map('intval', $ids), fn($i) => $i > 0)));
+        $n = 0;
         foreach (array_chunk($ids, 1000) as $bloque) {
             $query = "UPDATE " . self::GRUPO . " SET activo = 0, baja_en = GETDATE(), baja_por = ?
                        WHERE activo = 1 AND id IN (" . implode(',', $bloque) . ")";
-            if ($this->sql->updateSafe($query, [$usuario]) === false) {
-                throw new Exception('No se pudo dar de baja los grupos');
-            }
+            $r = $this->sql->updateSafe($query, [$usuario]);
+            if ($r === false) throw new Exception('No se pudo dar de baja los grupos');
+            $n += (int)$r;
+        }
+        return $n;
+    }
+
+    /** Da de baja los grupos automáticos creados desde ese mes (para recalcular). Sin transacción propia. Devuelve cuántos. */
+    public function bajaAutoDelMes(string $mes, string $usuario): int {
+        $query = "UPDATE " . self::GRUPO . " SET activo = 0, baja_en = GETDATE(), baja_por = ?
+                   WHERE activo = 1 AND origen = 'auto' AND mes = ?";
+        $r = $this->sql->updateSafe($query, [$usuario, $mes]);
+        if ($r === false) throw new Exception('No se pudo dar de baja los grupos automáticos del mes');
+        return (int)$r;
+    }
+
+    /**
+     * Candado exclusivo del mes hasta que termine la transacción abierta (sp_getapplock, espera hasta 30 s).
+     * Toda escritura de grupos de un mes empieza con él; lanza si no se obtiene.
+     */
+    public function bloquearMes(string $mes): void {
+        $r = $this->sql->select("SET NOCOUNT ON; DECLARE @r int;
+            EXEC @r = sys.sp_getapplock @Resource = ?, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 30000;
+            SELECT @r AS r;", ['conc_cobros_' . $mes]);
+        if (!$r || (int)$r[0]['r'] < 0) {
+            throw new Exception('Otro usuario está guardando la conciliación de cobros de ' . $mes . '; intenta de nuevo');
         }
     }
 
-    /** Da de baja los grupos automáticos creados desde ese mes (para recalcular). Sin transacción propia. */
-    public function bajaAutoDelMes(string $mes, string $usuario): void {
-        $query = "UPDATE " . self::GRUPO . " SET activo = 0, baja_en = GETDATE(), baja_por = ?
-                   WHERE activo = 1 AND origen = 'auto' AND mes = ?";
-        if ($this->sql->updateSafe($query, [$usuario, $mes]) === false) {
-            throw new Exception('No se pudo dar de baja los grupos automáticos del mes');
+    /**
+     * De estos movimientos, los que ya ocupa (ocupa = 1) algún grupo activo de cualquier mes, salvo los
+     * grupos de $excluirGrupos (los que se van a rehacer).
+     * @return array<int, true>
+     */
+    public function movimientosOcupadosEntre(array $movIds, array $excluirGrupos = []): array {
+        $movIds = array_values(array_unique(array_filter(array_map('intval', $movIds), fn($i) => $i > 0)));
+        $excluir = array_values(array_unique(array_filter(array_map('intval', $excluirGrupos), fn($i) => $i > 0)));
+        $sinGrupos = '';
+        foreach (array_chunk($excluir, 1000) as $bloque) $sinGrupos .= " AND g.id NOT IN (" . implode(',', $bloque) . ")";
+        $out = [];
+        foreach (array_chunk($movIds, 1000) as $bloque) {
+            $query = "SELECT DISTINCT i.movimiento_id
+                        FROM " . self::ITEM . " i
+                        JOIN " . self::GRUPO . " g ON g.id = i.grupo_id
+                       WHERE g.activo = 1 AND i.ocupa = 1 AND i.tipo = 'M'
+                         AND i.movimiento_id IN (" . implode(',', $bloque) . "){$sinGrupos}";
+            foreach ($this->sql->select($query) ?: [] as $r) $out[(int)$r['movimiento_id']] = true;
         }
+        return $out;
     }
 
     /** Movimientos bancarios por id, con las mismas columnas que ConciliacionVentaModel::depositos(). */

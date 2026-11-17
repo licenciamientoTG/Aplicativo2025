@@ -61,7 +61,11 @@ class ConciliacionAlertas {
             $k = ConciliacionCobrosGuardado::claveDoc((int)$it['codgas'], $nro);
             $f = $cobrosCtx[$k] ?? null;
             if ($f === null) { $al[] = "Cambió después de conciliar: cobro $nro ya no existe"; continue; }
-            if (!empty($f['cancelado'])) { $al[] = "Cambió después de conciliar: cobro $nro cancelado"; continue; }
+            if (!empty($f['cancelado'])) {
+                // un grupo Cancelado ya se guardó con el cobro cancelado: no cambió nada
+                if ($estatus !== 'Cancelado') $al[] = "Cambió después de conciliar: cobro $nro cancelado";
+                continue;
+            }
             if (abs((float)$f['monto'] - (float)$it['monto']) >= 0.005) {
                 $al[] = "Cambió después de conciliar: monto del cobro $nro era $" . self::money((float)$it['monto']) . ', hoy $' . self::money((float)$f['monto']);
             }
@@ -141,13 +145,14 @@ class ConciliacionAlertas {
                 if ($mejor !== null && $mejor > 3) $al[] = "$mejor días entre el cobro $nro y el movimiento $sec";
             }
 
-            // Ordenante vs cliente
+            // Ordenante vs cliente: en auto solo donde el depósito se eligió por importe (en los demás el MOV ya lo respalda)
+            $revisarOrdenante = $origen === 'manual' || str_starts_with($estatus, 'Cuadra por importe') || $estatus === 'Sin MOV';
             $palMovs = [];
             foreach ($movs as $m) {
                 $nombre = trim((string)($m['nombre_contraparte'] ?? ''));
                 if ($nombre !== '') $palMovs = array_merge($palMovs, self::palabras($nombre));
             }
-            if ($palMovs) {
+            if ($palMovs && $revisarOrdenante) {
                 $vistos = [];
                 foreach ($cobros as $c) {
                     $cli = trim((string)($c['cliente'] ?? ''));
