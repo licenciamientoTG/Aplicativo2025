@@ -144,4 +144,43 @@ if ($f) {
     echo '  factura: ' . json_encode($f[0]) . "\n";
 }
 
+// Conciliación manual (mismos pasos que Income::conciliation_manual_save / _undo), dentro de una transacción con rollBack:
+// sobre un grupo auto de 2 cobros se elige 1 → el auto queda inactivo y el otro cobro queda sin grupo
+$db->beginTransaction();
+try {
+    $m->bloquearMes($MES);
+    [$autoId] = $m->guardarGrupos([['origen' => 'auto', 'estatus' => 'Cuadra', 'comentario' => null, 'items' => [
+        ['tipo' => 'C', 'codgas' => 7, 'nro' => 990011, 'movimiento_id' => null, 'monto' => 60, 'mes' => $MES, 'ocupa' => 1],
+        ['tipo' => 'C', 'codgas' => 7, 'nro' => 990012, 'movimiento_id' => null, 'monto' => 40, 'mes' => $MES, 'ocupa' => 1],
+        ['tipo' => 'M', 'codgas' => null, 'nro' => null, 'movimiento_id' => 987654331, 'monto' => 100, 'mes' => $MES, 'ocupa' => 1],
+    ]]], $MES, 'test');
+    $items = ConciliacionCobrosManual::items(json_encode([['tipo' => 'C', 'codgas' => 7, 'nro' => 990011], ['tipo' => 'M', 'movimiento_id' => 987654331]]));
+    $frescos = ['7|990011' => ['codgas' => 7, 'nro' => 990011, 'fecha' => '1999-01-10', 'monto' => 60, 'cancelado' => 0]];
+    $movsF = [987654331 => ['id' => 987654331, 'fecha' => '1999-01-11', 'abono' => 100]];
+    $grupo = ConciliacionCobrosManual::grupo(ConciliacionCobrosManual::completar($items, $frescos, $movsF, []), 'prueba manual');
+    $cl = ConciliacionCobrosManual::claves($items);
+    $bajas = $m->gruposQueOcupan($cl['C'], $cl['M'], $cl['F']);
+    check('manual: gruposQueOcupan encuentra el auto', $bajas === [$autoId]);
+    check('manual: darDeBaja del auto', $m->darDeBaja($bajas, 'test') === 1);
+    [$manualId] = $m->guardarGrupos([$grupo], $MES, 'test');
+    $act = $m->gruposActivos($MES);
+    check('manual: solo queda el manual activo', count($act) === 1 && $act[0]['id'] === $manualId
+        && $act[0]['origen'] === 'manual' && $act[0]['estatus'] === 'Conciliado manual' && $act[0]['comentario'] === 'prueba manual');
+    check('manual: items con ocupa 1 y monto de BD', count($act[0]['items']) === 2
+        && $act[0]['items'][0]['ocupa'] === 1 && $act[0]['items'][1]['ocupa'] === 1 && $act[0]['items'][1]['monto'] === 100.0);
+    $cobrosMes = [['codgas' => 7, 'nro' => 990011], ['codgas' => 7, 'nro' => 990012]];
+    $sin = ConciliacionCobrosGuardado::cobrosSinGrupo($cobrosMes, $act);
+    check('manual: cobrosSinGrupo devuelve el otro cobro', count($sin) === 1 && $sin[0]['nro'] === 990012);
+    check('manual: el movimiento lo ocupa el manual', $m->movimientosOcupadosEntre([987654331], [$manualId]) === []
+        && $m->movimientosOcupadosEntre([987654331]) === [987654331 => true]);
+    // deshacer: el manual se da de baja y los dos cobros quedan sin grupo
+    check('deshacer: darDeBaja del manual', $m->darDeBaja([$manualId], 'test') === 1);
+    check('deshacer: segunda vez = 0', $m->darDeBaja([$manualId], 'test') === 0);
+    check('deshacer: los dos cobros sin grupo', count(ConciliacionCobrosGuardado::cobrosSinGrupo($cobrosMes, $m->gruposActivos($MES))) === 2);
+} finally {
+    $db->rollBack();
+}
+$left = $db->select("SELECT COUNT(*) AS n FROM TG.dbo.conciliacion_cobros_grupo WHERE mes = ?", [$MES]);
+check('rollBack manual: sin grupos', (int)$left[0]['n'] === 0);
+
 finish();

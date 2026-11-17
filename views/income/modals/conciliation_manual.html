@@ -1,0 +1,125 @@
+{# Modal: conciliación manual de cobros (Ingresos > Conciliación > Cobros). Vista parcial cargada por fetch
+   desde Income::conciliation_manual_modal; el JS (_assets/js/conciliation_manual.js) usa los ids cm*.
+   Items precargados en #cmItems: [{tipo:'C'|'M'|'F', codgas, nro, movimiento_id, monto, existe, …datos a mostrar}] #}
+<style>
+#cmRoot .cm-tabla { max-height: 220px; overflow-y: auto; }
+#cmRoot .cm-tabla table { font-size: .8rem; margin-bottom: 0; }
+#cmRoot .cm-sel table { font-size: .8rem; margin-bottom: 0; }
+#cmRoot .cm-seccion { border: 1px solid #dee2e6; border-radius: .375rem; padding: .5rem; margin-bottom: .75rem; }
+#cmRoot .cm-seccion h6 { margin-bottom: .5rem; }
+</style>
+<div id="cmRoot" data-grupo-id="{{ grupo ? grupo.id : '' }}" data-mes="{{ mes }}" data-origen="{{ grupo ? grupo.origen : '' }}">
+  <div class="modal-header">
+    <h5 class="modal-title">
+      <i class="fas fa-link"></i> Conciliación manual de cobros
+      {% if grupo %}
+        <small class="text-muted">· Grupo #{{ grupo.id }} ({{ grupo.origen == 'manual' ? 'Manual' : 'Auto' }}, {{ grupo.estatus }}{% if grupo.creado_por %}, {{ grupo.creado_por }} {{ grupo.creado_en }}{% endif %})</small>
+      {% endif %}
+    </h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+  </div>
+
+  <div class="modal-body">
+    {% if error %}
+      <div class="alert alert-danger mb-2">{{ error }}</div>
+    {% endif %}
+
+    {# Cobros: DocumentosC tip 4 de Cobranza, del mes y ±1 mes #}
+    <div class="cm-seccion">
+      <h6><i class="fas fa-hand-holding-usd"></i> Cobros</h6>
+      <form class="row g-2 align-items-end mb-2" id="cmBuscarCobros">
+        <div class="col-auto"><label class="form-label mb-0 small">Folio</label><input type="number" name="folio" class="form-control form-control-sm" min="1"></div>
+        <div class="col"><label class="form-label mb-0 small">Cliente</label><input type="text" name="cliente" class="form-control form-control-sm" maxlength="100"></div>
+        <div class="col-auto"><label class="form-label mb-0 small">Importe</label><input type="number" name="importe" class="form-control form-control-sm" step="0.01"></div>
+        <div class="col-auto"><label class="form-label mb-0 small">MOV</label><input type="number" name="mov" class="form-control form-control-sm" min="1"></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-outline-primary"><i class="fas fa-search"></i> Buscar</button></div>
+      </form>
+      <div class="cm-tabla">
+        <table class="table table-sm table-hover" id="cmResCobros">
+          <thead><tr><th></th><th>Estación</th><th>Cobro</th><th>Fecha</th><th>Cliente</th><th class="text-end">Monto</th><th>MOV</th><th>Facturas</th><th>Grupo</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="cm-sel mt-2">
+        <div class="small fw-bold">Seleccionados</div>
+        <table class="table table-sm" id="cmSelCobros">
+          <thead><tr><th>Estación</th><th>Cobro</th><th>Fecha</th><th>Cliente</th><th class="text-end">Monto</th><th>MOV</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    {# Movimientos: abonos de TG.dbo.movimientos_bancarios #}
+    <div class="cm-seccion">
+      <h6><i class="fas fa-university"></i> Movimientos del banco</h6>
+      <form class="row g-2 align-items-end mb-2" id="cmBuscarMovs">
+        <div class="col-auto"><label class="form-label mb-0 small">Importe</label><input type="number" name="importe" class="form-control form-control-sm" step="0.01"></div>
+        <div class="col-auto"><label class="form-label mb-0 small">Importe de</label><input type="number" name="importe_min" class="form-control form-control-sm" step="0.01"></div>
+        <div class="col-auto"><label class="form-label mb-0 small">a</label><input type="number" name="importe_max" class="form-control form-control-sm" step="0.01"></div>
+        <div class="col-auto"><label class="form-label mb-0 small">Desde</label><input type="date" name="desde" class="form-control form-control-sm" value="{{ desde }}"></div>
+        <div class="col-auto"><label class="form-label mb-0 small">Hasta</label><input type="date" name="hasta" class="form-control form-control-sm" value="{{ hasta }}"></div>
+        <div class="col-auto"><label class="form-label mb-0 small">Cuenta</label><input type="text" name="cuenta" class="form-control form-control-sm" maxlength="30"></div>
+        <div class="col-auto"><label class="form-label mb-0 small">Secuencia</label><input type="number" name="secuencia" class="form-control form-control-sm" min="0"></div>
+        <div class="col"><label class="form-label mb-0 small">Texto (ordenante, RFC, detalle)</label><input type="text" name="texto" class="form-control form-control-sm" maxlength="100"></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-outline-primary"><i class="fas fa-search"></i> Buscar</button></div>
+      </form>
+      <div class="cm-tabla">
+        <table class="table table-sm table-hover" id="cmResMovs">
+          <thead><tr><th></th><th>Banco</th><th>Cuenta</th><th>Fecha</th><th>Secuencia</th><th class="text-end">Abono</th><th>Ordenante</th><th>RFC</th><th>Detalle</th><th>Grupo</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="cm-sel mt-2">
+        <div class="small fw-bold">Seleccionados</div>
+        <table class="table table-sm" id="cmSelMovs">
+          <thead><tr><th>Banco</th><th>Cuenta</th><th>Fecha</th><th>Secuencia</th><th class="text-end">Abono</th><th>Ordenante</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    {# Facturas: DocumentosC tip 3 (sin folio ni fechas busca en los últimos 3 meses) #}
+    <div class="cm-seccion">
+      <h6><i class="fas fa-file-invoice-dollar"></i> Facturas</h6>
+      <form class="row g-2 align-items-end mb-2" id="cmBuscarFacturas">
+        <div class="col-auto"><label class="form-label mb-0 small">Folio (ej. I104614)</label><input type="text" name="folio" class="form-control form-control-sm" maxlength="20"></div>
+        <div class="col"><label class="form-label mb-0 small">Cliente</label><input type="text" name="cliente" class="form-control form-control-sm" maxlength="100"></div>
+        <div class="col-auto"><label class="form-label mb-0 small">Importe</label><input type="number" name="importe" class="form-control form-control-sm" step="0.01"></div>
+        <div class="col-auto"><label class="form-label mb-0 small">Desde</label><input type="date" name="desde" class="form-control form-control-sm"></div>
+        <div class="col-auto"><label class="form-label mb-0 small">Hasta</label><input type="date" name="hasta" class="form-control form-control-sm"></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-outline-primary"><i class="fas fa-search"></i> Buscar</button></div>
+      </form>
+      <div class="cm-tabla">
+        <table class="table table-sm table-hover" id="cmResFacturas">
+          <thead><tr><th></th><th>Folio</th><th>Fecha</th><th>Cliente</th><th class="text-end">Total</th><th class="text-end">Pagada</th><th>Estado</th><th>Grupo</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="cm-sel mt-2">
+        <div class="small fw-bold">Seleccionadas</div>
+        <table class="table table-sm" id="cmSelFacturas">
+          <thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th class="text-end">Total</th><th>Estado</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    {# Totales (cobros + facturas vs movimientos), alertas en vivo (nunca bloquean) y comentario #}
+    <div id="cmTotales" class="d-flex flex-wrap gap-3 mb-2 small"></div>
+    <div id="cmAlertas" class="mb-2"></div>
+    <div>
+      <label for="cmComentario" class="form-label mb-0 small">Comentario (opcional)</label>
+      <textarea id="cmComentario" class="form-control form-control-sm" rows="2" maxlength="500">{{ grupo ? grupo.comentario : '' }}</textarea>
+    </div>
+  </div>
+
+  <div class="modal-footer">
+    {% if grupo and grupo.origen == 'manual' %}
+      <button type="button" class="btn btn-outline-danger me-auto" id="cmDeshacer"><i class="fas fa-undo"></i> Deshacer conciliación</button>
+    {% endif %}
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+    <button type="button" class="btn btn-primary" id="cmGuardar"><i class="fas fa-save"></i> Guardar</button>
+  </div>
+
+  <script type="application/json" id="cmItems">{{ items_json|raw }}</script>
+</div>
