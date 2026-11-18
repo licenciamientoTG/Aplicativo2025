@@ -8789,6 +8789,16 @@ public function stamped_invoices_detail(): void
         exit;
     }
 
+    /** Lightweight unread count for the ControlGas cut-change history badge. */
+    public function efc_conc_cambios_notificaciones(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $afterId=max(0,(int)($_GET['despues_id']??0));
+            echo json_encode(['status'=>'success','data'=>$this->efcConciliacion->cutChangeNotificationSummary($afterId)],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
+        } catch(Throwable $e) { http_response_code(422); echo json_encode(['status'=>'error','message'=>'No fue posible consultar las notificaciones.'],JSON_UNESCAPED_UNICODE); }
+        exit;
+    }
+
     /** Current and projected reconciliation differences before approving a cut revision. */
     public function efc_conc_cambios_previsualizar(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
@@ -9540,7 +9550,8 @@ public function stamped_invoices_detail(): void
         $empresaSolicitada = $empresaPresente ? strtoupper(trim((string)$_GET['empresa'])) : null;
         $empresa = EfcConciliacionModel::normalizeCompany($empresaSolicitada ?? 'DIAZ GAS');
         $filtrarPorEmpresa = $filtrarEmpresa && $empresaPresente && $empresaSolicitada !== 'TODAS';
-        if ($filtrarPorEmpresa && !in_array($empresaSolicitada, ['DIAZ GAS', 'FORANEAS', 'GASOMEX'], true)) {
+        $sinEmpresaSolicitada = $empresaSolicitada === 'SIN_EMPRESA';
+        if ($filtrarPorEmpresa && !in_array($empresaSolicitada, ['DIAZ GAS', 'FORANEAS', 'GASOMEX', 'SIN_EMPRESA'], true)) {
             echo json_encode(['status' => 'error', 'message' => 'Empresa inválida']);
             exit;
         }
@@ -9548,7 +9559,7 @@ public function stamped_invoices_detail(): void
             echo json_encode(['status' => 'error', 'message' => 'Periodo o estación inválidos']);
             exit;
         }
-        if ($filtrarPorEmpresa && !$todasEstaciones
+        if ($filtrarPorEmpresa && !$sinEmpresaSolicitada && !$todasEstaciones
             && EfcConciliacionModel::stationCompany($estacionId) !== $empresa) {
             echo json_encode(['status' => 'error', 'message' => 'Estación fuera de la empresa seleccionada']);
             exit;
@@ -9765,7 +9776,9 @@ public function stamped_invoices_detail(): void
                 // Company filtering follows the effective station, including
                 // manual corrections. With no concrete company (missing or
                 // TODAS), retain unidentified and ambiguous rows for review.
-                if ($filtrarPorEmpresa
+                if ($filtrarPorEmpresa && $sinEmpresaSolicitada
+                    && !in_array($estatus, ['ESTACION_AMBIGUA', 'ESTACION_NO_IDENTIFICADA'], true)) continue;
+                if ($filtrarPorEmpresa && !$sinEmpresaSolicitada
                     && (!$estacion || !in_array((int)$estacion['station_id'], EfcConciliacionModel::stationIds($empresa), true))) continue;
 
                 // Se devuelven los depósitos de la estación seleccionada y los no
@@ -9797,7 +9810,8 @@ public function stamped_invoices_detail(): void
                     'station_normalized'=> $codigos,
                 ];
             }
-            echo json_encode(['status' => 'success', 'empresa' => $empresaSolicitada === 'TODAS' ? 'TODAS' : $empresa, 'data' => $movimientos]);
+            $empresaRespuesta = $empresaSolicitada === 'TODAS' ? 'TODAS' : ($sinEmpresaSolicitada ? 'SIN_EMPRESA' : $empresa);
+            echo json_encode(['status' => 'success', 'empresa' => $empresaRespuesta, 'data' => $movimientos]);
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => 'Error consultando depósitos bancarios: ' . $e->getMessage()]);
         }

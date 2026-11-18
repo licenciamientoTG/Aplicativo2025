@@ -217,6 +217,16 @@ class EfcConciliacionModel {
         return $rows;
     }
 
+    /** Lightweight count and cursor for new change-history notifications. */
+    public function cutChangeNotificationSummary(int $afterId): array {
+        $stations=array_values(array_diff(self::stationIds('DIAZ GAS'),[40]));
+        if(!$stations)return ['cambios_no_vistos'=>0,'ultimo_id'=>0];
+        $marks=implode(',',array_fill(0,count($stations),'?'));
+        $q=$this->db->prepare("SELECT COUNT_BIG(*) AS cambios_no_vistos,ISNULL(MAX(id),0) AS ultimo_id,CONVERT(VARCHAR(10),MIN(fecha_operativa),23) AS desde_operativa,CONVERT(VARCHAR(10),MAX(fecha_operativa),23) AS hasta_operativa FROM dbo.efc_conc_cortes_cambios WHERE id>? AND estacion_id IN ($marks)");
+        $q->execute(array_merge([max(0,$afterId)],$stations));$row=$q->fetch(PDO::FETCH_ASSOC)?:[];
+        return ['cambios_no_vistos'=>(int)($row['cambios_no_vistos']??0),'ultimo_id'=>(int)($row['ultimo_id']??0),'desde_operativa'=>($row['desde_operativa']??null)?:null,'hasta_operativa'=>($row['hasta_operativa']??null)?:null];
+    }
+
     public function cutChangeStations(): array {
         $ids=array_values(array_diff(self::stationIds('DIAZ GAS'),[40]));$marks=implode(',',array_fill(0,count($ids),'?'));
         $q=$this->db->prepare("SELECT Codigo AS estacion_id,Nombre AS estacion_nombre FROM TG.dbo.Estaciones WHERE Codigo IN ($marks) ORDER BY Nombre");$q->execute($ids);return $q->fetchAll(PDO::FETCH_ASSOC)?:[];
