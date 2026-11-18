@@ -33,13 +33,17 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parent
 TOLERANCE = 1.00  # Misma tolerancia usada por runBankFixed en la consola.
 PARRAL_TOLERANCE = 6.00
-COMPANY_STATIONS = {
-    2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22,
-    23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 199,
-    40,
-}
 GASOMEX_STATIONS = {23, 24, 25, 26, 27, 28, 29}
 DIAZ_GAS_STATIONS = (2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 22, 30, 33, 40)
+# These are TG.dbo.Estaciones.Codigo values, not the numeric prefixes in Nombre.
+# Codigo=3 is "19 Aguascalientes"; Codigo=19 is "03 Delicias".
+FORANEAS_STATIONS = {3, 19, 21, 31, 32, 34, 35, 36, 37, 38, 39, 199}
+COMPANY_STATIONS_BY_COMPANY = {
+    "DIAZ GAS": set(DIAZ_GAS_STATIONS),
+    "FORANEAS": FORANEAS_STATIONS,
+    "GASOMEX": GASOMEX_STATIONS,
+}
+COMPANY_STATIONS = set().union(*COMPANY_STATIONS_BY_COMPANY.values())
 GLOBAL_USD_ACCOUNT = "0601500741"
 GASOMEX_ACCOUNT_STATIONS = {
     "8504": {29}, "4547": {23}, "8214": {23, 25}, "8492": {25, 26},
@@ -56,17 +60,27 @@ GASOMEX_ACCOUNT_STATION_BUCKETS = {
     "4669": {28: {"MN"}}, "3678": {28: {"USD"}},
     "4638": {24: {"MN", "USD"}},
 }
-# Same known-account universe as EfcConciliacionModel::allAccountSuffixes().
-ACCOUNT_SUFFIXES = (
-    "0185322470", "369", "3281", "8837", "8520", "7291", "2570", "7533",
-    "2627", "5247", "7604", "0031", "8504", "4547", "8214", "8492",
-    "4412", "4777", "4669", "3678", "4638", "60630878973",
-)
-# Mirror EfcConciliacionModel::COMPANY_ACCOUNT_STATIONS for unmapped bank rows.
-# The 369 account is assigned to Parral; shared accounts require text/correction.
+# Keep bank-account ownership aligned with EfcConciliacionModel::COMPANY_ACCOUNTS.
+COMPANY_ACCOUNT_SUFFIXES = {
+    "DIAZ GAS": ("0185322470", "369", "60630878973"),
+    "FORANEAS": ("3281", "8837", "8520", "7291", "2570", "7533", "2627", "5247", "7604", "0031"),
+    "GASOMEX": ("8504", "4547", "8214", "8492", "4412", "4777", "4669", "3678", "4638"),
+}
+ACCOUNT_SUFFIXES = tuple(dict.fromkeys(
+    suffix for suffixes in COMPANY_ACCOUNT_SUFFIXES.values() for suffix in suffixes
+))
+# Mirror EfcConciliacionModel::COMPANY_ACCOUNT_STATIONS. Explicit bank text
+# wins over account routing; shared accounts resolve only when text is unique.
 BANK_ACCOUNT_STATION_MARKERS = {
     "369": ("PARRAL",),
     "60630878973": ("PRAXEDIS",),
+    "3281": ("VILLA AHUMADA",), "8837": ("DELICIAS",), "8520": ("PLUTARCO",),
+    "7291": ("PICACHOS",), "2570": ("PICACHOS",), "7533": ("VENTANAS",),
+    "2627": ("VENTANAS",), "5247": ("CASTANO",), "7604": ("GABRIELA MISTRAL",),
+    "0031": ("PUERTECITO", "SAN RAFAEL", "COLOSIO", "JESUS MARIA"),
+    "8504": ("JARUDO",), "4547": ("EJERCITO",), "8214": ("EJERCITO", "FUENTES"),
+    "8492": ("FUENTES", "CLARA"), "4412": ("CLARA",), "4777": ("SOLIS",),
+    "4669": ("SANTIAGO",), "3678": ("SANTIAGO",), "4638": ("SATELITE",),
 }
 
 
@@ -629,10 +643,38 @@ def normalize_name(value: object) -> str:
     return "".join(char if char.isalnum() else " " for char in text).strip()
 
 
-def resolved_bank_station(bank: tuple, catalog: list[tuple]) -> int | None:
-    """Resolve correction, then explicit description/code or known account map."""
+def bank_station_correction_is_automatic(bank: tuple) -> bool:
+    """Identify the provisional station correction written by this job."""
+    return len(bank) > 9 and bool(bank[9])
+
+
+def bank_account_company(account_value: object) -> str | None:
+    account = re.sub(r"[^A-Z0-9]", "", str(account_value or "").upper())
+    companies = {
+        company
+        for company, suffixes in COMPANY_ACCOUNT_SUFFIXES.items()
+        if any(account.endswith(suffix) for suffix in suffixes)
+    }
+    return next(iter(companies)) if len(companies) == 1 else None
+
+
+def bank_station_allowed_for_account(bank: tuple, station_id: int) -> bool:
+    """Keep automatic matches within account ownership; explicit corrections remain authoritative."""
     correction = bank[5]
-    if correction is not None:
+    if correction is not None and not bank_station_correction_is_automatic(bank):
+        return int(correction) == station_id
+    # Do not reuse a generated correction when current source evidence points
+    # elsewhere. It remains untouched and the movement is left for review.
+    if correction is not None and int(correction) != station_id:
+        return False
+    company = bank_account_company(bank[6])
+    return company is not None and station_id in COMPANY_STATIONS_BY_COMPANY[company]
+
+
+def resolved_bank_station(bank: tuple, catalog: list[tuple]) -> int | None:
+    """Honor operator corrections; re-resolve generated corrections from bank evidence."""
+    correction = bank[5]
+    if correction is not None and not bank_station_correction_is_automatic(bank):
         return int(correction)
     reference_text = str(bank[3] or "").strip()
     alias_text = f"{reference_text} {bank[4] or ''}"
@@ -711,8 +753,18 @@ def matching_bank_rows(cursor: pyodbc.Cursor, first: date, last: date | None = N
     params = [first, end_base, *[value for suffix in ACCOUNT_SUFFIXES for value in (suffix, suffix)]]
     return cursor.execute("""SELECT M.id,CONVERT(CHAR(10),M.fecha,23),M.abono,COALESCE(M.referencia,''),
       CONCAT(ISNULL(M.descripcion_larga,''),' ',ISNULL(M.descripcion,'')),C.estacion_id,M.cuenta,
-      COALESCE(M.concepto,''),COALESCE(M.descripcion,'') FROM TG.dbo.movimientos_bancarios M
+      COALESCE(M.concepto,''),COALESCE(M.descripcion,''),
+      CASE WHEN C.estacion_id IS NOT NULL AND LAST_STATION_ACTION.accion='CORRECCION_ESTACION_AUTO_REGIO'
+           THEN 1 ELSE 0 END AS correccion_automatica
+      FROM TG.dbo.movimientos_bancarios M
       LEFT JOIN dbo.efc_conc_correcciones_banco C ON C.movimiento_bancario_id=M.id
+      LEFT JOIN (
+        SELECT B.movimiento_bancario_id,MAX(B.id) AS action_id
+        FROM dbo.efc_conc_bitacora B
+        WHERE B.accion IN ('CORRECCION_ESTACION_AUTO_REGIO','CORRECCION_ESTACION','RESTAURAR_REFERENCIA')
+        GROUP BY B.movimiento_bancario_id
+      ) LAST_STATION_CORRECTION ON LAST_STATION_CORRECTION.movimiento_bancario_id=M.id
+      LEFT JOIN dbo.efc_conc_bitacora LAST_STATION_ACTION ON LAST_STATION_ACTION.id=LAST_STATION_CORRECTION.action_id
       WHERE M.abono>0 AND M.fecha>=? AND M.fecha<DATEADD(day,8,?)
         AND (C.estacion_id IS NOT NULL
           OR (UPPER(COALESCE(M.descripcion,'')) LIKE '%DEPOSITO EN EFECTIVO%' OR UPPER(COALESCE(M.descripcion_larga,'')) LIKE '%DEPOSITO EN EFECTIVO%')
@@ -883,7 +935,7 @@ def index_bank_rows(
     inferred_stations = inferred_stations or {}
     for bank in rows:
         station_id = resolved_bank_station(bank, stations) or inferred_stations.get(int(bank[0]), (None,))[0]
-        if station_id is None:
+        if station_id is None or not bank_station_allowed_for_account(bank, int(station_id)):
             continue
         bank_date = as_date(bank[1])
         indexed.setdefault(station_id, {}).setdefault(bank_date, []).append(bank)
@@ -930,13 +982,14 @@ def infer_unassigned_bank_stations(
     first: date,
     last: date,
 ) -> dict[int, tuple[int, tuple[str, str, str, float]]]:
-    """Infer a station only for a unique exact REGIO-real match in its date window."""
+    """Infer only a unique exact REGIO-real match inside the bank account's company."""
     station_names = {int(row[0]): str(row[1] or "") for row in stations}
     station_ids = sorted(station_names)
     unresolved = [
         bank for bank in bank_rows
         if int(bank[0]) not in used_banks
-        and bank[5] is None
+        and (bank[5] is None or bank_station_correction_is_automatic(bank))
+        and bank_account_company(bank[6]) is not None
         and resolved_bank_station(bank, stations) is None
     ]
     if not unresolved or not station_ids:
@@ -1002,19 +1055,23 @@ def infer_unassigned_bank_stations(
         gasomex_bucket = "USD" if concept == "USD" else "MN"
         for bank in unresolved:
             bank_id = int(bank[0])
+            bank_company = bank_account_company(bank[6])
+            if bank_company is None or station_id not in COMPANY_STATIONS_BY_COMPANY[bank_company]:
+                continue
             bank_day = as_date(bank[1])
             if not cut <= bank_day <= cut + timedelta(days=7) or amount(bank[2]) != target:
                 continue
             if station_id in GASOMEX_STATIONS and gasomex_bucket not in gasomex_bank_buckets(bank, station_id):
                 continue
 
-            # Count other possible bank movements within the existing amount
-            # tolerance before assigning a station. Unknown deposits are
-            # counted conservatively across stations to avoid guessing.
+            # Competing deposits only compete within the same account-owning
+            # company. A Foráneas deposit must never make or lose a Díaz match.
             competing_banks = []
             for other in bank_rows:
                 other_id = int(other[0])
                 if other_id in used_banks or not cut <= as_date(other[1]) <= cut + timedelta(days=7):
+                    continue
+                if bank_account_company(other[6]) != bank_company:
                     continue
                 other_station = resolved_bank_station(other, stations)
                 if other_station not in (None, station_id):
@@ -1115,13 +1172,22 @@ def candidate_paired_bank_sets(
 
 def prefer_unique_manual_bank_correction(candidates: list[tuple], station_id: int) -> list[tuple]:
     """Prefer one explicitly corrected movement over inferred station matches."""
-    corrected = [bank for bank in candidates if bank[5] is not None and int(bank[5]) == station_id]
+    corrected = [
+        bank for bank in candidates
+        if bank[5] is not None
+        and not bank_station_correction_is_automatic(bank)
+        and int(bank[5]) == station_id
+    ]
     return corrected if len(corrected) == 1 else candidates
 
 
 def bank_candidate_order(bank: tuple, station_id: int) -> tuple:
     """Process manually assigned deposits before station inferred from bank text."""
-    corrected = bank[5] is not None and int(bank[5]) == station_id
+    corrected = (
+        bank[5] is not None
+        and not bank_station_correction_is_automatic(bank)
+        and int(bank[5]) == station_id
+    )
     return (0 if corrected else 1, as_date(bank[1]), int(bank[0]))
 
 
@@ -1323,12 +1389,22 @@ def run(
         inferred_stations = infer_unassigned_bank_stations(cursor, bank_rows, stations, used, first, last)
         unassigned_count = sum(
             1 for bank in bank_rows
-            if bank[5] is None and resolved_bank_station(bank, stations) is None
+            if (bank[5] is None or bank_station_correction_is_automatic(bank))
+            and resolved_bank_station(bank, stations) is None
         )
         log(
             f"Depósitos sin estación detectada: {unassigned_count}; "
-            f"coincidencias exactas y únicas con REGIO real: {len(inferred_stations)}."
+            f"coincidencias exactas y únicas con REGIO real dentro de la empresa de la cuenta: {len(inferred_stations)}."
         )
+        for bank in bank_rows:
+            bank_id = int(bank[0])
+            if bank_id in used:
+                continue
+            candidate_station = resolved_bank_station(bank, stations) or inferred_stations.get(bank_id, (None,))[0]
+            if candidate_station is not None and not bank_station_allowed_for_account(bank, int(candidate_station)):
+                owner = bank_account_company(bank[6]) or "desconocida"
+                previous = f", corrección automática previa={bank[5]}" if bank_station_correction_is_automatic(bank) else ""
+                log(f"Depósito retenido para revisión: banco={bank_id}, cuenta_empresa={owner}, estación_candidata={candidate_station}{previous}; no se permite cruce entre empresas ni reutilizar una corrección automática discrepante.")
         bank_index = index_bank_rows(bank_rows, stations, inferred_stations)
         indexed_count = sum(len(rows) for by_date in bank_index.values() for rows in by_date.values())
         log(f"Movimientos bancarios elegibles: {len(bank_rows)}; clasificados: {indexed_count}; usados: {len(used)}.")
@@ -1404,10 +1480,10 @@ def run(
                     cut = date.fromisoformat(day_text)
                     eligible = None
                     if is_praxedis:
-                        eligible = lambda bank: praxedis_bank_matches(bank) and bank[5] in (None, 40)
+                        eligible = lambda bank: praxedis_bank_matches(bank) and bank_station_allowed_for_account(bank, 40)
                     elif int(station_id) in GASOMEX_STATIONS:
                         required_bucket = "USD" if concept == "USD" else "MN"
-                        eligible = lambda bank: gasomex_account_matches(bank, int(station_id)) and required_bucket in gasomex_bank_buckets(bank, int(station_id)) and resolved_bank_station(bank, stations) in (None, int(station_id)) and inferred_stations.get(int(bank[0]), (int(station_id),))[0] == int(station_id)
+                        eligible = lambda bank: gasomex_account_matches(bank, int(station_id)) and required_bucket in gasomex_bank_buckets(bank, int(station_id)) and resolved_bank_station(bank, stations) in (None, int(station_id)) and inferred_stations.get(int(bank[0]), (int(station_id),))[0] == int(station_id) and bank_station_allowed_for_account(bank, int(station_id))
                     candidates = candidate_paired_bank_sets(bank_index, int(station_id), cut, used, targets[0], targets[1], eligible=eligible)
                     if len(candidates) != 1:
                         if candidates:
@@ -1456,7 +1532,7 @@ def run(
                     praxedis_bank_rows = [
                         bank for bank in praxedis_bank_rows_all
                         if int(bank[0]) not in used and praxedis_bank_matches(bank)
-                        and bank[5] in (None, 40)
+                        and bank_station_allowed_for_account(bank, 40)
                     ]
                     reserved_keys: set[str] = set(active_cg_keys)
                     log(f"Praxedis: turnos importados={len(slots)}, turnos bloqueados por conciliación/tránsito conciliado={len(active_cg_keys)}, tránsitos pendientes disponibles para asociar={pending_transit_count}, depósitos elegibles (8973, concepto vacío, DEP EN EFECTIV)={len(praxedis_bank_rows)}.")
@@ -1517,6 +1593,7 @@ def run(
                         and gasomex_account_matches(bank, int(station_id))
                         and resolved_bank_station(bank, stations) in (None, int(station_id))
                         and inferred_stations.get(int(bank[0]), (int(station_id),))[0] == int(station_id)
+                        and bank_station_allowed_for_account(bank, int(station_id))
                     ]
                     reserved_keys: set[str] = set(active_cg_keys)
                     log(f"GASOMEX estación={station_id}: vínculos activos={len(links)}, turnos MN={len(slots['MN'])}, turnos USD={len(slots['USD'])}, turnos bloqueados por tránsito conciliado={len(transit_keys)}, tránsitos pendientes disponibles para asociar={pending_transit_count}, depósitos por cuenta={len(gas_bank_rows)}.")

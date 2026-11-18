@@ -20,7 +20,9 @@ class EfcConciliacionModel {
        conciliación y sus cuentas bancarias. */
     private const COMPANY_STATIONS = [
         'DIAZ GAS' => [2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,22,30,33,40],
-        'FORANEAS' => [19,21,31,32,34,35,36,37,38,39,199],
+        // Codigo is the TG primary key; the leading "19" in "19 Aguascalientes"
+        // is part of Nombre, while this station's Codigo is 3.
+        'FORANEAS' => [3,19,21,31,32,34,35,36,37,38,39,199],
         'GASOMEX' => [23,24,25,26,27,28,29],
     ];
     /* Cuenta → estación operativa. Algunas cuentas atienden más de una
