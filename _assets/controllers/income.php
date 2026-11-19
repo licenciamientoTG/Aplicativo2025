@@ -9287,6 +9287,19 @@ public function stamped_invoices_detail(): void
         }catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;
     }
 
+    /** POST /income/efc_conc_diferencia_desagrupar */
+    public function efc_conc_diferencia_desagrupar(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        try {
+            $data=json_decode(file_get_contents('php://input'),true,512,JSON_THROW_ON_ERROR);
+            if(!is_array($data))throw new RuntimeException('Solicitud inválida.');
+            $station=(int)($data['estacion_id']??0);$year=(int)($data['year']??0);$month=(int)($data['month']??0);$groupId=(int)($data['grupo_id']??0);
+            if(EfcConciliacionModel::stationCompany($station)===null||$year<2020||$month<1||$month>12||$groupId<1)throw new RuntimeException('Estación, periodo o grupo inválido.');
+            $this->efcConciliacion->ungroupReportDifferences($station,$year,$month,$groupId);
+            echo json_encode(['status'=>'success','grupo_id'=>$groupId]);
+        }catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;
+    }
+
     /** Fuente CG usada también por la consola triple; sólo lectura. */
     private function efcConcReportControlGas(int $station, int $year, int $month): array {
         if($station===40) return $this->efcConciliacion->praxedisTurnos($year,$month,40);

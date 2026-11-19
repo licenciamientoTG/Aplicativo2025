@@ -58,6 +58,7 @@ return [
 
         route('efc_conc_diferencia_captura', [Income::class, 'efc_conc_diferencia_captura'], name: 'income.efc_conc_diferencia_captura', methods: ['POST'], permission: 14),
         route('efc_conc_diferencia_grupo', [Income::class, 'efc_conc_diferencia_grupo'], name: 'income.efc_conc_diferencia_grupo', methods: ['POST'], permission: 14),
+        route('efc_conc_diferencia_desagrupar', [Income::class, 'efc_conc_diferencia_desagrupar'], name: 'income.efc_conc_diferencia_desagrupar', methods: ['POST'], permission: 14),
         route('efc_conc_cambios_historial', [Income::class, 'efc_conc_cambios_historial'], name: 'income.efc_conc_cambios_historial', methods: ['GET'], permission: 14),
         route('efc_conc_cambios_previsualizar', [Income::class, 'efc_conc_cambios_previsualizar'], name: 'income.efc_conc_cambios_previsualizar', methods: ['GET'], permission: 14),
         route('efc_conc_cortes_aceptados', [Income::class, 'efc_conc_cortes_aceptados'], name: 'income.efc_conc_cortes_aceptados', methods: ['GET'], permission: 14),

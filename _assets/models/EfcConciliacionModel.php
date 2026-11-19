@@ -671,6 +671,18 @@ class EfcConciliacionModel {
         }catch(Throwable $e){if($this->db->inTransaction())$this->db->rollBack();throw $e;}
     }
 
+    /** Desactiva un grupo de faltantes sin borrar su auditoría ni sus miembros. */
+    public function ungroupReportDifferences(int $stationId,int $year,int $month,int $groupId): void {
+        if($stationId<1||$year<2020||$month<1||$month>12||$groupId<1)throw new RuntimeException('Grupo inválido.');
+        $this->db->beginTransaction();
+        try {
+            $q=$this->db->prepare("UPDATE G SET activo=0 FROM dbo.efc_conc_faltantes_grupos G WHERE G.id=? AND G.estacion_id=? AND G.activo=1 AND EXISTS (SELECT 1 FROM dbo.efc_conc_faltantes_grupos_miembros M WHERE M.grupo_id=G.id AND M.estacion_id=? AND M.fecha_operativa>=? AND M.fecha_operativa<?)");
+            $q->execute([$groupId,$stationId,$stationId,sprintf('%04d-%02d-01',$year,$month),sprintf('%04d-%02d-01',$month===12?$year+1:$year,$month===12?1:$month+1)]);
+            if($q->rowCount()!==1)throw new RuntimeException('El grupo activo no contiene diferencias de esa estación y periodo.');
+            $this->db->commit();
+        }catch(Throwable $e){if($this->db->inTransaction())$this->db->rollBack();throw $e;}
+    }
+
     /** Guarda el estado F8 de una diferencia, serializando altas concurrentes por clave. */
     public function setDifferenceCaptured(int $stationId,string $date,string $turn,string $concept,string $state,int $userId): void {
         if(!$stationId || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !in_array($concept,['MN','MORRALLA','USD'],true) || trim($turn)==='' || strlen($turn)>20) throw new RuntimeException('Clave de diferencia inválida.');
