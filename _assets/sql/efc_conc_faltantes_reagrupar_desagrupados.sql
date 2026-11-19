@@ -22,14 +22,18 @@ BEGIN TRY
        )
     BEGIN
         DECLARE @faltantes_miembros_pk SYSNAME;
+        DECLARE @faltantes_miembros_sql NVARCHAR(MAX);
         SELECT @faltantes_miembros_pk = name
         FROM sys.key_constraints
         WHERE parent_object_id = OBJECT_ID('dbo.efc_conc_faltantes_grupos_miembros')
           AND type = 'PK';
 
         IF @faltantes_miembros_pk IS NOT NULL
-            EXEC(N'ALTER TABLE dbo.efc_conc_faltantes_grupos_miembros DROP CONSTRAINT '
-                 + QUOTENAME(@faltantes_miembros_pk));
+        BEGIN
+            SET @faltantes_miembros_sql = N'ALTER TABLE dbo.efc_conc_faltantes_grupos_miembros DROP CONSTRAINT '
+                + QUOTENAME(@faltantes_miembros_pk);
+            EXEC sp_executesql @faltantes_miembros_sql;
+        END;
 
         ALTER TABLE dbo.efc_conc_faltantes_grupos_miembros
             ADD CONSTRAINT PK_efc_conc_faltantes_grupos_miembros
