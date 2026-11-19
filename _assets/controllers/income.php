@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -9282,7 +9282,7 @@ public function stamped_invoices_detail(): void
             if(!is_array($members)||count($members)<2||count($members)>100)throw new RuntimeException('Selecciona de 2 a 100 diferencias.');
             $company=EfcConciliacionModel::stationCompany($station);if($company===null||$year<2020||$month<1||$month>12||!in_array($concept,['MN','MORRALLA','USD'],true))throw new RuntimeException('Estación, concepto o periodo inválido.');
             $source=$this->efcConcReportControlGas($station,$year,$month);$source=$this->efcConciliacion->applyAcceptedCutAmounts($station,$source);$rows=$this->efcConciliacion->reportRows($station,$year,$month,$concept?:null,$source);$lookup=[];foreach($rows as $row)$lookup[$row['fecha'].'|'.$row['turno'].'|'.$row['concepto']]=$row;
-            $validated=[];$seen=[];foreach($members as $m){if(!is_array($m))throw new RuntimeException('Una diferencia seleccionada no es válida.');$date=(string)($m['fecha']??'');$turn=trim((string)($m['turno']??''));$c=strtoupper(trim((string)($m['concepto']??'')));$key=$date.'|'.$turn.'|'.$c;$row=$lookup[$key]??null;if($c!==$concept||isset($seen[$key])||!$row||$row['transito']||$row['no_aplica']||$row['diferencia_controlgas_regio']===null||abs((float)$row['diferencia_controlgas_regio'])<0.005||$row['grupo_faltantes_id'])throw new RuntimeException('Una diferencia seleccionada ya no está disponible.');$seen[$key]=true;$validated[]=['fecha'=>$date,'turno'=>$turn,'concepto'=>$c,'diferencia'=>(float)$row['diferencia_controlgas_regio']];}
+            $validated=[];$seen=[];foreach($members as $m){if(!is_array($m))throw new RuntimeException('Una diferencia seleccionada no es válida.');$date=(string)($m['fecha']??'');$turn=trim((string)($m['turno']??''));$c=strtoupper(trim((string)($m['concepto']??'')));$key=$date.'|'.$turn.'|'.$c;$row=$lookup[$key]??null;if($c!==$concept||isset($seen[$key])||!$row||$row['transito']||$row['diferencia_controlgas_regio']===null||abs((float)$row['diferencia_controlgas_regio'])<0.005||$row['grupo_faltantes_id'])throw new RuntimeException('Una diferencia seleccionada ya no está disponible.');$seen[$key]=true;$validated[]=['fecha'=>$date,'turno'=>$turn,'concepto'=>$c,'diferencia'=>(float)$row['diferencia_controlgas_regio']];}
             $id=$this->efcConciliacion->groupReportDifferences($station,$validated,$color,(int)($_SESSION['tg_user']['Id']??0));echo json_encode(['status'=>'success','grupo_id'=>$id,'diferencia'=>array_sum(array_column($validated,'diferencia'))]);
         }catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);}exit;
     }
