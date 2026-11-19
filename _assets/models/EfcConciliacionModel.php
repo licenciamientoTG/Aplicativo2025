@@ -106,15 +106,16 @@ class EfcConciliacionModel {
         $statements = [];
 
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_grupos','U') IS NULL CREATE TABLE dbo.efc_conc_grupos (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, fecha_operativa DATE NOT NULL, turno VARCHAR(20) NULL, concepto VARCHAR(20) NULL, tipo VARCHAR(30) NOT NULL, total_controlgas DECIMAL(18,2) NOT NULL, total_banorte DECIMAL(18,2) NOT NULL, diferencia DECIMAL(18,2) NOT NULL, estado VARCHAR(20) NOT NULL DEFAULT 'ACTIVA', creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), cancelado_por INT NULL, cancelado_en DATETIME NULL)";
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_faltantes_grupos','U') IS NULL CREATE TABLE dbo.efc_conc_faltantes_grupos(id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, color CHAR(7) NOT NULL, creado_por INT NULL, creado_en DATETIME2 NOT NULL DEFAULT SYSDATETIME(), activo BIT NOT NULL DEFAULT 1)";
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_faltantes_grupos_miembros','U') IS NULL CREATE TABLE dbo.efc_conc_faltantes_grupos_miembros(grupo_id INT NOT NULL, estacion_id INT NOT NULL, fecha_operativa DATE NOT NULL, turno VARCHAR(20) NOT NULL, concepto VARCHAR(20) NOT NULL, diferencia DECIMAL(18,2) NOT NULL, CONSTRAINT PK_efc_conc_faltantes_grupos_miembros PRIMARY KEY(estacion_id,fecha_operativa,turno,concepto), CONSTRAINT FK_efc_conc_faltantes_grupos_miembros_grupo FOREIGN KEY(grupo_id) REFERENCES dbo.efc_conc_faltantes_grupos(id))";
         // Company-wide USD deposits can cover one or several operational days.
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_usd_globales','U') IS NULL CREATE TABLE dbo.efc_conc_usd_globales (id INT IDENTITY PRIMARY KEY, fecha_operativa DATE NOT NULL, movimiento_bancario_id INT NOT NULL, estado VARCHAR(12) NOT NULL CONSTRAINT DF_efc_conc_usd_globales_estado DEFAULT 'ACTIVA', creado_por INT NULL, creado_en DATETIME NOT NULL CONSTRAINT DF_efc_conc_usd_globales_creado DEFAULT GETDATE(), liberado_por INT NULL, liberado_en DATETIME NULL)";
         $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.efc_conc_usd_globales') AND name='UX_efc_conc_usd_globales_movimiento_activo') CREATE UNIQUE INDEX UX_efc_conc_usd_globales_movimiento_activo ON dbo.efc_conc_usd_globales(movimiento_bancario_id) WHERE estado='ACTIVA'";
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_usd_globales_dias','U') IS NULL CREATE TABLE dbo.efc_conc_usd_globales_dias (id BIGINT IDENTITY PRIMARY KEY, asignacion_id INT NOT NULL, fecha_operativa DATE NOT NULL, creado_en DATETIME NOT NULL CONSTRAINT DF_efc_conc_usd_globales_dias_creado DEFAULT GETDATE(), CONSTRAINT FK_efc_conc_usd_globales_dias_asignacion FOREIGN KEY(asignacion_id) REFERENCES dbo.efc_conc_usd_globales(id))";
         $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.efc_conc_usd_globales_dias') AND name='UX_efc_conc_usd_globales_dias_asignacion_fecha') CREATE UNIQUE INDEX UX_efc_conc_usd_globales_dias_asignacion_fecha ON dbo.efc_conc_usd_globales_dias(asignacion_id,fecha_operativa)";
         $statements[] = "IF NOT EXISTS(SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.efc_conc_usd_globales_dias') AND name='IX_efc_conc_usd_globales_dias_fecha') CREATE INDEX IX_efc_conc_usd_globales_dias_fecha ON dbo.efc_conc_usd_globales_dias(fecha_operativa,asignacion_id)";
-        $statements[] = "IF OBJECT_ID('TG.dbo.efc_conc_diferencias_captura','U') IS NULL CREATE TABLE TG.dbo.efc_conc_diferencias_captura (estacion_id INT NOT NULL, fecha_operativa DATE NOT NULL, turno VARCHAR(20) NOT NULL, concepto VARCHAR(20) NOT NULL, capturado BIT NOT NULL DEFAULT 0, no_aplica BIT NOT NULL CONSTRAINT DF_efc_conc_dif_captura_no_aplica DEFAULT 0, requiere_actualizacion BIT NOT NULL DEFAULT 0, excluido_neteo BIT NOT NULL CONSTRAINT DF_efc_conc_dif_captura_excluido_neteo DEFAULT 0, creado_por INT NULL, creado_en DATETIME2 NULL, actualizado_por INT NULL, actualizado_en DATETIME2 NULL, CONSTRAINT PK_efc_conc_diferencias_captura PRIMARY KEY(estacion_id,fecha_operativa,turno,concepto))";
+        $statements[] = "IF OBJECT_ID('TG.dbo.efc_conc_diferencias_captura','U') IS NULL CREATE TABLE TG.dbo.efc_conc_diferencias_captura (estacion_id INT NOT NULL, fecha_operativa DATE NOT NULL, turno VARCHAR(20) NOT NULL, concepto VARCHAR(20) NOT NULL, capturado BIT NOT NULL DEFAULT 0, no_aplica BIT NOT NULL CONSTRAINT DF_efc_conc_dif_captura_no_aplica DEFAULT 0, requiere_actualizacion BIT NOT NULL DEFAULT 0, creado_por INT NULL, creado_en DATETIME2 NULL, actualizado_por INT NULL, actualizado_en DATETIME2 NULL, CONSTRAINT PK_efc_conc_diferencias_captura PRIMARY KEY(estacion_id,fecha_operativa,turno,concepto))";
         $statements[] = "IF NOT EXISTS(SELECT 1 FROM TG.sys.columns WHERE object_id=OBJECT_ID('TG.dbo.efc_conc_diferencias_captura') AND name='no_aplica') ALTER TABLE TG.dbo.efc_conc_diferencias_captura ADD no_aplica BIT NOT NULL CONSTRAINT DF_efc_conc_dif_captura_no_aplica DEFAULT 0 WITH VALUES";
-        $statements[] = "IF NOT EXISTS(SELECT 1 FROM TG.sys.columns WHERE object_id=OBJECT_ID('TG.dbo.efc_conc_diferencias_captura') AND name='excluido_neteo') ALTER TABLE TG.dbo.efc_conc_diferencias_captura ADD excluido_neteo BIT NOT NULL CONSTRAINT DF_efc_conc_dif_captura_excluido_neteo DEFAULT 0 WITH VALUES";
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_partidas','U') IS NULL CREATE TABLE dbo.efc_conc_partidas (id INT IDENTITY PRIMARY KEY, grupo_id INT NOT NULL, origen VARCHAR(12) NOT NULL, clave_externa VARCHAR(180) NOT NULL, movimiento_bancario_id INT NULL, fecha_operacion DATE NOT NULL, turno VARCHAR(20) NULL, concepto VARCHAR(20) NULL, importe DECIMAL(18,2) NOT NULL, referencia VARCHAR(255) NULL, estacion_id INT NULL, activo BIT NOT NULL DEFAULT 1, CONSTRAINT FK_efc_conc_partidas_grupo FOREIGN KEY(grupo_id) REFERENCES dbo.efc_conc_grupos(id))";
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_correcciones_banco','U') IS NULL CREATE TABLE dbo.efc_conc_correcciones_banco (id INT IDENTITY PRIMARY KEY, movimiento_bancario_id INT NOT NULL UNIQUE, estacion_id INT NOT NULL, creado_por INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE(), actualizado_por INT NULL, actualizado_en DATETIME NULL)";
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_bitacora','U') IS NULL CREATE TABLE dbo.efc_conc_bitacora (id INT IDENTITY PRIMARY KEY, grupo_id INT NULL, movimiento_bancario_id INT NULL, accion VARCHAR(40) NOT NULL, detalle NVARCHAR(MAX) NULL, usuario_id INT NULL, creado_en DATETIME NOT NULL DEFAULT GETDATE())";
@@ -616,9 +617,9 @@ class EfcConciliacionModel {
         foreach($controlGasRows as $source) { $date=$this->reportDate($source['Fecha']??null); if($date!==null) $reportDates[]=$date; }
         $captured=[];
         if($reportDates) {
-            $captureQuery=$this->db->prepare("SELECT fecha_operativa,turno,concepto,capturado,no_aplica,requiere_actualizacion,excluido_neteo FROM TG.dbo.efc_conc_diferencias_captura WHERE estacion_id=? AND fecha_operativa BETWEEN ? AND ?");
+            $captureQuery=$this->db->prepare("SELECT fecha_operativa,turno,concepto,capturado,no_aplica,requiere_actualizacion FROM TG.dbo.efc_conc_diferencias_captura WHERE estacion_id=? AND fecha_operativa BETWEEN ? AND ?");
             $captureQuery->execute([$stationId,min($reportDates),max($reportDates)]);
-            while($capture=$captureQuery->fetch(PDO::FETCH_ASSOC)) $captured[$this->reportTurnKey($this->dateValue($capture['fecha_operativa']),(string)$capture['turno'],(string)$capture['concepto'])]=['capturado'=>(bool)$capture['capturado'],'no_aplica'=>(bool)$capture['no_aplica'],'requiere_actualizacion'=>(bool)$capture['requiere_actualizacion'],'excluido_neteo'=>(bool)$capture['excluido_neteo']];
+            while($capture=$captureQuery->fetch(PDO::FETCH_ASSOC)) $captured[$this->reportTurnKey($this->dateValue($capture['fecha_operativa']),(string)$capture['turno'],(string)$capture['concepto'])]=['capturado'=>(bool)$capture['capturado'],'no_aplica'=>(bool)$capture['no_aplica'],'requiere_actualizacion'=>(bool)$capture['requiere_actualizacion']];
         }
         $out=[]; $seen=[];
         foreach ($controlGasRows as $source) {
@@ -645,7 +646,7 @@ class EfcConciliacionModel {
                 $isCaptured=$captured[$turnKey]['capturado']??false; $noAplica=$captured[$turnKey]['no_aplica']??false;
                 $out[]=[
                     'fecha'=>$date, 'estacion_id'=>$stationId, 'estacion_nombre'=>(string)($link['estacion_nombre'] ?? $stationName), 'turno'=>$turn, 'concepto'=>$currency,
-                    'capturado'=>$isCaptured, 'no_aplica'=>$noAplica, 'estado_captura'=>$noAplica?'NO_APLICA':($isCaptured?'CAPTURADO':'NO_CAPTURADO'), 'requiere_actualizacion'=>$isCaptured&&!$noAplica?($captured[$turnKey]['requiere_actualizacion']??false):false, 'excluido_neteo'=>$captured[$turnKey]['excluido_neteo']??false,
+                    'capturado'=>$isCaptured, 'no_aplica'=>$noAplica, 'estado_captura'=>$noAplica?'NO_APLICA':($isCaptured?'CAPTURADO':'NO_CAPTURADO'), 'requiere_actualizacion'=>$isCaptured&&!$noAplica?($captured[$turnKey]['requiere_actualizacion']??false):false,
                     'total_controlgas'=>round($amount,2), 'regio_declarado'=>(float)($link['dice_contener_mn'] ?? 0), 'regio_declarado_usd'=>(float)($link['dice_contener_usd']??0), 'regio_real'=>(float)($link['real_mn'] ?? 0),
                     'regio_usd'=>(float)($link['real_usd'] ?? 0), 'regio_usd_mxn'=>round($usdMxn,2), 'regio_real_comparable'=>$regio===null?null:round($regio,2), 'comparacion_regio_disponible'=>$comparisonAvailable, 'tipo_cambio_historico'=>$link['tipo_cambio_historico']??null,
                     'total_banorte'=>round($bank,2), 'referencia'=>implode(', ', array_values(array_unique($references))),
@@ -656,7 +657,18 @@ class EfcConciliacionModel {
             }
         }
         usort($out, static fn(array $a,array $b): int => [$a['fecha'],$a['turno'],$a['concepto']] <=> [$b['fecha'],$b['turno'],$b['concepto']]);
+        $groupQuery=$this->db->prepare("SELECT M.fecha_operativa,M.turno,M.concepto,G.id,G.color FROM dbo.efc_conc_faltantes_grupos_miembros M JOIN dbo.efc_conc_faltantes_grupos G ON G.id=M.grupo_id AND G.activo=1 WHERE M.estacion_id=? AND M.fecha_operativa BETWEEN ? AND ?");
+        if($reportDates){$groupQuery->execute([$stationId,min($reportDates),max($reportDates)]);$memberGroups=[];while($gm=$groupQuery->fetch(PDO::FETCH_ASSOC))$memberGroups[$this->reportTurnKey($this->dateValue($gm['fecha_operativa']),(string)$gm['turno'],(string)$gm['concepto'])]=['id'=>(int)$gm['id'],'color'=>$gm['color']];foreach($out as &$row){$g=$memberGroups[$this->reportTurnKey($row['fecha'],$row['turno'],$row['concepto'])]??null;$row['grupo_faltantes_id']=$g['id']??null;$row['grupo_faltantes_color']=$g['color']??null;}unset($row);}
         return $out;
+    }
+
+    /** Crea un grupo persistente para diferencias verificadas por el controlador. */
+    public function groupReportDifferences(int $stationId,array $rows,string $color,int $userId): int {
+        if($stationId<1||count($rows)<2||!preg_match('/^#[0-9A-Fa-f]{6}$/',$color))throw new RuntimeException('Grupo inválido.');
+        $this->db->beginTransaction();
+        try{$check=$this->db->prepare("SELECT 1 FROM dbo.efc_conc_faltantes_grupos_miembros WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?");foreach($rows as $r){$check->execute([$stationId,$r['fecha'],$r['turno'],$r['concepto']]);if($check->fetchColumn()!==false)throw new RuntimeException('Una diferencia ya pertenece a otro grupo.');}
+            $ins=$this->db->prepare("INSERT dbo.efc_conc_faltantes_grupos(estacion_id,color,creado_por) OUTPUT INSERTED.id VALUES(?,?,?)");$ins->execute([$stationId,strtoupper($color),$userId?:null]);$id=(int)$ins->fetchColumn();$member=$this->db->prepare("INSERT dbo.efc_conc_faltantes_grupos_miembros(grupo_id,estacion_id,fecha_operativa,turno,concepto,diferencia) VALUES(?,?,?,?,?,?)");foreach($rows as $r)$member->execute([$id,$stationId,$r['fecha'],$r['turno'],$r['concepto'],$r['diferencia']]);$this->db->commit();return $id;
+        }catch(Throwable $e){if($this->db->inTransaction())$this->db->rollBack();throw $e;}
     }
 
     /** Guarda el estado F8 de una diferencia, serializando altas concurrentes por clave. */
@@ -670,26 +682,6 @@ class EfcConciliacionModel {
             $find->execute([$stationId,$date,$turn,$concept]);
             if($find->fetchColumn()!==false) $this->db->prepare("UPDATE TG.dbo.efc_conc_diferencias_captura SET capturado=?,no_aplica=?,requiere_actualizacion=0,actualizado_por=?,actualizado_en=SYSDATETIME() WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?")->execute([$captured?1:0,$noAplica?1:0,$userId?:null,$stationId,$date,$turn,$concept]);
             else $this->db->prepare("INSERT TG.dbo.efc_conc_diferencias_captura(estacion_id,fecha_operativa,turno,concepto,capturado,no_aplica,creado_por,creado_en) VALUES(?,?,?,?,?,?,?,SYSDATETIME())")->execute([$stationId,$date,$turn,$concept,$captured?1:0,$noAplica?1:0,$userId?:null]);
-            $this->db->commit();
-        } catch(Throwable $e) { if($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
-    }
-
-    /** Persiste únicamente la decisión de exclusión del neteo, sin alterar F8. */
-    public function setDifferenceNeteoExcluded(int $stationId,string $date,string $turn,string $concept,bool $excluded): void {
-        if(!$stationId || !preg_match('/^\d{4}-\d{2}-\d{2}$/',$date) || !in_array($concept,['MN','MORRALLA','USD'],true) || trim($turn)==='' || strlen($turn)>20) throw new RuntimeException('Clave de diferencia inválida.');
-        $parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date);
-        if(!$parsed || $parsed->format('Y-m-d')!==$date) throw new RuntimeException('Fecha operativa inválida.');
-        $this->db->beginTransaction();
-        try {
-            $find=$this->db->prepare("SELECT 1 FROM TG.dbo.efc_conc_diferencias_captura WITH (UPDLOCK,HOLDLOCK) WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?");
-            $find->execute([$stationId,$date,$turn,$concept]);
-            if($find->fetchColumn()!==false) {
-                $this->db->prepare("UPDATE TG.dbo.efc_conc_diferencias_captura SET excluido_neteo=? WHERE estacion_id=? AND fecha_operativa=? AND turno=? AND concepto=?")->execute([$excluded?1:0,$stationId,$date,$turn,$concept]);
-            } else {
-                // Algunas instalaciones no tienen DEFAULT para capturado.
-                // Inicializar el estado F8 explícitamente al crear solo el neteo.
-                $this->db->prepare("INSERT TG.dbo.efc_conc_diferencias_captura(estacion_id,fecha_operativa,turno,concepto,capturado,no_aplica,requiere_actualizacion,excluido_neteo,creado_en) VALUES(?,?,?,?,0,0,0,?,SYSDATETIME())")->execute([$stationId,$date,$turn,$concept,$excluded?1:0]);
-            }
             $this->db->commit();
         } catch(Throwable $e) { if($this->db->inTransaction()) $this->db->rollBack(); throw $e; }
     }

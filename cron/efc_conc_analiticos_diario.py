@@ -531,34 +531,69 @@ def remove_import_papers(cursor: pyodbc.Cursor, import_id: int) -> None:
 
 
 def partition_new_papers(cursor: pyodbc.Cursor, papers: list[tuple]) -> tuple[list[tuple], list[tuple]]:
-    """Separa por REM NUM: una papeleta sólo puede existir una vez en TG."""
-    keys = {paper[11] for paper in papers}
-    key_list = list(keys)
-    existing: set[str] = set()
-    for chunk_start in range(0, len(key_list), 1000):
-        chunk = key_list[chunk_start:chunk_start + 1000]
-        placeholders = ",".join("?" for _ in chunk)
-        existing.update(str(row[0]) for row in cursor.execute(f"SELECT remesa_clave FROM dbo.efc_conc_analiticos_papeletas WHERE remesa_clave IN ({placeholders})", *chunk))
+    """Asigna sufijos a repeticiones del archivo y rechaza claves preexistentes."""
     grouped: dict[str, list[tuple]] = {}
     for paper in papers:
         raw = json.loads(paper[-1])
         group_id = raw.get("grupo_division") if isinstance(raw, dict) else None
         grouped.setdefault(f"DIV:{group_id}" if group_id else f"ROW:{len(grouped)}", []).append(paper)
 
-    new_papers, duplicate_errors, seen = [], [], set()
+    bases = {str(group[0][11]) for group in grouped.values()}
+    existing_by_base: dict[str, set[str]] = {base: set() for base in bases}
+    # Load generated suffixes too, so a new duplicate cannot collide with a
+    # suffix assigned by an earlier import.
+    for base in bases:
+        rows = cursor.execute(
+            "SELECT remesa_clave FROM dbo.efc_conc_analiticos_papeletas WHERE remesa_clave=? OR remesa_clave LIKE ?",
+            base, f"{base}-%",
+        )
+        existing_by_base[base] = {str(row[0]) for row in rows}
+
+    new_papers, duplicate_errors = [], []
+    used_by_base = {base: set(keys) for base, keys in existing_by_base.items()}
     for group in grouped.values():
-        conflicts = {
-            paper[11]: ("se repite dentro del mismo archivo" if paper[11] in seen else "ya existe en Analíticos")
-            for paper in group
-            if paper[11] in seen or paper[11] in existing
-        }
-        if conflicts:
-            details = ", ".join(f"{key} {reason}" for key, reason in conflicts.items())
+        base = str(group[0][11])
+        raw = json.loads(group[0][-1])
+        is_split = isinstance(raw, dict) and bool(raw.get("grupo_division"))
+        # Any preexisting key in this remittance family means this number was
+        # already imported. Reject the incoming group instead of using a new
+        # suffix to bypass the cross-file duplicate check.
+        if existing_by_base[base]:
+            details = f"{base} ya existe en Analíticos"
             for paper in group:
                 duplicate_errors.append((paper[0], "REMESA_DUPLICADA", f"REM NUM {paper[11]} se omitió junto con su papeleta dividida ({details}).", paper[-1]))
+            continue
+
+        used = used_by_base[base]
+        if is_split:
+            # Keep the MN/USD pair adjacent and atomic. The first group uses
+            # base/-1; further groups use the next free consecutive suffixes.
+            if base not in used and f"{base}-1" not in used:
+                assigned = [base, f"{base}-1"]
+            else:
+                suffix = 2
+                while f"{base}-{suffix}" in used or f"{base}-{suffix + 1}" in used:
+                    suffix += 1
+                assigned = [f"{base}-{suffix}", f"{base}-{suffix + 1}"]
+            for paper, key in zip(group, assigned):
+                values = list(paper)
+                values[10] = key
+                values[11] = key
+                new_papers.append(tuple(values))
+                used.add(key)
         else:
-            new_papers.extend(group)
-        seen.update(paper[11] for paper in group)
+            if base not in used:
+                assigned = base
+            else:
+                suffix = 1
+                while f"{base}-{suffix}" in used:
+                    suffix += 1
+                assigned = f"{base}-{suffix}"
+            values = list(group[0])
+            values[10] = assigned
+            values[11] = assigned
+            new_papers.append(tuple(values))
+            used.add(assigned)
     return new_papers, duplicate_errors
 
 
