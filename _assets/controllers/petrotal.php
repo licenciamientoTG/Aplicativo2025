@@ -248,7 +248,101 @@ class Petrotal {
             ];
         }
         $apiDisponible = $this->petrotalFielModel->api_disponible();
-        echo $this->twig->render($this->route . 'configuracion_fiel.html', compact('configActual', 'apiDisponible'));
+        // Envíos con JSON generado, para las pruebas contra la CNE.
+        $enviosPrueba = [];
+        foreach ($this->petrotalObligacionModel->listar_envios() as $e) {
+            if (empty($e['RutaJson'])) continue;
+            $enviosPrueba[] = [
+                'id' => $e['Id'],
+                'periodo' => substr((string) $e['PeriodoDesde'], 0, 10) . ' al ' . substr((string) $e['PeriodoHasta'], 0, 10),
+                'estado' => $e['Estado'],
+            ];
+        }
+        echo $this->twig->render($this->route . 'configuracion_fiel.html', compact('configActual', 'apiDisponible', 'enviosPrueba'));
+    }
+
+    // Pruebas manuales contra la API de la CNE desde Configuración FIEL.
+    // Acciones: fiel (local), catalogo, estado, cadena (solo QA), presentar (solo QA).
+    // No modifica envíos ni historial: devuelve la respuesta cruda para depurar.
+    public function probar_api() {
+        header('Content-Type: application/json');
+        if (!authorized(99)) {
+            json_output(['error' => 'No autorizado']);
+            return;
+        }
+        $accion = $_POST['accion'] ?? '';
+        $cfg = $this->petrotalFielModel->obtener_config();
+        if (!$cfg) {
+            json_output(['error' => 'Primero guarda la FIEL.']);
+            return;
+        }
+
+        if ($accion === 'fiel') {
+            json_output(['accion' => $accion, 'diagnostico' => PetrotalCneClient::diagnosticar_fiel($cfg['ruta_cer'], $cfg['ruta_key'], $cfg['password'])]);
+            return;
+        }
+
+        if (empty($cfg['api_key'])) {
+            json_output(['error' => 'Guarda la ApiKey primero (paso 2).']);
+            return;
+        }
+        $ambiente = $cfg['ambiente'] ?: 'qa';
+        $soloQa = in_array($accion, ['cadena', 'presentar'], true);
+        if ($soloQa && $ambiente !== 'qa') {
+            json_output(['error' => 'Esta prueba solo se permite con el ambiente en QA.']);
+            return;
+        }
+
+        if ($accion === 'catalogo') {
+            $r = PetrotalCneClient::llamar_api($ambiente, $cfg['api_key'], 'GET', '/catalogos/obligaciones');
+            json_output(['accion' => $accion, 'ambiente' => $ambiente, 'respuesta' => $r]);
+            return;
+        }
+
+        if ($accion === 'estado') {
+            $sid = trim($_POST['solicitud_id'] ?? '');
+            if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $sid)) {
+                json_output(['error' => 'El solicitudId debe ser un GUID.']);
+                return;
+            }
+            $r = PetrotalCneClient::llamar_api($ambiente, $cfg['api_key'], 'GET', '/api/reportes/ConsultarEstadoReporte/' . $sid);
+            json_output(['accion' => $accion, 'ambiente' => $ambiente, 'respuesta' => $r]);
+            return;
+        }
+
+        if ($soloQa) {
+            if (empty($cfg['obligacion_id'])) {
+                json_output(['error' => 'Guarda el ID de obligación primero (paso 2).']);
+                return;
+            }
+            $envio = $this->petrotalObligacionModel->obtener_envio((int) ($_POST['envio_id'] ?? 0));
+            if (!$envio || empty($envio['RutaJson']) || !is_readable($envio['RutaJson'])) {
+                json_output(['error' => 'Elige un envío con JSON generado.']);
+                return;
+            }
+            $desde = substr((string) $envio['PeriodoDesde'], 0, 10);
+            $hasta = substr((string) $envio['PeriodoHasta'], 0, 10);
+            $obligacion = (int) $cfg['obligacion_id'];
+
+            if ($accion === 'presentar') {
+                // Envía de verdad a QA (no toca el historial). Solo ambiente de pruebas.
+                $r = PetrotalCneClient::presentar_reporte($ambiente, $cfg['api_key'], $obligacion, $envio['RutaJson'], $cfg['ruta_cer'], $cfg['ruta_key'], $cfg['password'], self::NUMERO_PERMISO_PETROTAL, $desde, $hasta);
+                json_output(['accion' => $accion, 'ambiente' => $ambiente, 'resultado' => $r]);
+                return;
+            }
+
+            if ($accion === 'cadena') {
+                $nuestra = PetrotalCneClient::cadena_original($obligacion, 1, $envio['RutaJson'], $desde, $hasta, self::NUMERO_PERMISO_PETROTAL);
+                $campos = PetrotalCneClient::campos_reporte($obligacion, 1, $envio['RutaJson'], $cfg['ruta_cer'], self::NUMERO_PERMISO_PETROTAL, $desde, $hasta);
+                $r = PetrotalCneClient::llamar_api($ambiente, $cfg['api_key'], 'POST', '/pruebas/ObtenerCadenaOriginal', $campos);
+                $cuerpo = is_string($r['json'] ?? null) ? $r['json'] : (string) ($r['body'] ?? '');
+                $coincide = $cuerpo !== '' && (strpos($cuerpo, $nuestra) !== false || strpos(stripcslashes($cuerpo), $nuestra) !== false);
+                json_output(['accion' => $accion, 'ambiente' => $ambiente, 'nuestra_cadena' => $nuestra, 'coincide' => $coincide, 'respuesta' => $r]);
+                return;
+            }
+        }
+
+        json_output(['error' => 'Acción desconocida.']);
     }
 
     public function guardar_api() {

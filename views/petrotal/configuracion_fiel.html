@@ -1,77 +1,410 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Configuración FIEL Petrotal{% endblock %}
-{% block mycss %}{% endblock %}
+{% block mycss %}
+<style>
+  .cfg-step { width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; flex: 0 0 34px; }
+  .cfg-step.ok { background: #d1f2e0; color: #0a6b3d; }
+  .cfg-step.pend { background: #e9ecef; color: #6c757d; }
+  .cfg-step.warn { background: #fff3cd; color: #8a6d00; }
+  .cfg-card { border: 1px solid #e3e6ea; border-radius: .6rem; }
+  .cfg-card .card-header { background: transparent; border-bottom: 1px solid #eef0f2; padding: 1rem 1.25rem; }
+  .cfg-drop { border: 2px dashed #ced4da; border-radius: .5rem; padding: 1rem; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; background: #fafbfc; height: 100%; }
+  .cfg-drop:hover, .cfg-drop.has-file { border-color: #009559; background: #f3fbf7; }
+  .cfg-drop i { font-size: 1.6rem; color: #6c757d; }
+  .cfg-drop.has-file i { color: #009559; }
+  .cfg-drop input[type=file] { display: none; }
+  .cfg-drop .cfg-name { display: block; font-size: .85rem; color: #6c757d; word-break: break-all; margin-top: .35rem; }
+  .cfg-drop.has-file .cfg-name { color: #0a6b3d; font-weight: 500; }
+  .cfg-side dt { font-weight: 500; color: #6c757d; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; }
+  .cfg-side dd { margin-bottom: .9rem; }
+</style>
+{% endblock %}
 {% block menutitle %}Configuración FIEL Petrotal{% endblock %}
 {% block content %}
+{% set tieneFiel = configActual is not empty %}
+{% set tieneApi = configActual and configActual.tiene_api_key %}
 <div class="container-fluid p-0">
-  <h1 class="h3 mb-3">Configuración FIEL Petrotal</h1>
+  <p class="text-muted mb-3">Credenciales para firmar y presentar el reporte de volumétricos ante la CNE.</p>
 
-  <div class="card">
-    <div class="card-body">
-      {% if configActual %}
-      <div class="alert alert-info">
-        Ya existe una FIEL configurada (ruta: {{ configActual.ruta_cer }}). Al subir una nueva, se reemplaza.
+  <div class="row g-3">
+    <div class="col-lg-6">
+
+      {# ---------- Paso 1: FIEL ---------- #}
+      <div class="card cfg-card h-100">
+        <div class="card-header d-flex align-items-center gap-3">
+          <span class="cfg-step {{ tieneFiel ? 'ok' : 'pend' }}">{% if tieneFiel %}<i class="fa-solid fa-check"></i>{% else %}1{% endif %}</span>
+          <div class="flex-grow-1">
+            <h2 class="h5 mb-0">e.firma (FIEL)</h2>
+            <small class="text-muted">Certificado, llave privada y contraseña</small>
+          </div>
+          {% if tieneFiel %}
+          <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Configurada</span>
+          {% else %}
+          <span class="badge bg-secondary-subtle text-secondary-emphasis border">Pendiente</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          {% if tieneFiel %}
+          <div class="alert alert-warning py-2 small mb-3">
+            <i class="fa-solid fa-triangle-exclamation me-1"></i>
+            Ya hay una FIEL guardada. Si subes una nueva, <b>reemplaza</b> a la actual (la ApiKey configurada se conserva).
+          </div>
+          {% endif %}
+
+          <form id="form_fiel" action="{{ url('petrotal.guardar_fiel') }}" method="POST" enctype="multipart/form-data">
+            <div class="row g-3 mb-3">
+              <div class="col-md-6">
+                <label class="cfg-drop d-block">
+                  <i class="fa-solid fa-certificate"></i>
+                  <div class="fw-semibold mt-1">Certificado <code>.cer</code></div>
+                  <span class="cfg-name">Haz clic para seleccionar</span>
+                  <input type="file" name="cerFile" accept=".cer" required>
+                </label>
+              </div>
+              <div class="col-md-6">
+                <label class="cfg-drop d-block">
+                  <i class="fa-solid fa-key"></i>
+                  <div class="fw-semibold mt-1">Llave privada <code>.key</code></div>
+                  <span class="cfg-name">Haz clic para seleccionar</span>
+                  <input type="file" name="keyFile" accept=".key" required>
+                </label>
+              </div>
+            </div>
+
+            <div class="mb-3" style="max-width: 420px;">
+              <label class="form-label" for="fiel_password">Contraseña de la llave privada</label>
+              <div class="input-group">
+                <input type="password" id="fiel_password" name="password" class="form-control" autocomplete="new-password" required>
+                <button type="button" class="btn btn-outline-secondary btn-toggle-pass" data-target="#fiel_password" title="Mostrar u ocultar">
+                  <i class="fa-regular fa-eye"></i>
+                </button>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">
+              <i class="fa-solid fa-floppy-disk me-1"></i> {{ tieneFiel ? 'Reemplazar FIEL' : 'Guardar FIEL' }}
+            </button>
+          </form>
+        </div>
+        <div class="card-footer bg-transparent small d-flex flex-wrap gap-x-3 gap-2 align-items-center text-muted">
+          <span class="fw-semibold text-uppercase" style="font-size:.7rem;letter-spacing:.04em;">Estado</span>
+          <span title="FIEL">{% if tieneFiel %}<i class="fa-solid fa-circle-check text-success"></i>{% else %}<i class="fa-regular fa-circle"></i>{% endif %} FIEL</span>
+          <span title="ApiKey">{% if tieneApi %}<i class="fa-solid fa-circle-check text-success"></i>{% else %}<i class="fa-regular fa-circle"></i>{% endif %} ApiKey</span>
+          {% if tieneApi %}
+          <span class="badge {{ configActual.ambiente == 'prod' ? 'bg-danger' : (configActual.ambiente == 'pre' ? 'bg-warning text-dark' : 'bg-info text-dark') }}">{{ (configActual.ambiente ?: 'qa')|upper }}</span>
+          <span>Obligación <b>{{ configActual.obligacion_id }}</b></span>
+          <span class="ms-auto">ApiReportes</span>
+          {% else %}
+          <span class="ms-auto">api-masivos (anterior)</span>
+          {% endif %}
+        </div>
       </div>
-      {% endif %}
-
-      <form action="{{ url('petrotal.guardar_fiel') }}" method="POST" enctype="multipart/form-data">
-        <div class="mb-3">
-          <label class="form-label">Archivo .cer</label>
-          <input type="file" name="cerFile" class="form-control" accept=".cer" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Archivo .key</label>
-          <input type="file" name="keyFile" class="form-control" accept=".key" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Password de la llave privada</label>
-          <input type="password" name="password" class="form-control" required>
-        </div>
-        <button type="submit" class="btn btn-primary">Guardar</button>
-      </form>
     </div>
-  </div>
 
-  <div class="card mt-3">
-    <div class="card-body">
-      <h2 class="h5">ApiReportes (CNE)</h2>
-      {% if not apiDisponible %}
-      <div class="alert alert-warning">Falta ejecutar <code>docs/sql/2026-11-08_petrotal_apireportes.sql</code> en TG para habilitar esta sección.</div>
-      {% elseif not configActual %}
-      <div class="alert alert-secondary">Primero sube la FIEL arriba.</div>
-      {% else %}
-      {% if configActual.tiene_api_key %}
-      <div class="alert alert-info">
-        ApiKey configurada · ambiente <b>{{ configActual.ambiente|upper }}</b> · obligación <b>{{ configActual.obligacion_id }}</b>.
-        Los envíos usan ApiReportes. Al guardar de nuevo se reemplaza.
+    {# ---------- Paso 2: ApiReportes ---------- #}
+    <div class="col-lg-6">
+      <div class="card cfg-card h-100">
+        <div class="card-header d-flex align-items-center gap-3">
+          <span class="cfg-step {{ tieneApi ? 'ok' : (tieneFiel and apiDisponible ? 'warn' : 'pend') }}">{% if tieneApi %}<i class="fa-solid fa-check"></i>{% else %}2{% endif %}</span>
+          <div class="flex-grow-1">
+            <h2 class="h5 mb-0">ApiReportes (CNE)</h2>
+            <small class="text-muted">ApiKey, ambiente y obligación</small>
+          </div>
+          {% if tieneApi %}
+          <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Configurada</span>
+          {% else %}
+          <span class="badge bg-secondary-subtle text-secondary-emphasis border">Pendiente</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          {% if not apiDisponible %}
+          <div class="alert alert-warning mb-0">
+            <i class="fa-solid fa-database me-1"></i>
+            Falta ejecutar <code>docs/sql/2026-11-08_petrotal_apireportes.sql</code> en TG para habilitar esta sección.
+          </div>
+          {% elseif not tieneFiel %}
+          <div class="alert alert-secondary mb-0">
+            <i class="fa-solid fa-lock me-1"></i> Primero guarda la FIEL en el paso 1.
+          </div>
+          {% else %}
+          {% if tieneApi %}
+          <div class="alert alert-info py-2 small mb-3">
+            <i class="fa-solid fa-circle-info me-1"></i>
+            Ya hay una ApiKey guardada (ambiente <b>{{ configActual.ambiente|upper }}</b>, obligación <b>{{ configActual.obligacion_id }}</b>).
+            Por seguridad no se muestra; al guardar de nuevo se reemplaza.
+          </div>
+          {% endif %}
+
+          <form id="form_api" action="{{ url('petrotal.guardar_api') }}" method="POST" autocomplete="off">
+            <div class="mb-3">
+              <label class="form-label" for="api_key">ApiKey <small class="text-muted">(se tramita en la OPE)</small></label>
+              <div class="input-group">
+                <input type="password" id="api_key" name="api_key" class="form-control font-monospace" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="new-password" required>
+                <button type="button" class="btn btn-outline-secondary btn-toggle-pass" data-target="#api_key" title="Mostrar u ocultar">
+                  <i class="fa-regular fa-eye"></i>
+                </button>
+              </div>
+            </div>
+            <div class="row g-3 mb-3">
+              <div class="col-md-5">
+                <label class="form-label" for="ambiente">Ambiente</label>
+                <select id="ambiente" name="ambiente" class="form-select">
+                  <option value="qa" {{ configActual.ambiente == 'qa' or not configActual.ambiente ? 'selected' : '' }}>QA (pruebas)</option>
+                  <option value="pre" {{ configActual.ambiente == 'pre' ? 'selected' : '' }}>Pre-productivo</option>
+                  <option value="prod" {{ configActual.ambiente == 'prod' ? 'selected' : '' }}>Productivo</option>
+                </select>
+                <div id="aviso_prod" class="form-text text-danger" style="display:none;">
+                  <i class="fa-solid fa-triangle-exclamation"></i> Los envíos serán reales ante la CNE.
+                </div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="obligacion_id">ID de obligación</label>
+                <input type="number" min="1" id="obligacion_id" name="obligacion_id" class="form-control" value="{{ configActual.obligacion_id }}" required>
+              </div>
+              <div class="col-12">
+                <div class="form-text">Se obtiene de <code>GET /catalogos/obligaciones</code>. Confirmar con la CNE cuál aplica al reporte semanal.</div>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary">
+              <i class="fa-solid fa-floppy-disk me-1"></i> Guardar ApiReportes
+            </button>
+          </form>
+          {% endif %}
+        </div>
       </div>
-      {% endif %}
-      <form action="{{ url('petrotal.guardar_api') }}" method="POST" autocomplete="off">
-        <div class="mb-3">
-          <label class="form-label">ApiKey (se tramita en la OPE)</label>
-          <input type="password" name="api_key" class="form-control" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required>
-        </div>
-        <div class="row g-2 mb-3">
-          <div class="col-md-4">
-            <label class="form-label">Ambiente</label>
-            <select name="ambiente" class="form-select">
-              <option value="qa" {{ configActual.ambiente == 'qa' or not configActual.ambiente ? 'selected' : '' }}>QA (pruebas)</option>
-              <option value="pre" {{ configActual.ambiente == 'pre' ? 'selected' : '' }}>Pre-productivo</option>
-              <option value="prod" {{ configActual.ambiente == 'prod' ? 'selected' : '' }}>Productivo</option>
-            </select>
+    </div>
+
+    {# ---------- Pruebas (ancho completo) ---------- #}
+    <div class="col-12">
+      {% if tieneFiel %}
+      <div class="card cfg-card">
+        <div class="card-header d-flex align-items-center gap-3">
+          <span class="cfg-step pend"><i class="fa-solid fa-flask"></i></span>
+          <div class="flex-grow-1">
+            <h2 class="h5 mb-0">Pruebas de conexión con la CNE</h2>
+            <small class="text-muted">Para depurar contra QA sin tocar el historial de envíos</small>
           </div>
-          <div class="col-md-4">
-            <label class="form-label">ID de obligación</label>
-            <input type="number" min="1" name="obligacion_id" class="form-control" value="{{ configActual.obligacion_id }}" required>
-            <div class="form-text">De <code>GET /catalogos/obligaciones</code>. Confirmar con la CNE cuál aplica al reporte semanal.</div>
+          {% if tieneApi %}
+          <span class="badge {{ configActual.ambiente == 'prod' ? 'bg-danger' : (configActual.ambiente == 'pre' ? 'bg-warning text-dark' : 'bg-info text-dark') }}">{{ (configActual.ambiente ?: 'qa')|upper }}</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="border rounded p-3 h-100">
+                <div class="fw-semibold mb-1"><i class="fa-solid fa-id-card me-1"></i> Validar e.firma</div>
+                <p class="small text-muted mb-2">Revisa en el servidor: titular, vigencia, password y que el .cer y .key sean pareja. No llama a la CNE.</p>
+                <button type="button" class="btn btn-sm btn-outline-primary btn-prueba" data-accion="fiel">Validar</button>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="border rounded p-3 h-100">
+                <div class="fw-semibold mb-1"><i class="fa-solid fa-list me-1"></i> Catálogo de obligaciones</div>
+                <p class="small text-muted mb-2"><code>GET /catalogos/obligaciones</code>. Confirma que la ApiKey funciona y muestra los IDs disponibles.</p>
+                <button type="button" class="btn btn-sm btn-outline-primary btn-prueba" data-accion="catalogo" {{ tieneApi ? '' : 'disabled' }}>Consultar</button>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="border rounded p-3 h-100">
+                <div class="fw-semibold mb-1"><i class="fa-solid fa-magnifying-glass me-1"></i> Estado de un reporte</div>
+                <p class="small text-muted mb-2"><code>GET /api/reportes/ConsultarEstadoReporte/{id}</code></p>
+                <div class="input-group input-group-sm">
+                  <input type="text" id="prueba_solicitud" class="form-control font-monospace" placeholder="solicitudId (GUID)">
+                  <button type="button" class="btn btn-outline-primary btn-prueba" data-accion="estado" {{ tieneApi ? '' : 'disabled' }}>Consultar</button>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="border rounded p-3 h-100">
+                <div class="fw-semibold mb-1"><i class="fa-solid fa-file-signature me-1"></i> Probar con un JSON generado</div>
+                {% if enviosPrueba %}
+                <select id="prueba_envio" class="form-select form-select-sm mb-2">
+                  {% for e in enviosPrueba %}
+                  <option value="{{ e.id }}">#{{ e.id }} · {{ e.periodo }} · {{ e.estado }}</option>
+                  {% endfor %}
+                </select>
+                <div class="d-flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-primary btn-prueba" data-accion="cadena" data-solo-qa="1" {{ tieneApi and configActual.obligacion_id ? '' : 'disabled' }} title="Compara nuestra cadena original con la que arma la CNE">Comparar cadena original</button>
+                  <button type="button" class="btn btn-sm btn-outline-danger btn-prueba" data-accion="presentar" data-solo-qa="1" data-confirmar="Se enviará este JSON al ambiente QA de la CNE (no queda en el historial). ¿Continuar?" {{ tieneApi and configActual.obligacion_id ? '' : 'disabled' }}>Enviar a QA</button>
+                </div>
+                {% else %}
+                <p class="small text-muted mb-0">Aún no hay JSON generados. Genera uno en Reporte CNE / Volumétricos.</p>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <div id="prueba_resultado" class="mt-3" style="display:none;">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <strong class="small text-uppercase text-muted">Resultado</strong>
+              <span id="prueba_meta" class="small text-muted"></span>
+            </div>
+            <div id="prueba_resumen"></div>
+            <pre id="prueba_raw" class="bg-light border rounded p-3 small mb-0" style="max-height: 360px; overflow: auto; white-space: pre-wrap; word-break: break-all;"></pre>
           </div>
         </div>
-        <button type="submit" class="btn btn-primary">Guardar ApiReportes</button>
-      </form>
+      </div>
       {% endif %}
     </div>
   </div>
 </div>
 {% endblock %}
 
-{% block myjs %}{% endblock %}
+{% block myjs %}
+<script>
+  // Muestra el nombre del archivo elegido en cada zona de carga
+  document.querySelectorAll('.cfg-drop input[type=file]').forEach(function (inp) {
+    inp.addEventListener('change', function () {
+      var box = inp.closest('.cfg-drop');
+      var name = box.querySelector('.cfg-name');
+      if (inp.files.length) {
+        name.textContent = inp.files[0].name;
+        box.classList.add('has-file');
+      } else {
+        name.textContent = 'Haz clic para seleccionar';
+        box.classList.remove('has-file');
+      }
+    });
+  });
+
+  // Mostrar / ocultar contraseñas
+  document.querySelectorAll('.btn-toggle-pass').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var input = document.querySelector(btn.dataset.target);
+      var show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.querySelector('i').className = show ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye';
+    });
+  });
+
+  // Aviso al elegir ambiente productivo
+  var amb = document.getElementById('ambiente');
+  if (amb) {
+    var aviso = document.getElementById('aviso_prod');
+    var toggle = function () { aviso.style.display = amb.value === 'prod' ? 'block' : 'none'; };
+    amb.addEventListener('change', toggle);
+    toggle();
+  }
+
+  // ---------- Pruebas contra la CNE ----------
+  (function () {
+    var panel = document.getElementById('prueba_resultado');
+    if (!panel) return;
+    var urlPrueba = "{{ url('petrotal.probar_api') }}";
+    var esc = function (s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
+    var alerta = function (clase, html) { return '<div class="alert alert-' + clase + ' py-2 small mb-2">' + html + '</div>'; };
+
+    function listaDe(json) {
+      if (Array.isArray(json)) return json;
+      if (json && typeof json === 'object') {
+        for (var k in json) { if (Array.isArray(json[k])) return json[k]; }
+      }
+      return null;
+    }
+
+    function tablaCatalogo(items) {
+      if (!items.length || typeof items[0] !== 'object') return '';
+      var cols = Object.keys(items[0]);
+      var idCol = cols.find(function (c) { return /^(id|obligacionid)$/i.test(c); }) || cols.find(function (c) { return /id/i.test(c); });
+      var h = '<div class="table-responsive mb-2"><table class="table table-sm table-bordered mb-0"><thead><tr>';
+      cols.forEach(function (c) { h += '<th>' + esc(c) + '</th>'; });
+      h += idCol ? '<th></th>' : '';
+      h += '</tr></thead><tbody>';
+      items.forEach(function (it) {
+        h += '<tr>';
+        cols.forEach(function (c) { h += '<td>' + esc(typeof it[c] === 'object' ? JSON.stringify(it[c]) : it[c]) + '</td>'; });
+        if (idCol) h += '<td><button type="button" class="btn btn-sm btn-outline-success btn-usar-obl" data-id="' + esc(it[idCol]) + '">Usar</button></td>';
+        h += '</tr>';
+      });
+      return h + '</tbody></table></div>';
+    }
+
+    function render(accion, d) {
+      var resumen = '', raw = '', meta = '';
+      if (d.error) {
+        resumen = alerta('danger', '<i class="fa-solid fa-circle-xmark me-1"></i>' + esc(d.error));
+      } else if (accion === 'fiel') {
+        var dg = d.diagnostico;
+        resumen = alerta(dg.ok ? 'success' : 'danger', dg.ok ? 'La e.firma es válida.' : 'Hay problemas con la e.firma.') +
+          '<ul class="list-unstyled small mb-2">' + dg.pasos.map(function (p) {
+            return '<li><i class="fa-solid ' + (p.ok ? 'fa-circle-check text-success' : 'fa-circle-xmark text-danger') + ' me-1"></i>' + esc(p.nombre) + (p.detalle ? ' — <span class="text-muted">' + esc(p.detalle) + '</span>' : '') + '</li>';
+          }).join('') + '</ul>';
+        raw = JSON.stringify(dg, null, 2);
+      } else if (accion === 'presentar') {
+        var r = d.resultado;
+        meta = d.ambiente.toUpperCase();
+        if (r.error_conexion) resumen = alerta('danger', 'Sin respuesta útil: ' + esc(r.error_conexion));
+        else if (r.ok) resumen = alerta('success', '<i class="fa-solid fa-circle-check me-1"></i>La CNE (QA) aceptó la presentación. solicitudId: <code>' + esc(r.solicitud_id) + '</code>');
+        else resumen = alerta('warning', '<i class="fa-solid fa-triangle-exclamation me-1"></i>La CNE (QA) respondió: ' + esc(r.msg || ('rc ' + r.rc)));
+        raw = JSON.stringify(r, null, 2);
+      } else {
+        var x = d.respuesta;
+        meta = d.ambiente.toUpperCase() + ' · HTTP ' + x.http + ' · ' + x.ms + ' ms';
+        if (x.error) resumen = alerta('danger', esc(x.error));
+        else if (x.http >= 200 && x.http < 300) resumen = alerta('success', '<i class="fa-solid fa-circle-check me-1"></i>Respuesta correcta (HTTP ' + x.http + ').');
+        else resumen = alerta('warning', 'La CNE respondió HTTP ' + x.http + '. Revisa el detalle abajo.');
+        if (accion === 'cadena') {
+          resumen += alerta(d.coincide ? 'success' : 'warning',
+            (d.coincide ? '<b>Coincide</b> con la cadena que arma nuestro sistema.' : '<b>No se encontró</b> nuestra cadena dentro de la respuesta (puede que el endpoint pida otros campos; compáralas a mano).') +
+            '<div class="mt-1 font-monospace" style="word-break:break-all;">' + esc(d.nuestra_cadena) + '</div>');
+        }
+        if (accion === 'catalogo' && x.json) { var it = listaDe(x.json); if (it) resumen += tablaCatalogo(it); }
+        raw = x.json ? JSON.stringify(x.json, null, 2) : (x.body || '');
+      }
+      document.getElementById('prueba_meta').textContent = meta;
+      document.getElementById('prueba_resumen').innerHTML = resumen;
+      var pre = document.getElementById('prueba_raw');
+      pre.textContent = raw;
+      pre.style.display = raw ? 'block' : 'none';
+      panel.style.display = 'block';
+    }
+
+    document.querySelectorAll('.btn-prueba').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var accion = btn.dataset.accion;
+        if (btn.dataset.confirmar && !confirm(btn.dataset.confirmar)) return;
+        var fd = new URLSearchParams();
+        fd.append('accion', accion);
+        var env = document.getElementById('prueba_envio');
+        if (env) fd.append('envio_id', env.value);
+        var sol = document.getElementById('prueba_solicitud');
+        if (sol && accion === 'estado') fd.append('solicitud_id', sol.value);
+
+        var textoOriginal = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        fetch(urlPrueba, { method: 'POST', body: fd, credentials: 'same-origin' })
+          .then(function (r) { return r.json(); })
+          .then(function (d) { render(accion, d); })
+          .catch(function () { render(accion, { error: 'No se pudo completar la prueba (error de red o respuesta inválida).' }); })
+          .finally(function () { btn.disabled = false; btn.innerHTML = textoOriginal; });
+      });
+    });
+
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest('.btn-usar-obl');
+      if (!b) return;
+      var campo = document.getElementById('obligacion_id');
+      if (campo) { campo.value = b.dataset.id; campo.focus(); campo.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    });
+  })();
+
+  // Confirmaciones antes de reemplazar credenciales existentes
+  {% if tieneFiel %}
+  document.getElementById('form_fiel').addEventListener('submit', function (e) {
+    if (!confirm('Ya existe una FIEL configurada. ¿Reemplazarla con la nueva?')) e.preventDefault();
+  });
+  {% endif %}
+  var formApi = document.getElementById('form_api');
+  if (formApi) {
+    formApi.addEventListener('submit', function (e) {
+      var msg = '';
+      if (amb.value === 'prod') msg = 'Vas a configurar el ambiente PRODUCTIVO: los envíos serán reales ante la CNE. ¿Continuar?';
+      {% if tieneApi %}
+      else msg = 'Ya existe una ApiKey guardada. ¿Reemplazarla?';
+      {% endif %}
+      if (msg && !confirm(msg)) e.preventDefault();
+    });
+  }
+</script>
+{% endblock %}

@@ -300,6 +300,12 @@
       <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRecalcular" disabled><i class="fas fa-sync-alt"></i> Recalcular automático</button>
       <small class="text-muted" id="leyendaGuardado"></small>
     </div>
+    <ul class="nav nav-tabs mb-2" id="cvSubTabsCobros" role="tablist">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#subCobros" type="button" role="tab"><i class="fas fa-file-invoice-dollar"></i> Cobros</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#subDepSin" type="button" role="tab"><i class="fas fa-university"></i> Depósitos sin conciliar <span class="cv-chip" id="chipDepSin">0 · $0.00</span></button></li>
+    </ul>
+    <div class="tab-content">
+    <div class="tab-pane fade show active" id="subCobros" role="tabpanel">
     <div class="cv-resumen" id="chipsCruce"></div>
     <div class="cv-resumen" id="chipsCruceExtra"></div>
     <div class="cv-tabla-wrap">
@@ -337,10 +343,11 @@
       centavos (hasta $1) · MOV compartido (parte de los cobros del MOV) · MOV vecinos (2–3 MOV consecutivos que juntos cuadran) ·
       por importe (depósito libre del mismo importe a ±3 días).
     </small>
+    </div>
 
     {# Depósitos del banco del mes que no están en ninguna conciliación #}
-    <div class="mt-4">
-      <h6 class="mb-2"><i class="fas fa-university"></i> Depósitos sin conciliar <span class="cv-chip" id="chipDepSin">0 · $0.00</span></h6>
+    <div class="tab-pane fade" id="subDepSin" role="tabpanel">
+      <div class="text-muted small mb-2">Abonos del banco del mes, de las cuentas que aparecen en los cobros, que no están ligados a ninguna conciliación.</div>
       <div class="cv-tabla-wrap">
         <table id="tablaDepSin" class="table table-sm table-hover cv-tabla w-100 mb-0">
           <thead>
@@ -351,6 +358,7 @@
           <tbody></tbody>
         </table>
       </div>
+    </div>
     </div>
   </div>
 

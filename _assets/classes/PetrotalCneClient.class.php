@@ -281,6 +281,100 @@ class PetrotalCneClient {
         return $resultado;
     }
 
+    // ------------------------------------------------------------------
+    // Herramientas de prueba (vista Configuración FIEL)
+    // ------------------------------------------------------------------
+
+    // Llamada genérica a ApiReportes que NO interpreta la respuesta: devuelve
+    // código HTTP, tiempo y cuerpo tal cual para depurar contra QA. La ApiKey
+    // solo viaja en el header y nunca se incluye en el resultado.
+    public static function llamar_api(string $ambiente, string $apiKey, string $metodo, string $ruta, ?array $campos = null): array {
+        $resultado = ['url' => null, 'http' => null, 'ms' => null, 'body' => null, 'json' => null, 'error' => null];
+        $base = self::URLS_API_REPORTES[$ambiente] ?? null;
+        if ($base === null) {
+            $resultado['error'] = "Ambiente desconocido: {$ambiente}.";
+            return $resultado;
+        }
+        $resultado['url'] = $base . $ruta;
+        $inicio = microtime(true);
+        $ch = curl_init($base . $ruta);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['accept: */*', 'x-api-key: ' . $apiKey]);
+        if (strtoupper($metodo) === 'POST') {
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $campos ?? []);
+        }
+        $respuesta = curl_exec($ch);
+        $resultado['http'] = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        $resultado['ms'] = (int) round((microtime(true) - $inicio) * 1000);
+
+        if ($respuesta === false || $curlError) {
+            $resultado['error'] = "Error de conexión: {$curlError}";
+            return $resultado;
+        }
+        $resultado['body'] = substr((string) $respuesta, 0, 50000);
+        $decoded = json_decode($respuesta, true);
+        if (is_array($decoded)) $resultado['json'] = $decoded;
+        return $resultado;
+    }
+
+    // Campos multipart de PresentarReporte (sin el sello, que va aparte).
+    public static function campos_reporte(int $obligacionId, int $version, string $jsonPath, string $cerPath, string $numeroPermiso, string $desde, string $hasta): array {
+        return [
+            'reporte' => new CURLFile($jsonPath, 'application/json', basename($jsonPath)),
+            'efirma_cerFile' => new CURLFile($cerPath, 'application/x-x509-ca-cert', basename($cerPath)),
+            'obligacionId' => $obligacionId,
+            'version' => $version,
+            'numeroPermiso' => $numeroPermiso,
+            'periodo' => self::periodo_cne($desde, $hasta),
+        ];
+    }
+
+    // Diagnóstico local de la e.firma (sin tocar la CNE): abre la llave con el
+    // password, lee el certificado y verifica vigencia y que ambos sean pareja.
+    public static function diagnosticar_fiel(string $cerPath, string $keyPath, string $password): array {
+        $r = ['ok' => false, 'pasos' => []];
+        $paso = function (string $nombre, bool $ok, string $detalle = '') use (&$r) {
+            $r['pasos'][] = ['nombre' => $nombre, 'ok' => $ok, 'detalle' => $detalle];
+            return $ok;
+        };
+
+        $cerRaw = is_readable($cerPath) ? file_get_contents($cerPath) : false;
+        $keyRaw = is_readable($keyPath) ? file_get_contents($keyPath) : false;
+        if (!$paso('Archivos .cer y .key legibles en el servidor', $cerRaw !== false && $keyRaw !== false)) return $r;
+
+        $cerPem = strpos($cerRaw, '-----') === 0
+            ? $cerRaw
+            : "-----BEGIN CERTIFICATE-----\n" . chunk_split(base64_encode($cerRaw), 64, "\n") . "-----END CERTIFICATE-----\n";
+        $info = @openssl_x509_parse($cerPem);
+        if (!$paso('Certificado .cer válido', is_array($info))) return $r;
+
+        $cn = $info['subject']['CN'] ?? '';
+        $rfc = $info['subject']['x500UniqueIdentifier'] ?? ($info['subject']['serialNumber'] ?? '');
+        $paso('Titular del certificado', true, trim($cn . ($rfc ? " — {$rfc}" : '')));
+
+        $hasta = (int) ($info['validTo_time_t'] ?? 0);
+        $desde = (int) ($info['validFrom_time_t'] ?? 0);
+        $vigente = time() >= $desde && time() <= $hasta;
+        $paso('Certificado vigente', $vigente, 'Vigencia: ' . date('d/m/Y', $desde) . ' al ' . date('d/m/Y', $hasta));
+
+        $keyPem = strpos($keyRaw, '-----') === 0
+            ? $keyRaw
+            : "-----BEGIN ENCRYPTED PRIVATE KEY-----\n" . chunk_split(base64_encode($keyRaw), 64, "\n") . "-----END ENCRYPTED PRIVATE KEY-----\n";
+        while (openssl_error_string() !== false) {}
+        $llave = @openssl_pkey_get_private($keyPem, $password);
+        if (!$paso('Llave privada se abre con el password', (bool) $llave, $llave ? '' : (string) openssl_error_string())) return $r;
+
+        $pareja = @openssl_x509_check_private_key($cerPem, $llave);
+        $paso('El .cer y el .key son pareja', (bool) $pareja);
+
+        $r['ok'] = !in_array(false, array_column($r['pasos'], 'ok'), true);
+        return $r;
+    }
+
     public static function descargar_acuse(string $linkDescarga, string $destinoPath): bool {
         $ch = curl_init($linkDescarga);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);

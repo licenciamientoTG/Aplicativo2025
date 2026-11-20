@@ -3854,7 +3854,36 @@ function debit_snapshot_table() {
     });
 }
 
+// Foto crédito: diferencia sistema − calc. por despachos, y si NO cuadra con despachos NI con cortes (>1 centavo)
+function credit_foto_dif(r) {
+    if (r.saldo_fin_sistema === null || r.saldo_fin_sistema === undefined) return 0;
+    return parseFloat(r.saldo_fin_sistema) - parseFloat(r.saldo_fin_calc_desp);
+}
+function credit_foto_sin_cuadre(r) {
+    if (r.saldo_fin_sistema === null || r.saldo_fin_sistema === undefined) return false;
+    var s = parseFloat(r.saldo_fin_sistema);
+    return Math.abs(s - parseFloat(r.saldo_fin_calc_desp)) > 0.01 && Math.abs(s - parseFloat(r.saldo_fin_calc_cortes)) > 0.01;
+}
+$(document).on('click', '#credit_snapshot_ver_dif', function (e) {
+    e.preventDefault();
+    var $t = $('#credit_snapshot_table');
+    $.fn.dataTable.ext.search.push(function (settings, data, idx) {
+        if (settings.nTable.id !== 'credit_snapshot_table') return true;
+        return credit_foto_sin_cuadre($t.DataTable().row(idx).data());
+    });
+    $t.DataTable().draw();
+    $(this).replaceWith('<a href="#" id="credit_snapshot_ver_todos" class="alert-link">Ver todos</a>');
+});
+$(document).on('click', '#credit_snapshot_ver_todos', function (e) {
+    e.preventDefault();
+    $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(function (f) { return !String(f).includes('credit_foto_sin_cuadre'); });
+    $('#credit_snapshot_table').DataTable().draw();
+    $(this).replaceWith('<a href="#" id="credit_snapshot_ver_dif" class="alert-link">Ver solo estos</a>');
+});
+
 function credit_snapshot_table() {
+    // Al recargar la foto se quita cualquier filtro «solo con diferencia» anterior
+    $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(function (f) { return !String(f).includes('credit_foto_sin_cuadre'); });
     // Foto diaria de crédito: cierre del día elegido por cliente (TG.dbo.credit_clients_cierre).
     // Spec: docs/superpowers/specs/2026-11-12-credit-clients-cierre-diario-design.md
     var $t = $('#credit_snapshot_table');
@@ -3883,6 +3912,7 @@ function credit_snapshot_table() {
     var moneyCols = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
 
     $t.DataTable({
+        createdRow: function (row, data) { if (credit_foto_sin_cuadre(data)) $(row).addClass('table-danger'); },
         ordering: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
         paging: true,
@@ -3899,6 +3929,19 @@ function credit_snapshot_table() {
             dataSrc: function (json) {
                 $('#credit_snapshot_fecha').text(json.fecha || '—');
                 $('#credit_snapshot_ultima').text(json.ultima_corrida || '—');
+                // Alerta: el saldo del sistema no coincide con NINGUNO de los dos cálculos (despachos / cortes)
+                var malos = (json.data || []).filter(credit_foto_sin_cuadre);
+                var $al = $('#credit_snapshot_alerta');
+                if (malos.length) {
+                    var tot = malos.reduce(function (a, r) { return a + Math.abs(credit_foto_dif(r)); }, 0);
+                    $al.html('<strong><i class="fas fa-exclamation-triangle"></i> ' + malos.length +
+                        ' cliente(s) no cuadran con el sistema</strong> (diferencia absoluta $' +
+                        tot.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+                        '). Filtra la columna «Dif. sistema − calc.» o busca las filas en rojo. ' +
+                        '<a href="#" id="credit_snapshot_ver_dif" class="alert-link">Ver solo estos</a>').removeClass('d-none');
+                } else {
+                    $al.addClass('d-none').empty();
+                }
                 if (json.message) {
                     alertify.myAlert('<div class="text-center text-warning"><h5>' + json.message + '</h5></div>');
                 }
