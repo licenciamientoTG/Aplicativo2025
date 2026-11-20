@@ -1854,6 +1854,8 @@ public function balance_age()
                     'codcli'   => $r['codcli'],
                     'Fecha'    => $r['Fecha'],
                     'hratrn'   => $r['hratrn'],
+                    'Turno'    => $this->conciliationTurno($r['nrotur']),
+                    'FechaCorte' => $r['FechaCorte'],
                     'nrotrn'   => $r['nrotrn'],
                     'Litros'   => $r['Litros'],
                     'Monto'    => $r['Monto'],

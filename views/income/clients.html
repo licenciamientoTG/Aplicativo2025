@@ -13,14 +13,22 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     background-color: #3485a8 !important; color: #fff !important;
 }
 /* Modal de drill-down: cabecera fija mientras se hace scroll dentro del contenedor */
-#modal_edo_drill .table-responsive { max-height: 65vh; overflow: auto; }
+/* Modal ancho y alto para que la tabla de consumos quepa sin scroll horizontal; vehículo/tarjeta pueden saltar de línea */
+#modal_edo_drill .modal-dialog { max-width: 97vw; }
+#modal_edo_drill .table-responsive { max-height: 78vh; overflow: auto; }
+#modal_edo_drill_table tbody td { font-size: .8rem; padding: .25rem .4rem; vertical-align: middle; }
+#modal_edo_drill_table tbody td.col-wrap { white-space: normal; word-break: break-word; min-width: 90px; }
 #modal_edo_drill_table thead th {
     position: sticky; top: 0; z-index: 2;
     background-color: #3485a8; color: #fff;
-    padding: 10px 14px; white-space: nowrap;
-    text-transform: uppercase; font-size: .75rem; letter-spacing: .03em;
+    padding: 8px 8px; white-space: nowrap;
+    text-transform: uppercase; font-size: .72rem; letter-spacing: .02em;
     border-bottom: 2px solid #256681;
 }
+/* Cabecera doble (consumos): fila de filtros con inputs compactos */
+#modal_edo_drill_table thead tr.filter th { padding: 4px 4px; text-transform: none; }
+#modal_edo_drill_table thead tr.filter input { min-width: 0; width: 100%; font-size: .75rem; padding: 2px 5px; }
+#modal_edo_drill_table thead th.sorting, #modal_edo_drill_table thead th.sorting_asc, #modal_edo_drill_table thead th.sorting_desc { cursor: pointer; }
 #modal_edo_drill_table tfoot th {
     position: sticky; bottom: 0; z-index: 2;
     background-color: #3485a8; color: #fff; padding: 10px 14px;

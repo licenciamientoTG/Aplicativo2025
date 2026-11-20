@@ -201,6 +201,8 @@ class ClientesModel extends Model{
                     t1.codcli,
                     CAST(CONVERT(VARCHAR(10), CAST(t1.fchtrn AS DATETIME) - 1, 23) AS VARCHAR(10)) AS Fecha,
                     t1.hratrn,
+                    t1.nrotur,
+                    CAST(CONVERT(VARCHAR(10), CAST(t1.fchcor AS DATETIME) - 1, 23) AS VARCHAR(10)) AS FechaCorte,
                     t1.nrotrn,
                     t1.can   AS Litros,
                     t1.mto   AS Monto,
@@ -223,7 +225,7 @@ class ClientesModel extends Model{
                 LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
                 LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
                 LEFT JOIN [TG].dbo.clientes_consumo_propio CP ON CP.codcli = t1.codcli AND CP.activo = 1
-                WHERE t1.fchtrn BETWEEN {$from} AND {$until}
+                WHERE t1.fchcor BETWEEN {$from} AND {$until}   -- fecha de corte (igual que ValesR.fch); Fecha mostrada = fchtrn
                     AND t1.codcli > 0
                     AND t2.tipval = {$tipval}
                     {$sbt_filter}
@@ -237,7 +239,7 @@ class ClientesModel extends Model{
     /**
      * Consumos sumados por cliente (un renglón por cliente, todas sus razones sociales juntas),
      * comparados contra lo que entró en los cortes (SG12.ValesR, mismo origen que Ingresos / Venta por Rubro).
-     * Despachos se filtra por fecha del despacho y ValesR por fecha del corte (coinciden salvo ~5 despachos/mes).
+     * Despachos y ValesR se filtran ambos por fecha de corte (Despachos.fchcor = ValesR.fch); PrimerConsumo/UltimoConsumo siguen siendo fchtrn.
      * Cuenta los clientes que solo aparecen de un lado (FULL JOIN), p. ej. PUBLICO EN GENERAL débito sin corte.
      * Un despacho de un cliente que hoy es de otro tipo también entra si su corte lo cobró con el valor del tipo pedido.
      * $tipval: 4 = débito (valor 127), 3 = crédito (valor 28). $codcli: 0 = todos.
@@ -275,7 +277,7 @@ class ClientesModel extends Model{
                 LEFT JOIN [TG].dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t1.codgas
                 LEFT JOIN [SG12].dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
                 LEFT JOIN vx ON vx.codgas = t1.codgas AND vx.nrotrn = t1.nrotrn
-                WHERE t1.fchtrn BETWEEN ? AND ?
+                WHERE t1.fchcor BETWEEN ? AND ?   -- fecha de corte, igual que ValesR.fch (un despacho de 23:59 pertenece al corte del día siguiente)
                     AND t1.codcli > 0
                     AND (t2.tipval = ? OR vx.nrotrn IS NOT NULL)
                     {$sbt_d}

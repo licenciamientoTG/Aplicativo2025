@@ -3247,20 +3247,32 @@ function client_vehicles_modal(codcli, cliente) {
 
 // Datos del último modal de consumos abierto, para el botón "Descargar Excel"
 var edo_consumos_export = null;
+// DataTable del modal de consumos (con filtros en la cabecera); null cuando el modal muestra otro drill
+var edo_consumos_dt = null;
+
+function edo_consumos_destroy() {
+    if (edo_consumos_dt) { edo_consumos_dt.destroy(); edo_consumos_dt = null; }
+}
 
 $('#modal_edo_drill').on('hidden.bs.modal', function () {
     $('#modal_edo_drill_excel').addClass('d-none');
     edo_consumos_export = null;
+    edo_consumos_destroy();
 });
 
 $('#modal_edo_drill_excel').on('click', function () {
     var exp = edo_consumos_export;
     if (!exp) return;
+    // El Excel respeta los filtros de la cabecera
+    var rowsX = exp.rows;
+    if (edo_consumos_dt) {
+        rowsX = edo_consumos_dt.rows({ search: 'applied' }).indexes().toArray().map(function (i) { return exp.rows[i]; });
+    }
 
     // Tabla temporal fuera del DOM visible: DataTables Buttons genera el .xlsx
-    var $tmp = $('<table class="d-none"><tfoot><tr><th></th><th></th><th></th><th></th><th></th><th></th><th>Total</th><th></th><th></th></tr></tfoot></table>').appendTo('body');
+    var $tmp = $('<table class="d-none"><tfoot><tr><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th>Total</th><th></th><th></th></tr></tfoot></table>').appendTo('body');
     var dt = $tmp.DataTable({
-        data: exp.rows,
+        data: rowsX,
         columns: exp.headers.map(function (h) { return { title: h }; }),
         paging: false,
         dom: 'B',
@@ -3270,8 +3282,8 @@ $('#modal_edo_drill_excel').on('click', function () {
             filename: exp.filename,
             footer: true,
             exportOptions: { format: { footer: function (data, row, column) {
-                if (column < 7) return column === 6 ? 'Total' : '';
-                return exp.rows.reduce(function (a, r) { return a + r[column]; }, 0);
+                if (column < 9) return column === 8 ? 'Total' : '';
+                return rowsX.reduce(function (a, r) { return a + r[column]; }, 0);
             } } }
         }]
     });
@@ -3285,8 +3297,9 @@ function edo_consumos_modal(codcli, cliente, from, until, tipval, empresa) {
     var money = function (v) {
         return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     };
-    var headers = ['Fecha', 'Hora', 'Despacho', 'Estación', 'Producto', 'Vehículo', 'Tarjeta', 'Litros', 'Monto'];
+    var headers = ['Fecha', 'Hora', 'Turno', 'Corte', 'Despacho', 'Estación', 'Producto', 'Vehículo', 'Tarjeta', 'Litros', 'Monto'];
 
+    edo_consumos_destroy();
     $('#modal_edo_drill_title').html('Consumos (Despachos) — ' + cliente + ' <small class="text-muted">(' + from + ' → ' + until + ')</small>');
     $('#modal_edo_drill_table thead').html('<tr><th>' + headers.join('</th><th>') + '</th></tr>');
     $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando…</td></tr>');
@@ -3313,28 +3326,53 @@ function edo_consumos_modal(codcli, cliente, from, until, tipval, empresa) {
             filename: 'Consumos_' + String(cliente).replace(/[^\w\-]+/g, '_') + '_' + from + '_' + until,
             headers: headers,
             rows: rows.map(function (r) {
-                return [r.Fecha, horaDe(r), r.nrotrn, r.Estacion || '', r.producto || '',
+                return [r.Fecha, horaDe(r), r.Turno || '', r.FechaCorte || '', r.nrotrn, r.Estacion || '', r.producto || '',
                         r.Vehiculo || (parseInt(r.nroveh, 10) > 0 ? r.nroveh : ''), r.Tarjeta || '',
                         parseFloat(r.Litros) || 0, parseFloat(r.Monto) || 0];
             })
         };
         $('#modal_edo_drill_excel').removeClass('d-none');
+        // Cabecera doble (como el resto del sistema): fila de filtros arriba y fila de títulos (ordenable) abajo
+        var $thead = $('#modal_edo_drill_table thead');
+        $thead.html(
+            '<tr class="filter">' + headers.map(function (h) {
+                return '<th><input type="text" class="form-control form-control-sm" placeholder="' + h + '" /></th>';
+            }).join('') + '</tr>' +
+            '<tr>' + headers.map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>'
+        );
         $('#modal_edo_drill_table tbody').html(rows.map(function (r) {
             var hora = horaDe(r);
-            return '<tr><td>' + r.Fecha + '</td><td>' + hora + '</td><td>' + r.nrotrn + '</td>' +
+            var lit = parseFloat(r.Litros) || 0, mto = parseFloat(r.Monto) || 0;
+            return '<tr><td>' + r.Fecha + '</td><td data-order="' + (parseInt(r.hratrn, 10) || 0) + '">' + hora + '</td>' +
+                   '<td class="text-center">' + (r.Turno || '') + '</td><td>' + (r.FechaCorte || '') + '</td><td>' + r.nrotrn + '</td>' +
                    '<td>' + (r.Estacion || '') + '</td><td>' + (r.producto || '') + '</td>' +
-                   '<td class="text-nowrap">' + cpEsc(r.Vehiculo || (parseInt(r.nroveh, 10) > 0 ? r.nroveh : '')) + '</td>' +
-                   '<td class="text-nowrap">' + cpEsc(r.Tarjeta) + '</td>' +
-                   '<td class="text-end">' + (parseFloat(r.Litros) || 0).toLocaleString('es-MX', { minimumFractionDigits: 3 }) + '</td>' +
-                   '<td class="text-end">' + money(r.Monto) + '</td></tr>';
+                   '<td class="col-wrap">' + cpEsc(r.Vehiculo || (parseInt(r.nroveh, 10) > 0 ? r.nroveh : '')) + '</td>' +
+                   '<td class="col-wrap">' + cpEsc(r.Tarjeta) + '</td>' +
+                   '<td class="text-end" data-order="' + lit + '">' + lit.toLocaleString('es-MX', { minimumFractionDigits: 3 }) + '</td>' +
+                   '<td class="text-end" data-order="' + mto + '">' + money(mto) + '</td></tr>';
         }).join(''));
-        var lt = rows.reduce(function (a, r) { return a + (parseFloat(r.Litros) || 0); }, 0);
-        var mt = rows.reduce(function (a, r) { return a + (parseFloat(r.Monto) || 0); }, 0);
         $('#modal_edo_drill_table tfoot').html(
-            '<tr><th colspan="7" class="text-end">Total</th>' +
-            '<th class="text-end">' + lt.toLocaleString('es-MX', { minimumFractionDigits: 3 }) + '</th>' +
-            '<th class="text-end">' + money(mt) + '</th></tr>'
+            '<tr><th colspan="9" class="text-end">Total</th>' +
+            '<th class="text-end" id="edo_c_lt"></th><th class="text-end" id="edo_c_mt"></th></tr>'
         );
+        edo_consumos_dt = $('#modal_edo_drill_table').DataTable({
+            paging: false, info: false, dom: 't', order: [],
+            // El total sigue a los filtros: suma solo los renglones visibles
+            footerCallback: function () {
+                var lt = 0, mt = 0;
+                this.api().rows({ search: 'applied' }).indexes().each(function (i) {
+                    lt += parseFloat(rows[i].Litros) || 0;
+                    mt += parseFloat(rows[i].Monto) || 0;
+                });
+                $('#edo_c_lt').text(lt.toLocaleString('es-MX', { minimumFractionDigits: 3 }));
+                $('#edo_c_mt').text(money(mt));
+            }
+        });
+        $thead.find('tr.filter input').on('keyup change', function () {
+            edo_consumos_dt.column($(this).parent().index()).search(this.value).draw();
+        });
+        // Las dos filas de la cabecera quedan fijas al hacer scroll: la de títulos va debajo de la de filtros
+        $thead.find('tr:not(.filter) th').css('top', $thead.find('tr.filter').outerHeight() + 'px');
     }, 'json').fail(function () {
         $('#modal_edo_drill_table tbody').html('<tr><td colspan="' + headers.length + '" class="text-center py-3 text-danger">Error al consultar.</td></tr>');
     });
