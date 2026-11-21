@@ -8664,7 +8664,8 @@ public function stamped_invoices_detail(): void
         // no ha completado una ejecución evita inventar una fecha de proceso.
         $lastAutomaticRun=$this->efcConciliacion->lastAutomaticRun();
         $isSuperAdmin = $this->currentUserIsSuperAdmin();
-        echo $this->twig->render($this->route . 'cash_reconciliation_triple.html',compact('lastAutomaticRun','isSuperAdmin'));
+        $tableros_csrf=$_SESSION['tableros_csrf']??'';
+        echo $this->twig->render($this->route . 'cash_reconciliation_triple.html',compact('lastAutomaticRun','isSuperAdmin','tableros_csrf'));
     }
 
     /** Resumen mensual de ventas y depósitos de efectivo. */
@@ -9437,6 +9438,13 @@ public function stamped_invoices_detail(): void
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
         if (!$this->papeletasCsrfValido()) { http_response_code(403); echo json_encode(['status'=>'error','message'=>'Token CSRF inválido.']); exit; }
         try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcAnaliticos->updateManagedPaper((int)($data['id']??0),$data,(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
+
+    public function efc_conc_analiticos_eliminar(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        if (!$this->papeletasCsrfValido()) { http_response_code(403); echo json_encode(['status'=>'error','message'=>'Token CSRF inválido.']); exit; }
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $audit=$this->efcAnaliticos->deleteManagedPaper((int)($data['id']??0),(int)($_SESSION['tg_user']['Id']??0)); echo json_encode(['status'=>'success']+$audit); }
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
 

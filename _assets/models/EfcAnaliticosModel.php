@@ -101,13 +101,13 @@ class EfcAnaliticosModel {
         $eligibleIds=[]; foreach($candidateStations as $id=>$effectiveStation) if($effectiveStation===$stationId || isset($stationLinkedIds[$id]))$eligibleIds[]=$id;
         foreach(array_chunk($eligibleIds,400) as $idBatch) {
             $marks=implode(',',array_fill(0,count($idBatch),'?'));
-            $q=$this->db->prepare("SELECT P.id,P.importacion_id,P.source_date AS fecha_original,P.effective_date AS fecha_efectiva,P.effective_station_id,P.effective_time AS hora_original,P.effective_remittance AS remesa_numero,P.effective_account AS cuenta_mn_original,P.effective_declared_mn AS dice_contener_mn,P.effective_real_mn AS real_mn,P.effective_declared_usd AS dice_contener_usd,P.effective_real_usd AS real_usd,I.nombre_archivo FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id WHERE P.id IN ($marks) AND I.estado='IMPORTADA' ORDER BY P.id DESC");
+            $q=$this->db->prepare("SELECT P.id,P.importacion_id,P.captura_manual,P.source_date AS fecha_original,P.effective_date AS fecha_efectiva,P.effective_station_id,P.effective_time AS hora_original,P.effective_remittance AS remesa_numero,P.effective_account AS cuenta_mn_original,P.effective_declared_mn AS dice_contener_mn,P.effective_real_mn AS real_mn,P.effective_declared_usd AS dice_contener_usd,P.effective_real_usd AS real_usd,I.nombre_archivo FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id WHERE P.id IN ($marks) AND I.estado='IMPORTADA' ORDER BY P.id DESC");
             $q->execute($idBatch); array_push($paperRows,...$q->fetchAll(PDO::FETCH_ASSOC));
         }
         usort($paperRows,static fn($a,$b)=>(int)$b['id']<=>(int)$a['id']);
         $timings['papers_hydrate_ms']=round((hrtime(true)-$started)/1e6,2);
         $started=hrtime(true); $items=[];
-        foreach($paperRows as $row) $items[]=['id'=>(int)$row['id'],'importation_id'=>(int)$row['importacion_id'],'date'=>$this->dateValue($row['fecha_efectiva'] ?: $row['fecha_original']),'original_date'=>$this->dateValue($row['fecha_original']),'effective_date'=>$row['fecha_efectiva']?$this->dateValue($row['fecha_efectiva']):null,'time'=>$row['hora_original'],'remittance'=>$this->normaliseRemittance($row['remesa_numero']),'account'=>$row['cuenta_mn_original'],'declared_mn'=>(float)($row['dice_contener_mn']??0),'real_mn'=>(float)($row['real_mn']??0),'declared_usd'=>(float)($row['dice_contener_usd']??0),'real_usd'=>(float)($row['real_usd']??0),'linked'=>isset($linkedIds[(int)$row['id']]),'file'=>$row['nombre_archivo']];
+        foreach($paperRows as $row) $items[]=['id'=>(int)$row['id'],'importation_id'=>(int)$row['importacion_id'],'manually_created'=>(bool)$row['captura_manual'],'date'=>$this->dateValue($row['fecha_efectiva'] ?: $row['fecha_original']),'original_date'=>$this->dateValue($row['fecha_original']),'effective_date'=>$row['fecha_efectiva']?$this->dateValue($row['fecha_efectiva']):null,'time'=>$row['hora_original'],'remittance'=>$this->normaliseRemittance($row['remesa_numero']),'account'=>$row['cuenta_mn_original'],'declared_mn'=>(float)($row['dice_contener_mn']??0),'real_mn'=>(float)($row['real_mn']??0),'declared_usd'=>(float)($row['dice_contener_usd']??0),'real_usd'=>(float)($row['real_usd']??0),'linked'=>isset($linkedIds[(int)$row['id']]),'file'=>$row['nombre_archivo']];
         $timings['papers_map_ms']=round((hrtime(true)-$started)/1e6,2);
         $links=$this->db->prepare("SELECT V.id,V.papeleta_id,V.papeleta_secundaria_id,V.fecha_cg,V.turno,V.concepto,V.importe_cg,V.criterio,V.tipo_cambio_usd AS exchange_rate FROM dbo.efc_conc_analiticos_vinculos V WHERE V.estacion_id=? AND V.activo=1 AND (($linkRange) OR EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WHERE T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto AND T.mes_destino=? AND T.estado IN ('PENDIENTE','CONCILIADO')))");
         $started=hrtime(true);
@@ -206,7 +206,7 @@ class EfcAnaliticosModel {
                        COALESCE(D.declarado_mn,P.dice_contener_mn) declarado_mn_actual,COALESCE(D.real_mn,P.real_mn) real_mn_actual,COALESCE(D.declarado_usd,P.dice_contener_usd) declarado_usd_actual,COALESCE(D.real_usd,P.real_usd) real_usd_actual,
                        COALESCE(D.estacion_id,S.estacion_corregida_id,P.estacion_id) estacion_actual,
                        P.hora_original,P.remesa_numero,P.cuenta_mn_original,P.dice_contener_mn,P.real_mn,P.dice_contener_usd,P.real_usd,P.estacion_id AS estacion_original_id,S.id AS estacion_correccion_id,S.estacion_corregida_id,E.Nombre AS estacion_nombre,EOriginal.Nombre AS estacion_original_nombre,I.nombre_archivo,
-                       P.creado_en AS creado_en,P.creado_por,COALESCE(Creador.Nombre,Creador.Usuario,CASE WHEN P.creado_por IS NOT NULL THEN CONCAT('Usuario ',P.creado_por) END) creador_nombre,ISNULL(P.captura_manual,0) captura_manual,
+                       P.creado_en AS creado_en,P.creado_por,COALESCE(Creador.Nombre,Creador.Usuario,CASE WHEN P.creado_por IS NOT NULL THEN CONCAT('Usuario ',P.creado_por) END) creador_nombre,ISNULL(P.captura_manual,0) captura_manual,I.estado importacion_estado,
                        CASE WHEN EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos V WHERE (V.papeleta_id=P.id OR V.papeleta_secundaria_id=P.id) AND V.activo=1) THEN 1 ELSE 0 END AS vinculada
                 FROM dbo.efc_conc_analiticos_papeletas P
                 JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id
@@ -216,7 +216,7 @@ class EfcAnaliticosModel {
                 LEFT JOIN TG.dbo.Usuario Creador ON Creador.Id=P.creado_por
                 LEFT JOIN TG.dbo.Estaciones E ON E.Codigo=COALESCE(D.estacion_id,S.estacion_corregida_id,P.estacion_id)
                 LEFT JOIN TG.dbo.Estaciones EOriginal ON EOriginal.Codigo=P.estacion_id
-                WHERE I.estado='IMPORTADA'
+                WHERE I.estado IN ('IMPORTADA','ELIMINADA')
                   AND YEAR(COALESCE(D.fecha_efectiva,C.fecha_efectiva,P.fecha_reportada))=?
                   AND MONTH(COALESCE(D.fecha_efectiva,C.fecha_efectiva,P.fecha_reportada))=?
                   AND COALESCE(D.estacion_id,S.estacion_corregida_id,P.estacion_id) IN ($stationMarks)";
@@ -240,7 +240,7 @@ class EfcAnaliticosModel {
                 'file'=>$row['nombre_archivo'], 'correction_id'=>$row['correccion_id']?(int)$row['correccion_id']:null,
                 'correction_user'=>($row['datos_correccion_usuario']??$row['correccion_usuario'])?(int)($row['datos_correccion_usuario']??$row['correccion_usuario']):null,
                 'correction_at'=>($row['datos_correccion_creada']??$row['correccion_creada'])?$this->dateTimeValue($row['datos_correccion_creada']??$row['correccion_creada']):null,
-                'station_corrected'=>$effectiveStation!==$originalStation || (bool)$row['estacion_correccion_id'], 'data_corrected'=>(bool)$row['datos_correccion_id'], 'linked'=>(bool)$row['vinculada'],
+                'station_corrected'=>$effectiveStation!==$originalStation || (bool)$row['estacion_correccion_id'], 'data_corrected'=>(bool)$row['datos_correccion_id'], 'linked'=>(bool)$row['vinculada'], 'deleted'=>$row['importacion_estado']==='ELIMINADA',
                 'created_at'=>$this->dateTimeValue($row['creado_en']), 'created_by'=>$row['creador_nombre']?:null, 'manually_created'=>(bool)$row['captura_manual']
             ];
         }
@@ -290,6 +290,32 @@ class EfcAnaliticosModel {
             $s=$this->db->prepare('INSERT dbo.efc_conc_analiticos_correcciones_datos(papeleta_id,fecha_efectiva,hora_efectiva,estacion_id,remesa_efectiva,cuenta_efectiva,declarado_mn,real_mn,declarado_usd,real_usd,usuario_id,activo) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)');
             $s->execute([$id,$new['date'],$new['time'],$new['station_id'],$new['remittance'],$new['account'],$new['declared_mn'],$new['real_mn'],$new['declared_usd'],$new['real_usd'],$userId]);
             $this->insertPaperAudit($id,'EDICION',$old,$new,$userId); $this->db->commit();
+        } catch(Throwable $e) { if($this->db->inTransaction())$this->db->rollBack(); throw $e; }
+    }
+
+    /** Marca como eliminada una captura manual, conservando sus datos y auditoría. */
+    public function deleteManagedPaper(int $id, int $userId): array {
+        if($id<1 || $userId<1) throw new RuntimeException('Papeleta o usuario inválido.');
+        $this->db->beginTransaction();
+        try {
+            $q=$this->db->prepare("SELECT P.*,I.id AS importacion_id,I.estado,C.fecha_efectiva,S.estacion_corregida_id,D.fecha_efectiva AS datos_fecha,D.hora_efectiva,D.estacion_id AS datos_estacion,D.remesa_efectiva,D.cuenta_efectiva,D.declarado_mn,D.real_mn AS datos_real_mn,D.declarado_usd,D.real_usd AS datos_real_usd FROM dbo.efc_conc_analiticos_papeletas P WITH (UPDLOCK,HOLDLOCK) JOIN dbo.efc_conc_analiticos_importaciones I WITH (UPDLOCK,HOLDLOCK) ON I.id=P.importacion_id LEFT JOIN dbo.efc_conc_analiticos_correcciones_fecha C ON C.papeleta_id=P.id AND C.activo=1 LEFT JOIN dbo.efc_conc_analiticos_correcciones_estacion S ON S.papeleta_id=P.id AND S.activo=1 LEFT JOIN dbo.efc_conc_analiticos_correcciones_datos D ON D.papeleta_id=P.id AND D.activo=1 WHERE P.id=?");
+            $q->execute([$id]); $row=$q->fetch(PDO::FETCH_ASSOC);
+            if(!$row || $row['estado']!=='IMPORTADA') throw new RuntimeException('Papeleta no encontrada o ya eliminada.');
+            if(!(bool)$row['captura_manual']) throw new RuntimeException('Sólo se pueden eliminar papeletas de captura manual.');
+            $links=$this->db->prepare("SELECT id,estacion_id,fecha_cg,turno,concepto FROM dbo.efc_conc_analiticos_vinculos WITH (UPDLOCK,HOLDLOCK) WHERE activo=1 AND (papeleta_id=? OR papeleta_secundaria_id=?)");
+            $links->execute([$id,$id]); $paperLinks=$links->fetchAll(PDO::FETCH_ASSOC);
+            if($paperLinks) throw new RuntimeException('Desasocie la papeleta antes de eliminarla.');
+            $old=$this->managedValuesFromRow($row);
+            $this->insertPaperAudit($id,'ELIMINACION',$old,null,$userId);
+            // Cada captura manual crea una importación privada de una sola papeleta.
+            // Cambiar su estado la excluye de todos los consumidores de evidencia activa.
+            $update=$this->db->prepare("UPDATE dbo.efc_conc_analiticos_importaciones SET estado='ELIMINADA',actualizado_en=GETDATE() WHERE id=? AND estado='IMPORTADA'");
+            $update->execute([(int)$row['importacion_id']]);
+            if($update->rowCount()!==1) throw new RuntimeException('La papeleta ya fue eliminada.');
+            $actor=$this->db->prepare('SELECT COALESCE(U.Nombre,U.Usuario),A.creado_en FROM dbo.efc_conc_analiticos_papeletas_auditoria A LEFT JOIN TG.dbo.Usuario U ON U.Id=A.usuario_id WHERE A.papeleta_id=? AND A.operacion=\'ELIMINACION\' AND A.usuario_id=? ORDER BY A.id DESC'); $actor->execute([$id,$userId]); $audit=$actor->fetch(PDO::FETCH_NUM);
+            $result=['deleted_by'=>$audit[0]?:('Usuario '.$userId),'deleted_at'=>$this->dateTimeValue($audit[1])];
+            $this->db->commit();
+            return $result;
         } catch(Throwable $e) { if($this->db->inTransaction())$this->db->rollBack(); throw $e; }
     }
 

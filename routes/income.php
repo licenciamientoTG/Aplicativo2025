@@ -12,6 +12,7 @@ return [
         route('efc_conc_analiticos_archivo', [Income::class, 'efc_conc_analiticos_archivo'], name: 'income.efc_conc_analiticos_archivo', methods: ['GET'], permission: 14),
         route('efc_conc_analiticos_crear', [Income::class, 'efc_conc_analiticos_crear'], name: 'income.efc_conc_analiticos_crear', methods: ['POST'], permission: 14),
         route('efc_conc_analiticos_editar', [Income::class, 'efc_conc_analiticos_editar'], name: 'income.efc_conc_analiticos_editar', methods: ['POST'], permission: 14),
+        route('efc_conc_analiticos_eliminar', [Income::class, 'efc_conc_analiticos_eliminar'], name: 'income.efc_conc_analiticos_eliminar', methods: ['POST'], permission: 14),
         route('efc_conc_analiticos_corregir_fecha', [Income::class, 'efc_conc_analiticos_corregir_fecha'], name: 'income.efc_conc_analiticos_corregir_fecha', methods: ['POST'], permission: 14),
         route('efc_conc_analiticos_corregir_estacion', [Income::class, 'efc_conc_analiticos_corregir_estacion'], name: 'income.efc_conc_analiticos_corregir_estacion', methods: ['POST'], permission: 14),
         route('efc_conc_usd_globales', [Income::class, 'efc_conc_usd_globales'], name: 'income.efc_conc_usd_globales', methods: ['GET'], permission: 14),
