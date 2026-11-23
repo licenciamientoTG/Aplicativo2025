@@ -355,38 +355,34 @@ $(document).on('blur', '.denomination_input', function(e) {
     }
 });
 
-function calcTotal(element) {
-    // Identificamos el input sobre el que se hace el cambio
-    var inputId = $(element).attr('id');
+// Pinta el resumen del depósito (subtotales, diferencia y total) y lo compara en centavos
+// contra lo esperado (data-compare en #total), para evitar errores de punto flotante.
+function renderDepositSummary(billsTotal, coinsTotal, symbol) {
+    const toCents = (v) => Math.round((parseFloat(v) || 0) * 100);
+    const fmt = (cents) => symbol + (cents / 100).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-    const billsTotal = calcBillsTotal();
-    const coinsTotal = calcCoinsTotal();
-    const totalCompare = $('#total').data('compare'); // Valor de comparación del total
+    const expected = toCents($('#total').data('compare'));
+    const counted = toCents(billsTotal) + toCents(coinsTotal);
+    const diff = counted - expected;
 
-    const total = billsTotal + coinsTotal;
-    const total_diff = total - totalCompare;
+    $('#subtotal_bills').text(fmt(toCents(billsTotal)));
+    $('#subtotal_coins').text(fmt(toCents(coinsTotal)));
+    $('#subtotal_diff').text((diff > 0 ? '+' : diff < 0 ? '-' : '') + fmt(Math.abs(diff)))
+        .toggleClass('text-danger', diff !== 0).toggleClass('text-success', diff === 0);
+    $('#total').text(fmt(counted))
+        .toggleClass('text-danger', diff !== 0).toggleClass('text-success', diff === 0);
+    $('#deposit_diff_hint').text(
+        diff === 0 ? 'El conteo cuadra con las fajillas.' :
+        diff > 0 ? 'Sobran ' + fmt(diff) + ' respecto a las fajillas.' :
+                   'Faltan ' + fmt(-diff) + ' para cuadrar con las fajillas.'
+    ).toggleClass('text-danger', diff !== 0).toggleClass('text-success', diff === 0);
 
-    // Formatear los valores a float con dos decimales
-    const billsTotalFormatted = billsTotal.toFixed(2);
-    const coinsTotalFormatted = coinsTotal.toFixed(2);
-    const total_diffFormatted = total_diff.toFixed(2);
-    const totalFormatted = total.toFixed(2);
-
-    // Actualizar los valores en la vista
-    document.getElementById('subtotal_bills').innerHTML = `$${billsTotalFormatted}`;
-    document.getElementById('subtotal_coins').innerHTML = `$${coinsTotalFormatted}`;
-    document.getElementById('subtotal_diff').innerHTML = `$${total_diffFormatted}`;
-    document.getElementById('total').innerHTML = `$${totalFormatted}`;
-
-    // Agregar clases para indicar si el total es diferente al valor de comparación
-    if (parseFloat(totalCompare) !== parseFloat(totalFormatted)) { // Si el total de las denominaciones es diferente al valor de comparación
-        $('#total').addClass('text-danger');
-    } else {
-        $('#total').removeClass('text-danger');
-        $('#total').addClass('text-success');
-    }
+    return { expected: expected, counted: counted, diff: diff, fmt: fmt };
 }
 
+function calcTotal() {
+    return renderDepositSummary(calcBillsTotal(), calcCoinsTotal(), '$');
+}
 
 function calcBillsTotal() {
     const bill_thousand     = parseInt(document.getElementById('bill_thousand').value) || 0;
@@ -410,34 +406,7 @@ function calcCoinsTotal() {
 
 
 function calcTotalUSD() {
-    const billsTotal = calcBillsUSDTotal();
-    const coinsTotal = calcCoinsUSDTotal();
-    const totalCompare = $('#total').data('compare'); // Valor de comparación del total
-
-    const total = billsTotal + coinsTotal;
-    const total_diff = total - totalCompare;
-
-    // Formatear los valores a float con dos decimales
-    const billsTotalFormatted = billsTotal.toFixed(2);
-    const coinsTotalFormatted = coinsTotal.toFixed(2);
-    const total_diffFormatted = total_diff.toFixed(2);
-    const totalFormatted = total.toFixed(2);
-
-    // Actualizar los valores en la vista
-    document.getElementById('subtotal_bills').innerHTML = `$${billsTotalFormatted}`;
-    document.getElementById('subtotal_coins').innerHTML = `$${coinsTotalFormatted}`;
-    document.getElementById('subtotal_diff').innerHTML = `$${total_diffFormatted}`;
-    document.getElementById('total').innerHTML = `$${totalFormatted}`;
-
-    // Agregar clases para indicar si el total es diferente al valor de comparación
-    if (parseFloat(totalCompare) !== parseFloat(totalFormatted)) { // Si el total de las denominaciones es diferente al valor de comparación
-        $('#total').addClass('text-danger');
-    } else {
-        $('#total').removeClass('text-danger');
-        $('#total').addClass('text-success');
-    }
-
-
+    return renderDepositSummary(calcBillsUSDTotal(), calcCoinsUSDTotal(), 'US$');
 }
 
 
@@ -477,57 +446,57 @@ function calcCoinsUSDTotal() {
 }
 
 $(document).on('submit', '#save_denominations_form', function(e) {
-    // Si una denominación con la clase denomination_input está vacía, establece su valor en 0
-    $('.denomination_input').each(function() { if ($(this).val() === '') { $(this).val(0); } });
-    // Primero deeshabilitamos el botón de submit
-    $('#save_denominations').prop('disabled', true);
     e.preventDefault(); // Evita que el formulario se envíe normalmente
+    const $button = $('#save_denominations');
 
-    // Obtiene los datos del formulario
-    let formData = $(this).serialize();
-    let currency = $('#currency_form').val();
+    // Si una denominación está vacía, se toma como 0
+    $('.denomination_input').each(function() { if ($(this).val() === '') { $(this).val(0); } });
 
-    // Verificar que se hayan ingresado las denominaciones
-    const billsTotal = (parseInt(currency) === 6) ? calcBillsTotal() : calcBillsUSDTotal();
-    const coinsTotal = (parseInt(currency) === 6) ? calcCoinsTotal() : calcCoinsUSDTotal();
+    const isMXN = parseInt($('#currency_form').val()) === 6;
+    const summary = isMXN ? calcTotal() : calcTotalUSD();
 
-    const totalCompare = $('#total').data('compare'); // Valor de comparación del total
-
-    const total = billsTotal + coinsTotal;
-
-    // Verificar que el total de las denominaciones sea igual al valor de comparación
-    if (parseFloat(totalCompare) !== parseFloat(total)) {
-        alertify.myAlert(
-            `<div class="container text-center text-danger">
-                <h4 class="mt-2 text-danger">¡Error!</h4>
-            </div>
-            <div class="text-dark">
-                <p class="text-center">Los totales no coinciden. En deposito tenemos ` + parseFloat(total) + ` contra `+ parseFloat(total) + `. Por favor, verifica los valores ingresados.</p>
-            </div>`
-        );
-        $('#save_denominations').prop('disabled', false);
-        return; // Detiene la ejecución del formulario
+    if (summary.counted === 0) {
+        toastr.error('Captura la cantidad de billetes y monedas del depósito.', 'Depósito vacío', { timeOut: 4000 });
+        return;
     }
 
+    // El total contado debe ser igual al de las fajillas pendientes
+    if (summary.diff !== 0) {
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">El conteo no cuadra</h4>
+            </div>
+            <div class="text-dark text-center">
+                <p class="mb-1">Fajillas por depositar: <b>${summary.fmt(summary.expected)}</b></p>
+                <p class="mb-1">Contado en denominaciones: <b>${summary.fmt(summary.counted)}</b></p>
+                <p class="mb-2">${summary.diff > 0 ? 'Sobran' : 'Faltan'} <b>${summary.fmt(Math.abs(summary.diff))}</b>.</p>
+                <p class="mb-0">Revisa las cantidades capturadas.</p>
+            </div>`
+        );
+        return;
+    }
 
-    // Realiza la solicitud AJAX
+    $button.prop('disabled', true).val('Registrando depósito...');
+
     $.ajax({
-      type: 'POST', // O 'GET' según tus necesidades
+      type: 'POST',
       url: '/operations/save_denominations_form',
-      data: formData,
-      success: function() {
-        // Maneja la respuesta del servidor aquí
-        $('#detailsDepositModal').modal('hide');
-        markProcessTabsDirty(['wads', 'deposit', 'sales_tab', 'finish', 'ballot']);
-        $('#v-pills-deposit-tab').trigger('click');
+      data: $(this).serialize(),
+      dataType: 'json',
+      success: function(data) {
+        if (data && data.result == 1) {
+          toastr.success(data.message, '¡Éxito!', { timeOut: 2000 });
+          markProcessTabsDirty(['wads', 'deposit', 'sales_tab', 'finish', 'ballot']);
+          $('#v-pills-deposit-tab').trigger('click');
+        } else {
+          toastr.error((data && data.message) || 'No se pudo registrar el depósito.', 'Error', { timeOut: 8000 });
+          $button.prop('disabled', false).val('Registrar depósito');
+        }
       },
       error: function(xhr) {
-        // Maneja errores aquí
         console.error(xhr.responseText);
-      },
-      complete: function() {
-        // Habilita el botón de submit
-        $('#save_denominations').prop('disabled', true);
+        toastr.error('No se pudo registrar el depósito. Revisa tu conexión e intenta de nuevo.', 'Error', { timeOut: 6000 });
+        $button.prop('disabled', false).val('Registrar depósito');
       }
     });
 });
@@ -976,9 +945,7 @@ function delete_deposit(IdTabulador, IdRecolecta) {
                 }
             });
         },
-        function(){
-            toastr.error('Cancel')
-        }
+        function(){}
     );
 }
 
@@ -1268,9 +1235,8 @@ $(document).on('submit', '#assignation_form', function(e) {
 
 
 function details_deposit(IdTabulador, IdRecolecta) {
-
-    let modal = $(this);
     // Aqui abrimos el modal de detalles de depósito con el #detailsDepositModal
+    $('#detailsDepositModal #depositDetailsContent').html('<div class="p-3 text-center text-body-secondary">Cargando…</div>');
     $('#detailsDepositModal').modal('show');
     // Aqui vamos a realizar la consulta de los detalles del depósito
     $.ajax({
@@ -1278,9 +1244,10 @@ function details_deposit(IdTabulador, IdRecolecta) {
         method: 'GET',
         dataType: 'json',
         success: function(data) {
-            $('#detailsDepositModal .modal-dialog').addClass(data.size + ' ' + data.position);
+            // Reiniciar clases para que no se acumulen entre aperturas
+            $('#detailsDepositModal .modal-dialog').attr('class', 'modal-dialog').addClass(data.size + ' ' + data.position);
             $('#detailsDepositModal #detailsDepositModalLabel').text(data.title);
-            $('#detailsDepositModal #content').html(data.content);
+            $('#detailsDepositModal #depositDetailsContent').html(data.content);
         },
         error: function(xhr, textStatus, errorThrown) {
             console.error('AJAX error:', errorThrown);

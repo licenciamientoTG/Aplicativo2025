@@ -880,18 +880,11 @@ class Operations{
         $totalDepositedUSD = $this->tabuladorRecolectasModel->get_total_by_tab($_GET['tabId'], 'USD');
 
         $exchange_now = $tabulator['TipoCambio']; // Para obtener el tipo de cambio más reciente
-        $deposit_open = false;
 
-        $collects = $this->tabuladorRecolectasModel->get_tabulator_collects($_GET['tabId']); // Para obtener los depósitos de un tabulador
+        $collects = $this->tabuladorRecolectasModel->get_tabulator_collects($_GET['tabId']) ?: []; // Para obtener los depósitos de un tabulador
 
-        $recolecta = (!empty($totalMXN['TieneRecolectas']) && $totalMXN['TieneRecolectas'] == 1) || (!empty($totalUSD['TieneRecolectas']) && $totalUSD['TieneRecolectas'] == 1);
-
-        if ($recolecta) {
-            $recolecta_abierta = array_filter($collects, function($collect) {
-                return $collect['Estatus'] == "1";
-            });
-            $deposit_open = $recolecta_abierta[0];
-        }
+        // Depósito abierto (Estatus = 1), si existe
+        $deposit_open = $this->tabuladorRecolectasModel->get_collect($_GET['tabId']);
 
         $json = [
             'html'  => $this->twig->render($this->route . 'deposit.html', compact('tabulator', 'deposit_open', 'totalMXN', 'totalUSD', 'collects', 'exchange_now', 'totalDepositedMXN', 'totalDepositedUSD'))
@@ -912,15 +905,26 @@ class Operations{
         }
 
         $tabId = intval($_POST['tabId']);
-        $currency = $_POST['currency'];
-        $total = $this->tabulatorDatailsModel->getPendingWads($tabId, $currency);
+        $currency = $_POST['currency'] ?? '';
 
-        if ($total == 1) {
-            json_output(['result' => 0, 'message' => 'Actualmente existe un deposito pendiente de cerrar']);
+        if (!in_array($currency, ['MXN', 'USD'], true)) {
+            json_output(['result' => 0, 'message' => 'Selecciona la moneda del depósito.']);
         }
 
-        if ($total == 0) {
-            json_output(['result' => 0, 'message' => 'No existen fajillas pendientes en el tabulador']);
+        $tabulator = $this->tabulatorModel->get_tabulator($tabId);
+        if (!$tabulator || intval($tabulator['Estatus']) === 2) {
+            json_output(['result' => 0, 'message' => 'El tabulador está cerrado; ya no se pueden abrir depósitos.']);
+        }
+
+        if ($this->tabuladorRecolectasModel->get_collect($tabId)) {
+            json_output(['result' => 0, 'message' => 'Ya hay un depósito abierto. Registra sus denominaciones o cancélalo antes de abrir otro.']);
+        }
+
+        $total = $this->tabulatorDatailsModel->getPendingWads($tabId, $currency);
+
+        if (!$total) {
+            $name = $currency === 'USD' ? 'dólares' : 'pesos';
+            json_output(['result' => 0, 'message' => "No hay fajillas en {$name} pendientes de depositar."]);
         }
 
         $params = [
@@ -935,7 +939,7 @@ class Operations{
             json_output(['result' => 0, 'message' => 'No fue posible realizar el deposito']);
         }
 
-        json_output(['result' => 1, 'message' => 'El deposito se abrio correctamente']);
+        json_output(['result' => 1, 'message' => 'Depósito abierto. Captura las denominaciones para registrarlo.']);
     }
 
     function delete_wad($tabId, $secuencial, $codgas) : void {
@@ -1018,41 +1022,79 @@ class Operations{
      * @throws Exception
      */
     function save_denominations_form() : void {
-        // Obtenemos los datos del tabulador y del depósito activo
-        $tabulator = $this->tabulatorModel->get_tabulator($_POST['IdTabulador']);
-        $deposit = $this->tabuladorRecolectasModel->get_collect($_POST['IdTabulador']);
+        $tabId = intval($_POST['IdTabulador'] ?? 0);
+        $tabulator = $this->tabulatorModel->get_tabulator($tabId);
+        $deposit = $this->tabuladorRecolectasModel->get_collect($tabId);
 
-        if ($this->tabuladorDenominacionesModel->add($_POST, $deposit, $tabulator['TipoCambio'])) {
-
-            // Despues de guardar las denominaciones, vamos a 'cerrar las fajillas' que se utilizaron para el depósito
-            if ($this->tabulatorDatailsModel->close_wads($deposit['IdRecolecta'], $_POST['IdTabulador'], $deposit['CodigoValor'])) {
-                // Si las fajillas se cerraron correctamente, entonces vamos a actualizar el campo Estatus en TabuladorRecolectas
-                if ($this->tabuladorRecolectasModel->close_collect($_POST['IdTabulador'], $deposit['IdRecolecta'])) {
-                    setFlashMessage('success','Denominaciones agregadas correctamente');
-                } else {
-                    setFlashMessage('error','No se pudo cerrar las fajillas');
-                }
-                setFlashMessage('success','Denominaciones agregadas correctamente');
-            } else {
-                setFlashMessage('error','No se pudo cerrar las fajillas');
-            }
-        } else {
-            setFlashMessage('error','No se pudo agregar las denominaciones');
+        if (!$tabulator || !$deposit) {
+            json_output(['result' => 0, 'message' => 'No hay un depósito abierto en este tabulador. Recarga la pestaña.']);
         }
+
+        // El depósito debe cuadrar con las fajillas pendientes al momento de guardar (en centavos)
+        $isMXN = ($deposit['CodigoValor'] == 6);
+        $pending = $this->tabulatorDatailsModel->getPendingWads($tabId, $isMXN ? 'MXN' : 'USD');
+        $expectedCents = $pending ? intval(round(floatval($isMXN ? $pending['TotalValor'] : $pending['TotalMonto']) * 100)) : 0;
+        $countedCents = $this->tabuladorDenominacionesModel->count_total_cents($_POST, $deposit['CodigoValor']);
+
+        if ($countedCents !== $expectedCents) {
+            $symbol = $isMXN ? '$' : 'US$';
+            json_output([
+                'result'  => 0,
+                'message' => 'El conteo no cuadra con las fajillas pendientes: contado ' . $symbol . number_format($countedCents / 100, 2)
+                    . ', esperado ' . $symbol . number_format($expectedCents / 100, 2)
+                    . '. Si se agregaron o eliminaron fajillas, recarga la pestaña.'
+            ]);
+        }
+
+        $sql = $this->tabuladorDenominacionesModel->sql;
+        try {
+            $sql->beginTransaction();
+
+            if (!$this->tabuladorDenominacionesModel->add($_POST, $deposit, $tabulator['TipoCambio'])) {
+                throw new Exception('No se guardaron las denominaciones');
+            }
+            // Marcar las fajillas usadas en este depósito
+            if (!$this->tabulatorDatailsModel->close_wads($deposit['IdRecolecta'], $tabId, $deposit['CodigoValor'])) {
+                throw new Exception('No se cerraron las fajillas');
+            }
+            if (!$this->tabuladorRecolectasModel->close_collect($tabId, $deposit['IdRecolecta'])) {
+                throw new Exception('No se cerró el depósito');
+            }
+
+            $sql->commit();
+        } catch (Throwable $e) {
+            $sql->rollBack();
+            error_log('save_denominations_form: ' . $e->getMessage());
+            json_output(['result' => 0, 'message' => 'No se pudo registrar el depósito; no se guardó ningún cambio. Intenta de nuevo.']);
+        }
+
+        json_output(['result' => 1, 'message' => 'Depósito registrado correctamente.']);
     }
 
     /**
-     * @param $IdRecolecta
+     * Cancela (elimina) el depósito abierto. Solo por POST/AJAX.
      * @return void
      * @throws Exception
      */
     function cancel_collect($IdTabulator, $IdRecolecta) : void {
-        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
-            if ($this->tabuladorRecolectasModel->cancel_collect($IdTabulator, $IdRecolecta)) {
-                setFlashMessage('success','Depósito cancelado correctamente');
-                redirect();
-            }
+        if (!preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
+            json_output(['result' => 0, 'message' => 'Método no permitido']);
         }
+
+        $tabulator = $this->tabulatorModel->get_tabulator(intval($IdTabulator));
+        if (!$tabulator || intval($tabulator['Estatus']) === 2) {
+            json_output(['result' => 0, 'message' => 'El tabulador está cerrado; no se puede cancelar el depósito.']);
+        }
+
+        $open = $this->tabuladorRecolectasModel->get_collect(intval($IdTabulator));
+        if (!$open || intval($open['IdRecolecta']) !== intval($IdRecolecta)) {
+            json_output(['result' => 0, 'message' => 'Ese depósito ya no está abierto. Recarga la pestaña.']);
+        }
+
+        if ($this->tabuladorRecolectasModel->cancel_collect(intval($IdTabulator), intval($IdRecolecta))) {
+            json_output(['result' => 1, 'message' => 'Depósito cancelado. Las fajillas siguen pendientes de depositar.']);
+        }
+        json_output(['result' => 0, 'message' => 'No se pudo cancelar el depósito.']);
     }
 
     /**

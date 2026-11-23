@@ -16,91 +16,78 @@ class TabuladorDenominacionesModel extends Model{
     }
 
     /**
-     * @param $data
-     * @param $deposit
-     * @param $exchange_now
-     * @return bool
+     * Denominaciones por moneda del depósito: [IdDenominacion => [campo del formulario, valor unitario]].
+     * CodigoValor 6 = MXN (incluye morralla), cualquier otro = USD.
+     */
+    private function denomination_map($CodigoValor) : array {
+        if ($CodigoValor == '6') {
+            return [
+                13 => ['bill_thousand', 1000],
+                12 => ['bill_five_hundred', 500],
+                11 => ['bill_two_hundred', 200],
+                10 => ['bill_hundred', 100],
+                9  => ['bill_fifty', 50],
+                8  => ['bill_twenty', 20],
+                6  => ['coin_twenty', 20],
+                5  => ['coin_ten', 10],
+                4  => ['coin_five', 5],
+                3  => ['coin_two', 2],
+                2  => ['coin_one', 1],
+                1  => ['coin_point_fifty', 0.5],
+            ];
+        }
+        return [
+            20 => ['bill_hundred_usd', 100],
+            19 => ['bill_fifty_usd', 50],
+            18 => ['bill_twenty_usd', 20],
+            17 => ['bill_ten_usd', 10],
+            16 => ['bill_five_usd', 5],
+            15 => ['bill_two_usd', 2],
+            14 => ['bill_one_usd', 1],
+            22 => ['coin_one_usd', 1],
+            23 => ['coin_half_usd', 0.5],
+            24 => ['coin_quarter_usd', 0.25],
+            25 => ['coin_dime_usd', 0.1],
+            26 => ['coin_nickel_usd', 0.05],
+            27 => ['coin_penny_usd', 0.01],
+        ];
+    }
+
+    /**
+     * Total contado en las denominaciones enviadas, en centavos de la moneda del depósito
+     * (pesos para MXN, dólares para USD). Se trabaja en centavos para evitar errores de redondeo.
+     */
+    function count_total_cents(array $data, $CodigoValor) : int {
+        $cents = 0;
+        foreach ($this->denomination_map($CodigoValor) as [$field, $value]) {
+            $quantity = max(0, intval($data[$field] ?? 0));
+            $cents += $quantity * intval(round($value * 100));
+        }
+        return $cents;
+    }
+
+    /**
+     * Guarda las denominaciones del depósito. En USD, Total se guarda en pesos (cantidad x valor x tipo de cambio).
+     * Lanza excepción si algún INSERT falla, para que el llamador haga rollBack.
      * @throws Exception
      */
     function add($data, $deposit, $exchange_now) : bool {
         $query = 'INSERT INTO [TG].[dbo].[TabuladorDenominaciones] (IdTabulador, Denominacion, Cantidad, Valor, Total, Estatus, TipoCambio, IdRecolecta, IdUsuario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);';
-        if ($deposit['CodigoValor'] == '6') { // Si es efectivo (moneda) en MXN
-            $denominations = [
-                13 => $data['bill_thousand'],       // Valor 1000
-                12 => $data['bill_five_hundred'],   // Valor 500
-                11 => $data['bill_two_hundred'],    // Valor 200
-                10 => $data['bill_hundred'],        // Valor 100
-                9  => $data['bill_fifty'],          // Valor 50
-                8  => $data['bill_twenty'],         // Valor 20
-                6  => $data['coin_twenty'],         // Valor 20
-                5  => $data['coin_ten'],            // Valor 10
-                4  => $data['coin_five'],           // Valor 5
-                3  => $data['coin_two'],            // Valor 2
-                2  => $data['coin_one'],            // Valor 1
-                1  => $data['coin_point_fifty'] // Valor 0.50
-            ];
+        $isMXN = ($deposit['CodigoValor'] == '6');
+        $rate = $isMXN ? 1 : $exchange_now;
+        $inserted = 0;
 
-            $valores = [
-                13 => 1000,
-                12 => 500,
-                11 => 200,
-                10 => 100,
-                9  => 50,
-                8  => 20,
-                6  => 20,
-                5  => 10,
-                4  => 5,
-                3  => 2,
-                2  => 1,
-                1  => 0.5
-            ];
-            foreach ($denominations as $denomination => $quantity) {
-                if ($quantity > 0) {
-                    $params = [$data['IdTabulador'], $denomination, $quantity, $valores[$denomination], ($valores[$denomination] * $quantity), 1, 1, $deposit['IdRecolecta'], $_SESSION['tg_user']['Id']];
-                    $this->sql->insert($query, $params);
+        foreach ($this->denomination_map($deposit['CodigoValor']) as $denomination => [$field, $value]) {
+            $quantity = max(0, intval($data[$field] ?? 0));
+            if ($quantity > 0) {
+                $params = [$data['IdTabulador'], $denomination, $quantity, $value, ($value * $quantity * $rate), 1, $rate, $deposit['IdRecolecta'], $_SESSION['tg_user']['Id']];
+                if (!$this->sql->insert($query, $params)) {
+                    return false;
                 }
-            }
-        } else {
-            $denominations = [
-                20 => $data['bill_hundred_usd'], // Valor 100
-                19 => $data['bill_fifty_usd'],   // Valor 50
-                18 => $data['bill_twenty_usd'],  // Valor 20
-                17 => $data['bill_ten_usd'],     // Valor 10
-                16 => $data['bill_five_usd'],    // Valor 5
-                15 => $data['bill_two_usd'],     // Valor 2
-                14 => $data['bill_one_usd'],     // Valor 1
-                22 => $data['coin_one_usd'],     // Valor 1
-                23 => $data['coin_half_usd'],    // Valor .5
-                24 => $data['coin_quarter_usd'], // Valor .25
-                25 => $data['coin_dime_usd'],    // Valor .1
-                26 => $data['coin_nickel_usd'],  // Valor .05
-                27 => $data['coin_penny_usd']    // Valor 0.01
-            ];
-
-            $valores = [
-                20 => 100, // Valor 100
-                19 => 50,  // Valor 50
-                18 => 20,  // Valor 20
-                17 => 10,  // Valor 10
-                16 => 5,   // Valor 5
-                15 => 2,   // Valor 2
-                14 => 1,   // Valor 1
-                22 => 1,   // Valor 1
-                23 => .5,  // Valor .5
-                24 => .25, // Valor .25
-                25 => .1,  // Valor .1
-                26 => .05, // Valor .05
-                27 => .01  // Valor 0.01
-            ];
-
-            foreach ($denominations as $denomination => $quantity) {
-                if ($quantity > 0) {
-                    $params = [$data['IdTabulador'], $denomination, $quantity, $valores[$denomination], (($valores[$denomination] * $quantity) * $exchange_now), 1, $exchange_now, $deposit['IdRecolecta'], $_SESSION['tg_user']['Id']];
-                    $this->sql->insert($query, $params);
-                }
+                $inserted++;
             }
         }
-        return true;
+        return $inserted > 0;
     }
 
     /**
