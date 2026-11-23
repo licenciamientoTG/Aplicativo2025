@@ -101,13 +101,13 @@ class EfcAnaliticosModel {
         $eligibleIds=[]; foreach($candidateStations as $id=>$effectiveStation) if($effectiveStation===$stationId || isset($stationLinkedIds[$id]))$eligibleIds[]=$id;
         foreach(array_chunk($eligibleIds,400) as $idBatch) {
             $marks=implode(',',array_fill(0,count($idBatch),'?'));
-            $q=$this->db->prepare("SELECT P.id,P.importacion_id,P.captura_manual,P.source_date AS fecha_original,P.effective_date AS fecha_efectiva,P.effective_station_id,P.effective_time AS hora_original,P.effective_remittance AS remesa_numero,P.effective_account AS cuenta_mn_original,P.effective_declared_mn AS dice_contener_mn,P.effective_real_mn AS real_mn,P.effective_declared_usd AS dice_contener_usd,P.effective_real_usd AS real_usd,I.nombre_archivo FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id WHERE P.id IN ($marks) AND I.estado='IMPORTADA' ORDER BY P.id DESC");
+            $q=$this->db->prepare("SELECT P.id,P.importacion_id,P.captura_manual,P.source_date AS fecha_original,P.effective_date AS fecha_efectiva,P.effective_station_id,P.effective_time AS hora_original,P.effective_remittance AS remesa_numero,P.effective_account AS cuenta_mn_original,P.effective_declared_mn AS dice_contener_mn,P.effective_real_mn AS real_mn,P.effective_declared_usd AS dice_contener_usd,P.effective_real_usd AS real_usd,L.color AS etiqueta_color,L.descripcion AS etiqueta_descripcion,I.nombre_archivo FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P LEFT JOIN dbo.efc_conc_analiticos_papeletas_etiquetas L ON L.papeleta_id=P.id JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id WHERE P.id IN ($marks) AND I.estado='IMPORTADA' ORDER BY P.id DESC");
             $q->execute($idBatch); array_push($paperRows,...$q->fetchAll(PDO::FETCH_ASSOC));
         }
         usort($paperRows,static fn($a,$b)=>(int)$b['id']<=>(int)$a['id']);
         $timings['papers_hydrate_ms']=round((hrtime(true)-$started)/1e6,2);
         $started=hrtime(true); $items=[];
-        foreach($paperRows as $row) $items[]=['id'=>(int)$row['id'],'importation_id'=>(int)$row['importacion_id'],'manually_created'=>(bool)$row['captura_manual'],'date'=>$this->dateValue($row['fecha_efectiva'] ?: $row['fecha_original']),'original_date'=>$this->dateValue($row['fecha_original']),'effective_date'=>$row['fecha_efectiva']?$this->dateValue($row['fecha_efectiva']):null,'time'=>$row['hora_original'],'remittance'=>$this->normaliseRemittance($row['remesa_numero']),'account'=>$row['cuenta_mn_original'],'declared_mn'=>(float)($row['dice_contener_mn']??0),'real_mn'=>(float)($row['real_mn']??0),'declared_usd'=>(float)($row['dice_contener_usd']??0),'real_usd'=>(float)($row['real_usd']??0),'linked'=>isset($linkedIds[(int)$row['id']]),'file'=>$row['nombre_archivo']];
+        foreach($paperRows as $row) $items[]=['id'=>(int)$row['id'],'importation_id'=>(int)$row['importacion_id'],'manually_created'=>(bool)$row['captura_manual'],'date'=>$this->dateValue($row['fecha_efectiva'] ?: $row['fecha_original']),'original_date'=>$this->dateValue($row['fecha_original']),'effective_date'=>$row['fecha_efectiva']?$this->dateValue($row['fecha_efectiva']):null,'time'=>$row['hora_original'],'remittance'=>$this->normaliseRemittance($row['remesa_numero']),'account'=>$row['cuenta_mn_original'],'declared_mn'=>(float)($row['dice_contener_mn']??0),'real_mn'=>(float)($row['real_mn']??0),'declared_usd'=>(float)($row['dice_contener_usd']??0),'real_usd'=>(float)($row['real_usd']??0),'label_color'=>$row['etiqueta_color']??null,'label_description'=>$row['etiqueta_descripcion']??null,'linked'=>isset($linkedIds[(int)$row['id']]),'file'=>$row['nombre_archivo']];
         $timings['papers_map_ms']=round((hrtime(true)-$started)/1e6,2);
         $links=$this->db->prepare("SELECT V.id,V.papeleta_id,V.papeleta_secundaria_id,V.fecha_cg,V.turno,V.concepto,V.importe_cg,V.criterio,V.tipo_cambio_usd AS exchange_rate FROM dbo.efc_conc_analiticos_vinculos V WHERE V.estacion_id=? AND V.activo=1 AND (($linkRange) OR EXISTS(SELECT 1 FROM dbo.efc_conc_transitos T WHERE T.estacion_id=V.estacion_id AND T.fecha_origen=V.fecha_cg AND T.turno=V.turno AND T.concepto=V.concepto AND T.mes_destino=? AND T.estado IN ('PENDIENTE','CONCILIADO')))");
         $started=hrtime(true);
@@ -501,9 +501,39 @@ class EfcAnaliticosModel {
         } catch(Throwable $e) { if($this->db->inTransaction())$this->db->rollBack(); throw $e; }
     }
 
+    /** Saves one short identification label for an imported paper. */
+    public function savePaperLabel(int $paperId, int $stationId, string $description, string $color): void {
+        $allowed=['#ef4444','#f97316','#f59e0b','#eab308','#84cc16','#22c55e','#10b981','#14b8a6','#06b6d4','#0ea5e9','#3b82f6','#6366f1','#8b5cf6','#a855f7','#d946ef','#ec4899'];
+        $description=trim($description);
+        if($paperId<1 || $stationId<1) throw new RuntimeException('Papeleta o estación inválida.');
+        if(!in_array($color,$allowed,true)) throw new RuntimeException('Color de etiqueta inválido.');
+        if(mb_strlen($description,'UTF-8')>30) throw new RuntimeException('La descripción admite máximo 30 caracteres.');
+        $this->db->beginTransaction();
+        try {
+            $check=$this->db->prepare("SELECT P.id FROM dbo.v_efc_conc_analiticos_papeletas_efectivas P JOIN dbo.efc_conc_analiticos_importaciones I WITH (UPDLOCK,HOLDLOCK) ON I.id=P.importacion_id WHERE P.id=? AND P.effective_station_id=? AND I.estado='IMPORTADA'");
+            $check->execute([$paperId,$stationId]);
+            if(!$check->fetchColumn()) throw new RuntimeException('Papeleta no encontrada o no disponible para esta estación.');
+            if($description==='') {
+                $delete=$this->db->prepare('DELETE dbo.efc_conc_analiticos_papeletas_etiquetas WHERE papeleta_id=?');
+                $delete->execute([$paperId]);
+            } else {
+                $exists=$this->db->prepare('SELECT 1 FROM dbo.efc_conc_analiticos_papeletas_etiquetas WITH (UPDLOCK,HOLDLOCK) WHERE papeleta_id=?');
+                $exists->execute([$paperId]);
+                if($exists->fetchColumn()) {
+                    $save=$this->db->prepare('UPDATE dbo.efc_conc_analiticos_papeletas_etiquetas SET color=?,descripcion=?,actualizado_en=GETDATE() WHERE papeleta_id=?');
+                    $save->execute([$color,$description,$paperId]);
+                } else {
+                    $insert=$this->db->prepare('INSERT dbo.efc_conc_analiticos_papeletas_etiquetas(papeleta_id,color,descripcion) VALUES(?,?,?)');
+                    $insert->execute([$paperId,$color,$description]);
+                }
+            }
+            $this->db->commit();
+        } catch(Throwable $e) { if($this->db->inTransaction())$this->db->rollBack(); throw $e; }
+    }
     private function ensureLinksSchema(): void {
         $statements = [];
 
+        $statements[] = "IF OBJECT_ID('dbo.efc_conc_analiticos_papeletas_etiquetas','U') IS NULL CREATE TABLE dbo.efc_conc_analiticos_papeletas_etiquetas (papeleta_id INT NOT NULL PRIMARY KEY,color VARCHAR(7) NOT NULL,descripcion NVARCHAR(30) NOT NULL,creado_en DATETIME NOT NULL CONSTRAINT DF_efc_conc_analiticos_papeletas_etiquetas_creado DEFAULT GETDATE(),actualizado_en DATETIME NULL,CONSTRAINT CK_efc_conc_analiticos_papeletas_etiquetas_color CHECK(color IN ('#ef4444','#f97316','#f59e0b','#eab308','#84cc16','#22c55e','#10b981','#14b8a6','#06b6d4','#0ea5e9','#3b82f6','#6366f1','#8b5cf6','#a855f7','#d946ef','#ec4899')),CONSTRAINT CK_efc_conc_analiticos_papeletas_etiquetas_descripcion CHECK(LEN(LTRIM(RTRIM(descripcion))) BETWEEN 1 AND 30),CONSTRAINT FK_efc_conc_analiticos_etiquetas_papeleta FOREIGN KEY(papeleta_id) REFERENCES dbo.efc_conc_analiticos_papeletas(id) ON DELETE CASCADE)";
         $statements[] = "IF OBJECT_ID('dbo.efc_conc_analiticos_vinculos','U') IS NULL CREATE TABLE dbo.efc_conc_analiticos_vinculos (id INT IDENTITY PRIMARY KEY, estacion_id INT NOT NULL, papeleta_id INT NOT NULL, fecha_cg DATE NOT NULL, turno NVARCHAR(40) NOT NULL, concepto VARCHAR(10) NOT NULL, importe_cg DECIMAL(18,2) NOT NULL, criterio VARCHAR(20) NOT NULL, tipo_cambio_usd DECIMAL(18,6) NULL, usuario_id INT NULL, activo BIT NOT NULL DEFAULT 1, creado_en DATETIME NOT NULL DEFAULT GETDATE(), actualizado_en DATETIME NULL, CONSTRAINT FK_efc_conc_analiticos_vinculos_papeleta FOREIGN KEY(papeleta_id) REFERENCES dbo.efc_conc_analiticos_papeletas(id))";
         $statements[] = "IF COL_LENGTH('dbo.efc_conc_analiticos_vinculos','papeleta_secundaria_id') IS NULL ALTER TABLE dbo.efc_conc_analiticos_vinculos ADD papeleta_secundaria_id INT NULL";
         $statements[] = "IF OBJECT_ID('dbo.FK_efc_conc_analiticos_vinculos_secundaria','F') IS NULL ALTER TABLE dbo.efc_conc_analiticos_vinculos ADD CONSTRAINT FK_efc_conc_analiticos_vinculos_secundaria FOREIGN KEY(papeleta_secundaria_id) REFERENCES dbo.efc_conc_analiticos_papeletas(id)";

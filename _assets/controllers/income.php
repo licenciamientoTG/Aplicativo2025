@@ -9448,6 +9448,12 @@ public function stamped_invoices_detail(): void
         catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
     }
 
+    public function efc_conc_analiticos_etiqueta(): void {
+        ob_clean(); header('Content-Type: application/json; charset=utf-8');
+        if (!$this->papeletasCsrfValido()) { http_response_code(403); echo json_encode(['status'=>'error','message'=>'Token CSRF inválido.']); exit; }
+        try { $data=json_decode(file_get_contents('php://input'),true)?:[]; $this->efcAnaliticos->savePaperLabel((int)($data['id']??0),(int)($data['station_id']??0),(string)($data['description']??''),(string)($data['color']??'')); echo json_encode(['status'=>'success']); }
+        catch(Throwable $e){http_response_code(422);echo json_encode(['status'=>'error','message'=>$e->getMessage()]);} exit;
+    }
     public function efc_conc_analiticos_historial(): void {
         ob_clean(); header('Content-Type: application/json; charset=utf-8');
         try { echo json_encode(['status'=>'success']+$this->efcAnaliticos->managedPaperHistory((int)($_GET['id']??0))); }

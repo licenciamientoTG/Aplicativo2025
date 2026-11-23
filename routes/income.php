@@ -8,6 +8,7 @@ return [
         route('conciliation/', [Income::class, 'conciliation'], name: 'income.conciliation', methods: ['GET'], permission: 14),
         route('cash_reconciliation_papers', [Income::class, 'cash_reconciliation_papers'], name: 'income.cash_reconciliation_papers', methods: ['GET'], permission: 14),
         route('efc_conc_analiticos_papeletas', [Income::class, 'efc_conc_analiticos_papeletas'], name: 'income.efc_conc_analiticos_papeletas', methods: ['GET'], permission: 14),
+        route('efc_conc_analiticos_etiqueta', [Income::class, 'efc_conc_analiticos_etiqueta'], name: 'income.efc_conc_analiticos_etiqueta', methods: ['POST'], permission: 14),
         route('efc_conc_analiticos_historial', [Income::class, 'efc_conc_analiticos_historial'], name: 'income.efc_conc_analiticos_historial', methods: ['GET'], permission: 14),
         route('efc_conc_analiticos_archivo', [Income::class, 'efc_conc_analiticos_archivo'], name: 'income.efc_conc_analiticos_archivo', methods: ['GET'], permission: 14),
         route('efc_conc_analiticos_crear', [Income::class, 'efc_conc_analiticos_crear'], name: 'income.efc_conc_analiticos_crear', methods: ['POST'], permission: 14),
