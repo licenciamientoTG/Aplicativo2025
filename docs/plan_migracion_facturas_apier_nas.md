@@ -157,6 +157,51 @@ Pasos:
 5. Parche chico en los scripts de Python del servidor 0.3: lista `PROVEEDORES_PAUSADOS` (por variable de entorno o archivo) para poder apagar un proveedor sin tocar a los demás. **Es obligatoria**: si ambos motores corren sobre el mismo proveedor, `completar_factura_existente()` del Python reescribe `RutaArchivo` de vuelta a su ruta vieja.
 6. Línea base: conteos por proveedor/día de `FacturasRecibidas` y de archivos, para comparar después.
 
+**Inventario 2026-11-23 (0.3, 31 tareas `sya_*`).** Las que tocan esta migración (todas como `alejandro.martinez`, `C:\python31210\python.exe`, dir `C:\Software\TareasProgramadas\Facturas_proveedores\correoFacturas`):
+
+| Tarea | Estado | Disparador | Acción | Última / resultado |
+|---|---|---|---|---|
+| `sya_descargar_facturas_proveedor` | Activa | cada 15 min desde 08:28 | `run_ciclo.py hoy` | 2026-11-23 14:28 · 0 |
+| `sya_descargar_facturas_proveedor_respaldo_ayer` | Activa | diaria 06:35 | `run_ciclo.py ayer` | 2026-11-23 06:35 · 0 |
+| `sya_descargar_facturas_proveedor_importar` | Deshabilitada | diaria 06:35 | `main.py` | 2026-09-11 · 0 |
+
+Ninguna otra tarea usa `correoFacturas` ni `attachments`. Versiones en el servidor: `run_ciclo.py` y `CorreoFactruras.py` del 2026-11-05, `main.py` del 2026-10-27 → **no** tienen el parche de pausados (local 2026-11-21). `config.py` igual que el local.
+
+**Cambio de estrategia (2026-11-23, decisión del usuario):** en vez de pasar proveedor por proveedor, se hace el **cambio total**: sombra de todos → comparación → deshabilitar las dos tareas `sya_descargar_facturas_*` del 0.3 y activar el cron de ApiER el mismo día. El parche `PROVEEDORES_PAUSADOS` ya no hace falta desplegarlo.
+
+### Estado del código en ApiER (rama `facturas-correo`, 2026-11-23)
+
+`api/facturas_correo/` + comando `python manage.py ciclo_facturas`:
+
+| Archivo | Qué hace |
+|---|---|
+| `proveedores.py` | Catálogo (buzón, remitente, prefijos), copia de `ACCOUNTS`; **petrotal ahora acepta `PET`** |
+| `descarga.py` | Filtros de `CorreoFactruras.py` (prefijo/"factura", aceptar todo, ZIP MCG, enlaces reachcore) |
+| `gmail_cliente.py` | Gmail API (cuenta de servicio + delegación), mensajes en `raw`, ventanas en epoch |
+| `almacen.py` | NAS: verifica montaje, escritura `.tmp`→rename, `mover()` por UUID, XML hermano, ruta lógica `combustible\...` |
+| `importar.py` | Cuerpo de `/api/importar_factura_pdf/` sacado a función; la vista y el comando usan el mismo código |
+| `registro.py` | `FacturasCorreoMensajes` (dedupe por GmailId, reintenta los de `error`) y semáforo/latidos |
+| `estacion.py` | Port de `resolver_estacion.py` |
+| `ciclo.py` | Orquestador: motor `sombra` (a `_sombra\<prov>\` + `_manifest.csv`, sin BD) y `apier` (cola → importar → archivar → ruta lógica → `OrigenImportacion='correo'` → estación → alerta $0); `comparar` |
+| `tests.py` | 24 pruebas sin red ni BD (`python -m unittest api.facturas_correo.tests`) |
+
+Diferencias deliberadas contra el script viejo: no se reapunta `RutaArchivo` de una factura duplicada que ya tiene ruta (solo se completan huecos: XML o ruta vacía); no existe el "reprocesar si el archivo falta en disco" (el 109 no ve el disco del 0.3).
+
+**Prueba real `--dry-run` desde la PC (2026-11-23, 16–23 nov, todos):** mcg 480 correos/960 archivos, tesoro 426+142, aemsa 52, premiergas 18, petrotal 18, enerey y essafuel 0. Omitidos solo comprobantes de pago de petrotal (`TESORO`, `PREMIER`, `ESSA`).
+**Hallazgo:** Petrotal mandó los folios 31703–31706 como `PET 3170x.pdf`; el filtro `F_` (Python y port) los tiraba. 31704, 31705 y 31706 **no están en FacturasRecibidas** (31703 entró a mano).
+
+**Despliegue en el 109 (pendiente):**
+1. `sudo install -m 640 -o root -g www-data credenciales.json /etc/apier/gmail_sa.json` (la llave de Starlink, la misma cuenta de servicio).
+2. Merge de `facturas-correo` a `master`, push y `./deploy.sh`.
+3. Prueba: `sudo -u www-data ./env/bin/python manage.py ciclo_facturas rango 2026-11-16 2026-11-23 --proveedor petrotal --sombra` y luego `... comparar 2026-11-17 2026-11-22`.
+4. Sombra completa: `... rango 2026-11-01 2026-11-23 --sombra` (todos) y `comparar 2026-11-03 2026-11-21`.
+5. Cron como `www-data` (el montaje es `uid=www-data`):
+```
+*/15 * * * *  www-data  cd /var/www/html/ApiER && flock -n /var/lock/ciclo_facturas.lock timeout 25m ./env/bin/python manage.py ciclo_facturas hoy  >> /var/log/apier/ciclo.log 2>&1
+35 6 * * *    www-data  cd /var/www/html/ApiER && flock -w 1800 /var/lock/ciclo_facturas.lock timeout 60m ./env/bin/python manage.py ciclo_facturas ayer >> /var/log/apier/ciclo.log 2>&1
+```
+   (en sombra se agrega `--sombra`; `/var/log/apier` debe ser escribible por `www-data`).
+
 ### Fase 1 — Descarga en modo sombra (por proveedor, sin tocar la BD)
 - `ciclo_facturas --sombra`: lee Gmail, filtra, escribe en `combustible\_sombra\<prov>\` y **no** importa ni archiva.
 - Comparación contra lo que ya bajó Python en el mismo rango: nº de correos, de archivos y **UUIDs** idénticos.
