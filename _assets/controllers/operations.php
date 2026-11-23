@@ -2496,14 +2496,10 @@ class Operations{
         }
     }
 
-    /** Servidores de estación sin ControlGas: se excluyen del reporte de cierre del turno 4. */
-    private const CORTE_T4_SIN_CONTROLGAS = [
-        '[192.168.40.101]', // Praxedis
-    ];
-
     /**
      * Reporte: ¿el turno 4 quedó cerrado en ControlGas (tabla Medicion)? Solo consulta, no modifica nada.
      * La página lista las estaciones y el navegador pide el estado de cada una a corte_t4_estacion().
+     * La misma regla la usa la alerta de las 00:05 (cron/cierre_t4_alerta.php).
      */
     function corte_t4() : void {
         $yesterday = date('Y-m-d', strtotime('-1 day'));
@@ -2513,20 +2509,15 @@ class Operations{
             $fecha = $yesterday;
         }
 
-        $stations = [];
         // Sin ping previo (get_active_station_TG descarta las que no responden): aquí
         // queremos ver también las estaciones sin conexión.
-        foreach ($this->estacionesModel->get_actives_stations() ?: [] as $station) {
-            $codgas = intval($station['Codigo']);
-            $linked = $this->tabulatorModel->linked_server[$codgas] ?? null;
-            if ($linked && !in_array($linked, self::CORTE_T4_SIN_CONTROLGAS, true)) {
-                $stations[] = ['codgas' => $codgas, 'nombre' => $station['Nombre']];
-            }
-        }
-        usort($stations, fn($a, $b) => $a['codgas'] <=> $b['codgas']);
+        $stations = $this->tabulatorModel->turn4_stations($this->estacionesModel->get_actives_stations() ?: []);
 
         $isToday = $fecha === date('Y-m-d');
-        echo $this->twig->render($this->route . 'corte_t4.html', compact('fecha', 'stations', 'isToday', 'yesterday'));
+        $limite = substr(TabulatorModel::T4_CIERRE_LIMITE, 0, 5);
+        $horaConfiable = $this->tabulatorModel->turn4_closure_time_reliable($fecha);
+        $horaConfiableHasta = substr(TabulatorModel::T4_HORA_CONFIABLE_HASTA, 0, 5);
+        echo $this->twig->render($this->route . 'corte_t4.html', compact('fecha', 'stations', 'isToday', 'yesterday', 'limite', 'horaConfiable', 'horaConfiableHasta'));
     }
 
     /**
@@ -2541,28 +2532,11 @@ class Operations{
             json_output(['ok' => false, 'message' => 'Fecha no válida.']);
         }
 
-        $status = $this->tabulatorModel->controlgas_turn_status($codgas, dateToInt($fecha), 41);
-        if ($status === false) {
+        $closure = $this->tabulatorModel->turn4_closure($codgas, $fecha);
+        if ($closure === false) {
             json_output(['ok' => false, 'codgas' => $codgas, 'message' => 'No se pudo consultar el ControlGas de la estación.']);
         }
-
-        // Lo que decide si el turno está cerrado es Medicion (lecturas electrónicas).
-        if ($status['Lecturas'] > 0) {
-            $estado = 'cerrado';
-        } elseif ($status['Despachos'] > 0) {
-            $estado = 'abierto_con_ventas';
-        } else {
-            $estado = 'abierto_sin_ventas';
-        }
-
-        json_output([
-            'ok'         => true,
-            'codgas'     => $codgas,
-            'estado'     => $estado,
-            'declarado'  => $status['Declaraciones'] > 0,
-            'despachos'  => $status['Despachos'],
-            'monto'      => $status['Monto'],
-        ]);
+        json_output(['ok' => true, 'codgas' => $codgas] + $closure);
     }
 
     function open_tabulator() : void {

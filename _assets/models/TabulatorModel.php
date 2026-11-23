@@ -200,6 +200,80 @@ class TabulatorModel extends Model{
         return (bool)$this->sql->update('UPDATE [TG].[dbo].TabuladorEncabezado SET Estatus = 1 WHERE Id = ?;', [intval($tabuladorId)]);
     }
 
+    /** Servidores de estación sin ControlGas: se excluyen del cierre del turno 4. */
+    public const T4_SIN_CONTROLGAS = [
+        '[192.168.40.101]', // Praxedis
+    ];
+
+    /** Hora límite (del día siguiente) para que el turno 4 quede cerrado. */
+    public const T4_CIERRE_LIMITE = '00:05:00';
+
+    /**
+     * Hasta qué hora (del día siguiente) es confiable Medicion.logfch como hora de cierre.
+     * ControlGas vuelve a escribir las lecturas del turno 4 alrededor de las 06:00 y
+     * logfch se sobrescribe, así que después ya no refleja la hora real del cierre.
+     */
+    public const T4_HORA_CONFIABLE_HASTA = '06:00:00';
+
+    /** ¿Se puede confiar hoy en la hora de cierre del turno 4 de $fecha ('Y-m-d')? */
+    function turn4_closure_time_reliable(string $fecha) : bool {
+        return $fecha === date('Y-m-d', strtotime('-1 day'))
+            && date('H:i:s') < self::T4_HORA_CONFIABLE_HASTA;
+    }
+
+    /**
+     * Estaciones a revisar en el cierre del turno 4: activas, con linked server y con ControlGas.
+     *
+     * @param array $activeStations Filas de EstacionesModel::get_actives_stations() (Codigo, Nombre).
+     * @return list<array{codgas:int, nombre:string}>
+     */
+    function turn4_stations(array $activeStations) : array {
+        $stations = [];
+        foreach ($activeStations as $station) {
+            $codgas = intval($station['Codigo']);
+            $linked = $this->linked_server[$codgas] ?? null;
+            if ($linked && !in_array($linked, self::T4_SIN_CONTROLGAS, true)) {
+                $stations[] = ['codgas' => $codgas, 'nombre' => $station['Nombre']];
+            }
+        }
+        usort($stations, fn($a, $b) => $a['codgas'] <=> $b['codgas']);
+        return $stations;
+    }
+
+    /**
+     * Cierre del turno 4 de una estación en una fecha. SOLO LECTURA.
+     * El estado lo decide Medicion: con lecturas = cerrado.
+     *
+     * @param string $fecha 'Y-m-d' del turno 4.
+     * cierre/tardio solo vienen llenos si turn4_closure_time_reliable($fecha).
+     *
+     * @return array{estado:string, cierre:?string, tardio:bool, declarado:bool, despachos:int, monto:float}|false  false = sin conexión.
+     */
+    function turn4_closure(int $codgas, string $fecha) : array|false {
+        $status = $this->controlgas_turn_status($codgas, dateToInt($fecha), 41);
+        if ($status === false) {
+            return false;
+        }
+        if ($status['Lecturas'] > 0) {
+            $estado = 'cerrado';
+        } elseif ($status['Despachos'] > 0) {
+            $estado = 'abierto_con_ventas';
+        } else {
+            $estado = 'abierto_sin_ventas';
+        }
+        // La hora solo se informa mientras logfch es confiable (ver T4_HORA_CONFIABLE_HASTA).
+        $cierre = $this->turn4_closure_time_reliable($fecha) ? $status['Cierre'] : null;
+        $limite = date('Y-m-d', strtotime($fecha . ' +1 day')) . ' ' . self::T4_CIERRE_LIMITE;
+        return [
+            'estado'    => $estado,
+            'cierre'    => $cierre,
+            'tardio'    => $cierre !== null && $cierre > $limite,
+            'declarado' => $status['Declaraciones'] > 0,
+            'despachos' => $status['Despachos'],
+            'monto'     => $status['Monto'],
+        ];
+    }
+
     /**
      * Estado de un turno en el ControlGas de la estación. SOLO LECTURA.
      *
@@ -212,7 +286,9 @@ class TabulatorModel extends Model{
      *
      * @param int $fch    Fecha en formato ControlGas (dateToInt()).
      * @param int $nrotur Turno*10 + subcorte (41 = turno 4).
-     * @return array{Lecturas:int, Declaraciones:int, Despachos:int, Monto:float}|false  false si la estación no está configurada o no responde.
+     * - Cierre: primera lectura de Medicion (logfch), 'Y-m-d H:i:s' o null.
+     *
+     * @return array{Lecturas:int, Cierre:?string, Declaraciones:int, Despachos:int, Monto:float}|false  false si la estación no está configurada o no responde.
      */
     function controlgas_turn_status(int $codgas, int $fch, int $nrotur) : array|false {
         $linked = $this->linked_server[$codgas] ?? null;
@@ -223,6 +299,7 @@ class TabulatorModel extends Model{
         $query = "SELECT * FROM OPENQUERY({$linked}, '
             SELECT
                 (SELECT COUNT(*) FROM {$short}.[Medicion] WITH (NOLOCK) WHERE fch = {$fch} AND nrotur = {$nrotur}) AS Lecturas,
+                (SELECT CONVERT(varchar(19), MIN(logfch), 120) FROM {$short}.[Medicion] WITH (NOLOCK) WHERE fch = {$fch} AND nrotur = {$nrotur}) AS Cierre,
                 (SELECT COUNT(*) FROM {$short}.[VentasC] WITH (NOLOCK) WHERE fch = {$fch} AND nrotur = {$nrotur}) AS Declaraciones,
                 d.Despachos,
                 d.Monto
@@ -238,6 +315,7 @@ class TabulatorModel extends Model{
         }
         return [
             'Lecturas'      => intval($rs[0]['Lecturas'] ?? 0),
+            'Cierre'        => ($rs[0]['Cierre'] ?? null) ?: null,
             'Declaraciones' => intval($rs[0]['Declaraciones'] ?? 0),
             'Despachos'     => intval($rs[0]['Despachos'] ?? 0),
             'Monto'         => floatval($rs[0]['Monto'] ?? 0),

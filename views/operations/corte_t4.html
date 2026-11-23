@@ -31,13 +31,19 @@
       </form>
       <p class="small text-body-secondary mt-3 mb-0">
         Revisa en el ControlGas de cada estación si el turno 4 (10:00 p. m. – 12:00 a. m.) del
-        <b>{{ fecha|date('d/m/Y') }}</b> quedó cerrado. El turno se cierra solo a las 12:00 a. m.; se considera
-        cerrado cuando ControlGas registró las lecturas electrónicas de las bombas (tabla Medicion).
+        <b>{{ fecha|date('d/m/Y') }}</b> quedó cerrado. El turno se cierra solo y debe estar cerrado a más tardar a las
+        <b>{{ limite }} a. m.</b>; se considera cerrado cuando ControlGas registró las lecturas electrónicas de las bombas
+        (tabla Medicion), y la hora de cierre es la de la primera lectura. Si cerró después, se marca como tardío.
         Si una estación con ventas sigue abierta, sale en rojo. Este reporte solo consulta: no cierra ni modifica nada.
       </p>
       {% if isToday %}
         <div class="alert alert-warning py-2 px-3 small mt-3 mb-0" role="alert">
           <div>Elegiste <b>hoy</b>: el turno 4 todavía no termina, así que es normal que salga abierto.</div>
+        </div>
+      {% elseif not horaConfiable %}
+        <div class="alert alert-info py-2 px-3 small mt-3 mb-0" role="alert">
+          <div>La <b>hora de cierre</b> solo se muestra al consultar el turno 4 de ayer antes de las {{ horaConfiableHasta }} a. m.:
+          después, ControlGas vuelve a escribir las lecturas y la hora deja de ser la real. El estado abierto/cerrado sí es confiable.</div>
         </div>
       {% endif %}
     </div>
@@ -51,6 +57,10 @@
     <div class="t4-chip">
       <div class="small text-body-secondary">Cerrados</div>
       <div class="t4-count text-success t4-num" id="count-cerrado">0</div>
+    </div>
+    <div class="t4-chip{{ horaConfiable ? '' : ' d-none' }}">
+      <div class="small text-body-secondary">Cerrados tarde</div>
+      <div class="t4-count text-warning t4-num" id="count-tardio">0</div>
     </div>
     <div class="t4-chip">
       <div class="small text-body-secondary">Abiertos sin ventas</div>
@@ -84,6 +94,7 @@
           <tr>
             <th>Estación</th>
             <th>Turno 4</th>
+            <th{{ horaConfiable ? '' : ' class="d-none"' }}>Hora de cierre</th>
             <th>Ventas declaradas</th>
             <th class="text-end">Despachos T4</th>
             <th class="text-end">Venta T4</th>
@@ -95,13 +106,14 @@
             <tr data-codgas="{{ station.codgas }}" data-estado="pending">
               <td>{{ station.nombre }}</td>
               <td class="t4-estado"><span class="spinner-border spinner-border-sm text-secondary me-1" aria-hidden="true"></span><span class="text-body-secondary small">Consultando…</span></td>
+              <td class="t4-cierre t4-num text-body-secondary{{ horaConfiable ? '' : ' d-none' }}">—</td>
               <td class="t4-declarado text-body-secondary">—</td>
               <td class="text-end t4-num t4-despachos">—</td>
               <td class="text-end t4-num t4-monto">—</td>
               <td class="text-end t4-accion"></td>
             </tr>
           {% else %}
-            <tr><td colspan="6" class="text-center text-body-secondary py-4">No hay estaciones activas con ControlGas configurado.</td></tr>
+            <tr><td colspan="7" class="text-center text-body-secondary py-4">No hay estaciones activas con ControlGas configurado.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -133,6 +145,7 @@ $(function () {
     $('#chip-abierto_con_ventas [data-count]').text(problems);
     $('#chip-abierto_con_ventas').toggleClass('is-alert', problems > 0);
     $('#count-cerrado').text(count('cerrado'));
+    $('#count-tardio').text($rows.filter('[data-tardio="1"]').length);
     $('#count-abierto_sin_ventas').text(count('abierto_sin_ventas'));
     const errors = count('error');
     $('#count-error').text(errors);
@@ -148,17 +161,20 @@ $(function () {
     const only = $('#onlyProblems').is(':checked');
     $rows.each(function () {
       const estado = $(this).attr('data-estado');
-      $(this).toggleClass('d-none', only && (estado === 'cerrado' || estado === 'abierto_sin_ventas'));
+      const ok = (estado === 'cerrado' && $(this).attr('data-tardio') !== '1') || estado === 'abierto_sin_ventas';
+      $(this).toggleClass('d-none', only && ok);
     });
   }
 
   function setRow($row, estado, data) {
     $row.attr('data-estado', estado);
+    $row.attr('data-tardio', data.tardio ? '1' : '0');
     $row.find('.t4-estado').html(labels[estado] || '');
     if (estado === 'error') {
-      $row.find('.t4-declarado, .t4-despachos, .t4-monto').text('—');
+      $row.find('.t4-cierre, .t4-declarado, .t4-despachos, .t4-monto').text('—');
       $row.find('.t4-accion').html('<button type="button" class="btn btn-sm btn-link p-0 t4-retry">Reintentar</button>');
     } else {
+      $row.find('.t4-cierre').html(formatCierre(data.cierre, data.tardio));
       $row.find('.t4-declarado').html(data.declarado ? '<span class="text-body">Sí</span>' : '<span class="text-body-secondary">No</span>');
       $row.find('.t4-despachos').text(Number(data.despachos).toLocaleString('es-MX'));
       $row.find('.t4-monto').text(money.format(data.monto || 0));
@@ -166,8 +182,18 @@ $(function () {
     }
   }
 
+  // '2026-11-23 00:00:12' -> '23/11 00:00:12' (+ marca de tardío)
+  function formatCierre(cierre, tardio) {
+    if (!cierre) { return '<span class="text-body-secondary">—</span>'; }
+    const m = String(cierre).match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2}:\d{2})/);
+    const text = m ? m[3] + '/' + m[2] + ' ' + m[4] : cierre;
+    return tardio
+      ? '<span class="text-warning-emphasis fw-semibold">' + text + '</span> <span class="badge bg-warning text-dark">Tardío</span>'
+      : '<span class="text-body">' + text + '</span>';
+  }
+
   function setPending($row) {
-    $row.attr('data-estado', 'pending');
+    $row.attr('data-estado', 'pending').attr('data-tardio', '0');
     $row.find('.t4-estado').html('<span class="spinner-border spinner-border-sm text-secondary me-1" aria-hidden="true"></span><span class="text-body-secondary small">Consultando…</span>');
     $row.find('.t4-accion').empty();
   }
