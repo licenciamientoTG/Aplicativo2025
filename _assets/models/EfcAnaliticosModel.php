@@ -206,10 +206,11 @@ class EfcAnaliticosModel {
                        COALESCE(D.declarado_mn,P.dice_contener_mn) declarado_mn_actual,COALESCE(D.real_mn,P.real_mn) real_mn_actual,COALESCE(D.declarado_usd,P.dice_contener_usd) declarado_usd_actual,COALESCE(D.real_usd,P.real_usd) real_usd_actual,
                        COALESCE(D.estacion_id,S.estacion_corregida_id,P.estacion_id) estacion_actual,
                        P.hora_original,P.remesa_numero,P.cuenta_mn_original,P.dice_contener_mn,P.real_mn,P.dice_contener_usd,P.real_usd,P.estacion_id AS estacion_original_id,S.id AS estacion_correccion_id,S.estacion_corregida_id,E.Nombre AS estacion_nombre,EOriginal.Nombre AS estacion_original_nombre,I.nombre_archivo,
-                       P.creado_en AS creado_en,P.creado_por,COALESCE(Creador.Nombre,Creador.Usuario,CASE WHEN P.creado_por IS NOT NULL THEN CONCAT('Usuario ',P.creado_por) END) creador_nombre,ISNULL(P.captura_manual,0) captura_manual,I.estado importacion_estado,
+                       P.creado_en AS creado_en,P.creado_por,COALESCE(Creador.Nombre,Creador.Usuario,CASE WHEN P.creado_por IS NOT NULL THEN CONCAT('Usuario ',P.creado_por) END) creador_nombre,ISNULL(P.captura_manual,0) captura_manual,I.estado importacion_estado,L.color AS etiqueta_color,L.descripcion AS etiqueta_descripcion,
                        CASE WHEN EXISTS(SELECT 1 FROM dbo.efc_conc_analiticos_vinculos V WHERE (V.papeleta_id=P.id OR V.papeleta_secundaria_id=P.id) AND V.activo=1) THEN 1 ELSE 0 END AS vinculada
                 FROM dbo.efc_conc_analiticos_papeletas P
                 JOIN dbo.efc_conc_analiticos_importaciones I ON I.id=P.importacion_id
+                LEFT JOIN dbo.efc_conc_analiticos_papeletas_etiquetas L ON L.papeleta_id=P.id
                 LEFT JOIN dbo.efc_conc_analiticos_correcciones_fecha C ON C.papeleta_id=P.id AND C.activo=1
                 LEFT JOIN dbo.efc_conc_analiticos_correcciones_estacion S ON S.papeleta_id=P.id AND S.activo=1
                 LEFT JOIN dbo.efc_conc_analiticos_correcciones_datos D ON D.papeleta_id=P.id AND D.activo=1
@@ -241,7 +242,8 @@ class EfcAnaliticosModel {
                 'correction_user'=>($row['datos_correccion_usuario']??$row['correccion_usuario'])?(int)($row['datos_correccion_usuario']??$row['correccion_usuario']):null,
                 'correction_at'=>($row['datos_correccion_creada']??$row['correccion_creada'])?$this->dateTimeValue($row['datos_correccion_creada']??$row['correccion_creada']):null,
                 'station_corrected'=>$effectiveStation!==$originalStation || (bool)$row['estacion_correccion_id'], 'data_corrected'=>(bool)$row['datos_correccion_id'], 'linked'=>(bool)$row['vinculada'], 'deleted'=>$row['importacion_estado']==='ELIMINADA',
-                'created_at'=>$this->dateTimeValue($row['creado_en']), 'created_by'=>$row['creador_nombre']?:null, 'manually_created'=>(bool)$row['captura_manual']
+                'created_at'=>$this->dateTimeValue($row['creado_en']), 'created_by'=>$row['creador_nombre']?:null, 'manually_created'=>(bool)$row['captura_manual'],
+                'label_color'=>$row['etiqueta_color']??null, 'label_description'=>$row['etiqueta_descripcion']??null
             ];
         }
         return $items;

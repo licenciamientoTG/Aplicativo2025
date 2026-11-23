@@ -1,8 +1,17 @@
 /*
  * Forward migration for TG.dbo.efc_conc_analiticos_papeletas_etiquetas.
+ * Switches to TG explicitly so it is safe to run from a DBeaver connection
+ * whose default database is master.
  * Reversible without data loss before labels have been added; rollback drops
  * saved labels, so export/preserve the table first if labels already exist.
  */
+USE TG;
+
+IF OBJECT_ID('dbo.efc_conc_analiticos_papeletas','U') IS NULL
+BEGIN
+    ;THROW 50001, N'No existe dbo.efc_conc_analiticos_papeletas en TG; ejecute primero el esquema del importador REGIO.', 1;
+END;
+
 IF OBJECT_ID('dbo.efc_conc_analiticos_papeletas_etiquetas','U') IS NULL
 BEGIN
     CREATE TABLE dbo.efc_conc_analiticos_papeletas_etiquetas (
