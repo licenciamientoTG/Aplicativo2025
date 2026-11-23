@@ -4,7 +4,7 @@ class InventarioUrovoModel extends Model {
     /* First value is TG.dbo.Estaciones.Codigo; names and goals come from the user's table.
        The user's 11007 / Independencia row maps to TG Codigo 3, named "19 Aguascalientes". */
     private const DASHBOARD_OBJECTIVES = [
-        [31,'VILLA AHUMADA',6],[19,'DELICIAS',5],[18,'PARRAL',5],[11,'PUERTO DE PALOS',8],
+        [31,'VILLA AHUMADA',2],[19,'DELICIAS',5],[18,'PARRAL',5],[11,'PUERTO DE PALOS',8],
         [12,'MIGUEL DE LA MADRID',6],[13,'PERMUTA',6],[14,'ELECTROLUX',6],[15,'AERONAUTICA',6],
         [16,'CUSTODIA',5],[33,'TRAVEL CENTER ESTACIÓN',7],[5,'LERDO',3],[6,'LOPEZ MATEOS',4],
         [7,'GEMELA CHICA',6],[2,'GEMELA GRANDE',7],[21,'PLUTARCO',6],[8,'MUNICIPIO LIBRE',8],
