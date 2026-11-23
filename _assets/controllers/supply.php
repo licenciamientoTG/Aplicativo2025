@@ -1,6 +1,7 @@
 <?php
 // Incluir la clase generadora (ajusta la ruta según tu estructura)
 require_once $_SERVER['DOCUMENT_ROOT'] . '/_assets/classes/GeneradorXMLPrecios.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/_assets/classes/common/AttachmentsPath.php';
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -3776,29 +3777,14 @@ class Supply
             return;
         }
 
-        // Normaliza separadores (Windows)
-        $ruta = str_replace(['/', '\\\\'], DIRECTORY_SEPARATOR, $ruta);
-        $ruta = str_replace('\\\\', DIRECTORY_SEPARATOR, $ruta);
-
-        // El importador guardaba rutas absolutas (C:\...), pero algunas facturas
-        // llegan con ruta relativa (attachments\...\...). Si no es absoluta (no
-        // empieza con letra de unidad tipo "C:\"), se antepone la carpeta base
-        // donde el importador escribe los adjuntos.
-        if (!preg_match('/^[A-Za-z]:\\\\/', $ruta)) {
-            $ruta = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\' . ltrim($ruta, '\\');
-        }
-
-        // Seguridad: restringir a un directorio base permitido
-        $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores');
-        $real = realpath($ruta);
-
-        if ($real === false || strpos($real, $baseAllowed) !== 0) {
-            http_response_code(403);
-            echo 'Acceso al archivo denegado.';
-            return;
-        }
-
-        if (!file_exists($real) || !is_readable($real)) {
+        // AttachmentsPath: NAS primero, luego ruta vieja; valida que quede dentro de las raíces permitidas.
+        $real = AttachmentsPath::resolver((string)$ruta);
+        if ($real === null) {
+            if (AttachmentsPath::fueraDeBase((string)$ruta)) {
+                http_response_code(403);
+                echo 'Acceso al archivo denegado.';
+                return;
+            }
             http_response_code(404);
             echo 'Archivo no encontrado o no legible.';
             return;

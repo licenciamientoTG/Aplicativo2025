@@ -1192,30 +1192,15 @@ class Payment
 
         $ruta = $factura['RutaArchivo']; // ruta almacenada en DB
 
-        // Normaliza separadores (Windows)
-        $ruta = str_replace(['/', '\\\\'], DIRECTORY_SEPARATOR, $ruta);
-        // opcional: si la DB almacena con barras invertidas dobles, limpiarlas:
-        $ruta = str_replace('\\\\', DIRECTORY_SEPARATOR, $ruta);
-
-        // El importador guardaba rutas absolutas (C:\...), pero desde el cambio de
-        // importador algunas facturas llegan con ruta relativa (attachments\...\...).
-        // Si no es absoluta (no empieza con letra de unidad tipo "C:\"), se antepone
-        // la carpeta base donde el importador escribe los adjuntos.
-        if (!preg_match('/^[A-Za-z]:\\\\/', $ruta)) {
-            $ruta = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\' . ltrim($ruta, '\\');
-        }
-
-        // Seguridad: restringir a un directorio base permitido
-        $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores'); // ajusta si hace falta
-        $real = realpath($ruta);
-
-        if ($real === false || strpos($real, $baseAllowed) !== 0) {
-            header("HTTP/1.1 403 Forbidden");
-            echo "Acceso al archivo denegado.";
-            exit;
-        }
-
-        if (!file_exists($real) || !is_readable($real)) {
+        // AttachmentsPath resuelve rutas relativas/absolutas viejas y combustible\ (NAS):
+        // prueba primero la NAS y luego la ruta vieja, y valida que quede dentro de las raíces permitidas.
+        $real = AttachmentsPath::resolver((string)$ruta);
+        if ($real === null) {
+            if (AttachmentsPath::fueraDeBase((string)$ruta)) {
+                header("HTTP/1.1 403 Forbidden");
+                echo "Acceso al archivo denegado.";
+                exit;
+            }
             header("HTTP/1.1 404 Not Found");
             echo "Archivo no encontrado o no legible.";
             exit;
@@ -5126,16 +5111,10 @@ class Payment
         }
 
         // Importar cada factura PDF (si no se puede leer, se omite sin error fatal)
-        $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores') ?: '';
         foreach ($facturasPdf as $ruta) {
-            $ruta = str_replace(['/', '\\\\'], DIRECTORY_SEPARATOR, $ruta);
-            $real = realpath($ruta);
-            if (!$real || !is_readable($real)) {
-                error_log("Factura PDF no accesible, omitida: $ruta");
-                continue;
-            }
-            if ($baseAllowed !== '' && strpos($real, $baseAllowed) !== 0) {
-                error_log("Factura PDF fuera de ruta permitida, omitida: $real");
+            $real = AttachmentsPath::resolver((string)$ruta);
+            if ($real === null) {
+                error_log("Factura PDF no accesible o fuera de ruta permitida, omitida: $ruta");
                 continue;
             }
             try {
@@ -5725,23 +5704,17 @@ class Payment
             return;
         }
 
-        $ruta = $this->normalizar_ruta_factura($ruta);
-        if (strpos($ruta, '..') !== false || stripos($ruta, self::FACTURAS_BASE_DIR) !== 0) {
-            http_response_code(403);
-            echo 'Archivo fuera del directorio permitido: ' . $ruta;
-            return;
-        }
-        if (!is_file($ruta)) {
+        $real = AttachmentsPath::resolver($ruta);
+        if ($real === null) {
+            if (AttachmentsPath::fueraDeBase($ruta)) {
+                http_response_code(403);
+                echo 'Archivo fuera del directorio permitido';
+                return;
+            }
             http_response_code(404);
-            echo 'El archivo no existe en este servidor: ' . basename($ruta);
+            echo 'El archivo no existe en este servidor: ' . htmlspecialchars(basename(str_replace('\\', '/', $ruta)), ENT_QUOTES, 'UTF-8');
             return;
         }
-        if (!is_readable($ruta)) {
-            http_response_code(403);
-            echo 'Sin permisos de lectura sobre el archivo: ' . basename($ruta);
-            return;
-        }
-        $real = $ruta;
 
         $disposition = !empty($_GET['download']) ? 'attachment' : 'inline';
         header('Content-Type: ' . ($tipo === 'pdf' ? 'application/pdf' : 'text/xml'));
@@ -5751,24 +5724,9 @@ class Payment
         exit;
     }
 
-    private const FACTURAS_BASE_DIR = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\';
     private const ZIP_MAX_FACTURAS  = 500;
 
-    /**
-     * Convierte la ruta guardada en BD a ruta absoluta de Windows.
-     * La restricción por prefijo (FACTURAS_BASE_DIR) y sin ".." la aplica quien la usa: no se usa
-     * realpath() porque si la carpeta de adjuntos es un enlace/junction a otra unidad, la sacaría del base.
-     */
-    private function normalizar_ruta_factura(string $ruta): string
-    {
-        $ruta = str_replace('/', DIRECTORY_SEPARATOR, $ruta);
-        $ruta = str_replace('\\\\', DIRECTORY_SEPARATOR, $ruta);
-        // Rutas relativas (attachments\...) → carpeta base del importador de correos
-        if (!preg_match('/^[A-Za-z]:\\\\/', $ruta)) {
-            $ruta = self::FACTURAS_BASE_DIR . 'correoFacturas\\' . ltrim($ruta, '\\');
-        }
-        return $ruta;
-    }
+    // Las rutas guardadas en BD se resuelven con AttachmentsPath::resolver() (NAS primero, luego ruta vieja).
 
     /**
      * Descarga en un ZIP los PDF de las facturas que coinciden con los filtros de la búsqueda (máx. 500).
@@ -5821,12 +5779,13 @@ class Payment
         foreach ($rows as $r) {
             $folio = ($r['Serie'] ? $r['Serie'] . '-' : '') . $r['Folio'];
             $etiqueta = $r['Fecha'] . ' ' . $folio . ' ' . $r['UUID'];
-            $ruta = isset($rutas[(int)$r['Id']]) ? $this->normalizar_ruta_factura($rutas[(int)$r['Id']]) : '';
-            if ($ruta === '') {
+            $rutaDb = isset($rutas[(int)$r['Id']]) ? trim((string)$rutas[(int)$r['Id']]) : '';
+            if ($rutaDb === '') {
                 $omitidas[] = "$etiqueta — sin PDF registrado";
                 continue;
             }
-            if (strpos($ruta, '..') !== false || stripos($ruta, self::FACTURAS_BASE_DIR) !== 0 || !is_file($ruta) || !is_readable($ruta)) {
+            $ruta = AttachmentsPath::resolver($rutaDb);
+            if ($ruta === null) {
                 $omitidas[] = "$etiqueta — el archivo no existe o no es accesible en el servidor";
                 continue;
             }

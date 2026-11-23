@@ -1,4 +1,5 @@
 <?php
+require_once $_SERVER['DOCUMENT_ROOT'] . '/_assets/classes/common/AttachmentsPath.php';
 class station_portal
 {
     public $twig;
@@ -794,57 +795,27 @@ class station_portal
         }
         $debugInfo['ruta_bd'] = $archivo['ruta'];
 
-        // Normaliza separadores (Windows)
-        $rutaArchivo = str_replace(['/', '\\\\'], DIRECTORY_SEPARATOR, $archivo['ruta']);
-        $rutaArchivo = str_replace('\\\\', DIRECTORY_SEPARATOR, $rutaArchivo);
+        // AttachmentsPath resuelve rutas relativas/absolutas viejas y combustible\ (NAS):
+        // prueba primero la NAS y luego la ruta vieja, y exige quedar dentro de las raíces permitidas.
+        // La validación es por prefijo sobre el archivo (no realpath() de carpetas): en este servidor
+        // realpath() de una carpeta puede fallar por permisos NTFS granulares (2026-09-14).
+        $rutaArchivo = AttachmentsPath::normalizar((string)$archivo['ruta']);
         $debugInfo['ruta_normalizada'] = $rutaArchivo;
+        $debugInfo['candidatas'] = implode(' | ', AttachmentsPath::candidatos($rutaArchivo));
+        $real = AttachmentsPath::resolver($rutaArchivo);
+        $debugInfo['ruta_realpath'] = $real ?? '(ninguna candidata existe, es legible y está dentro de las raíces permitidas)';
 
-        // El importador del pipeline de correos guarda RutaArchivo relativa
-        // (attachments\...\procesadas\...) para las facturas que descarga
-        // solo, resuelta desde SU propio directorio de trabajo en el
-        // servidor -- no el de IIS/AplicativoPhp. Si no es absoluta, se
-        // antepone esa carpeta base, mismo patrón que
-        // supply::scheduling_invoice_file (ver también payment.php).
-        $eraRelativa = !preg_match('/^[A-Za-z]:\\\\/', $rutaArchivo);
-        if ($eraRelativa) {
-            $rutaArchivo = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\' . ltrim($rutaArchivo, '\\');
-        }
-        $debugInfo['era_relativa'] = $eraRelativa ? 'si' : 'no';
-        $debugInfo['ruta_con_base'] = $rutaArchivo;
-
-        // No depender de realpath() sobre la carpeta base: en este servidor
-        // se observó (2026-09-14) que realpath() del archivo completo
-        // resuelve bien mientras realpath() de la carpeta padre por sí sola
-        // devuelve false -- permisos NTFS granulares en Windows pueden
-        // permitir "Traverse Folder" sin "List Folder Contents", y stat()
-        // sobre la carpeta en sí falla aunque el archivo dentro sí sea
-        // legible. En vez de eso, se valida por prefijo de string sobre la
-        // ruta ya realpath()-eada del archivo (que si depende de que el
-        // archivo exista, no de que la carpeta sea listable).
-        $baseAllowedPrefix = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\';
-        $real = realpath($rutaArchivo);
-        $debugInfo['ruta_realpath'] = $real === false ? '(realpath falló, el archivo no existe o la ruta es inválida)' : $real;
-        $debugInfo['base_prefix_check'] = $baseAllowedPrefix;
-
-        if ($real === false || stripos($real, $baseAllowedPrefix) !== 0) {
+        if ($real === null) {
+            $bloqueada = AttachmentsPath::fueraDeBase($rutaArchivo);
             if ($debug) {
                 header('Content-Type: text/plain; charset=utf-8');
-                echo "DEBUG descargar_factura_programada -- BLOQUEADO por validación de ruta base\n";
+                echo "DEBUG descargar_factura_programada -- " . ($bloqueada ? "BLOQUEADO por validación de ruta base" : "archivo no encontrado/legible") . "\n";
                 foreach ($debugInfo as $k => $v) echo "$k = $v\n";
                 exit;
             }
-            http_response_code(403);
-            echo "Acceso al archivo denegado.";
-            exit;
-        }
-
-        if (!file_exists($real) || !is_readable($real)) {
-            if ($debug) {
-                header('Content-Type: text/plain; charset=utf-8');
-                echo "DEBUG descargar_factura_programada -- archivo no encontrado/legible en el paso final\n";
-                foreach ($debugInfo as $k => $v) echo "$k = $v\n";
-                echo "file_exists = " . (file_exists($real) ? 'si' : 'no') . "\n";
-                echo "is_readable = " . (is_readable($real) ? 'si' : 'no') . "\n";
+            if ($bloqueada) {
+                http_response_code(403);
+                echo "Acceso al archivo denegado.";
                 exit;
             }
             http_response_code(404);
