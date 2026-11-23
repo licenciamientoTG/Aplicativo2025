@@ -5,8 +5,8 @@
  * Revisa el turno 4 (nrotur 41) de AYER en todas las estaciones con ControlGas.
  * Un turno está cerrado si hay lecturas electrónicas en Medicion (misma regla
  * que el reporte /operations/corte-t4/, ver TabulatorModel::turn4_closure()).
- * Si encuentra turnos abiertos o estaciones que no respondieron, envía un correo.
- * Si todo está cerrado, no envía nada.
+ * Si encuentra turnos abiertos o estaciones que no respondieron, envía la alerta.
+ * Si todo está cerrado, envía un aviso corto de "todo en orden" para confirmar que corrió.
  *
  * Configurar en el Programador de tareas de Windows, diario a las 00:05:
  *   Programa:   php
@@ -81,15 +81,35 @@ foreach ($stations as $station) {
 $log(sprintf('Resultado: %d cerrados, %d abiertos, %d sin conexión, de %d estaciones.',
     $cerrados, count($abiertos), count($sinConexion), count($stations)));
 
-if (!$abiertos && !$sinConexion) {
-    $log('Todo cerrado: no se envía correo.');
-    exit(0);
-}
-
 // --- Correo ---
 $fechaTxt  = $date->format('d/m/Y');
 $reportUrl = 'http://192.168.0.3:400/operations/corte-t4/?fecha=' . $fecha;
 $esc = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+
+$send = function (string $subject, string $body) use ($dryRun, $log) {
+    if ($dryRun) {
+        $log('Dry-run: se enviaría a ' . implode(', ', CIERRE_T4_DESTINATARIOS));
+        $log("Asunto: {$subject}");
+        exit(0);
+    }
+    $error = null;
+    if (send_mail($subject, $body, CIERRE_T4_DESTINATARIOS, MAIL_FROM, false, false, $error)) {
+        $log('Correo enviado a ' . implode(', ', CIERRE_T4_DESTINATARIOS));
+        exit(0);
+    }
+    $log('ERROR al enviar el correo: ' . ($error ?? 'desconocido'));
+    exit(1);
+};
+
+// Todo bien: se envía un aviso corto igualmente, para saber que la alerta sí corrió.
+if (!$abiertos && !$sinConexion) {
+    $subject = "Turno 4 del {$fechaTxt}: las " . count($stations) . ' estaciones cerraron';
+    $body  = '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111827;">';
+    $body .= "<p style=\"color:#15803d;\"><b>Todo en orden.</b> El turno 4 (10:00 p. m. – 12:00 a. m.) del <b>{$fechaTxt}</b> quedó cerrado en ControlGas en las " . count($stations) . ' estaciones revisadas.</p>';
+    $body .= '<p>Revisión automática de las ' . date('H:i') . ". <a href=\"{$esc($reportUrl)}\">Ver el reporte</a></p>";
+    $body .= '<p style="color:#6b7280;font-size:12px;">Este aviso llega todos los días para confirmar que la alerta está funcionando. Si un día no llega, revisa la tarea programada en el servidor.</p></div>';
+    $send($subject, $body);
+}
 
 $partes = [];
 if ($abiertos)    { $partes[] = count($abiertos) . (count($abiertos) === 1 ? ' estación sin cerrar' : ' estaciones sin cerrar'); }
@@ -131,16 +151,4 @@ $body .= "<p style=\"margin-top:18px;\">Cerradas correctamente: {$cerrados} de "
 $body .= "<p><a href=\"{$esc($reportUrl)}\">Ver el reporte de cierre del turno 4</a></p>";
 $body .= '<p style="color:#6b7280;font-size:12px;">Este correo solo informa: la revisión no cierra ni modifica nada en ControlGas.</p></div>';
 
-if ($dryRun) {
-    $log('Dry-run: se enviaría a ' . implode(', ', CIERRE_T4_DESTINATARIOS));
-    $log("Asunto: {$subject}");
-    exit(0);
-}
-
-$error = null;
-if (send_mail($subject, $body, CIERRE_T4_DESTINATARIOS, MAIL_FROM, false, false, $error)) {
-    $log('Correo enviado a ' . implode(', ', CIERRE_T4_DESTINATARIOS));
-    exit(0);
-}
-$log('ERROR al enviar el correo: ' . ($error ?? 'desconocido'));
-exit(1);
+$send($subject, $body);
