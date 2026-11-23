@@ -59,7 +59,7 @@
             </div>
             <div class="col-12 col-sm-6 col-lg-3">
                 <label for="island_id" class="form-label small fw-semibold mb-1">Isla</label>
-                <select class="selectpicker form-control form-control-sm w-100" data-live-search="true" data-style="btn-sm"
+                <select class="selectpicker form-control form-control-sm w-100" data-live-search="true"
                         name="island_id" id="island_id" title="Selecciona una isla" required>
                     {% for isl in islands %}
                     <option value="{{ isl.Isla }}" {{ isl.Isla == island ? 'selected' : '' }}>{{ isl.den }}</option>
@@ -69,7 +69,7 @@
             </div>
             <div class="col-12 col-sm-6 col-lg-3">
                 <label for="currency" class="form-label small fw-semibold mb-1">Moneda</label>
-                <select class="selectpicker form-control form-control-sm w-100" data-style="btn-sm"
+                <select class="selectpicker form-control form-control-sm w-100"
                         name="currency" id="currency" required>
                     <option value="MXN" selected>Pesos (MXN)</option>
                     <option value="USD">Dólares (USD)</option>

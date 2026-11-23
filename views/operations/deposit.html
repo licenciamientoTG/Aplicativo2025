@@ -150,16 +150,24 @@
         <div class="col-12">
           <p class="small text-body-secondary mb-1">Abre un depósito por moneda con todas las fajillas pendientes; después captura los billetes y monedas que lo forman.</p>
         </div>
-        <div class="col-12 col-sm-6 col-lg-4">
-          <label for="depositCurrency" class="form-label small fw-semibold mb-1">Moneda del depósito</label>
-          <select class="selectpicker form-control form-control-sm w-100" data-style="btn-sm" data-show-subtext="true" name="currency" id="depositCurrency" required>
-            <option value="MXN" data-amount="${{ pendingMXN | number_format(2, '.', ',') }}" {{ pendingMXN > 0 ? 'selected' : 'disabled' }}
-                    data-subtext="{{ pendingMXN > 0 ? '$' ~ (pendingMXN | number_format(2, '.', ',')) : 'sin fajillas pendientes' }}">Pesos y morralla</option>
-            <option value="USD" data-amount="US${{ pendingUSD | number_format(2, '.', ',') }}" {{ pendingUSD > 0 ? (pendingMXN > 0 ? '' : 'selected') : 'disabled' }}
-                    data-subtext="{{ pendingUSD > 0 ? 'US$' ~ (pendingUSD | number_format(2, '.', ',')) : 'sin fajillas pendientes' }}">Dólares</option>
-          </select>
+        <div class="col-12 col-md-8 col-xl-6">
+          <div class="form-label small fw-semibold mb-1" id="depositCurrencyLabel">Elige la moneda del depósito</div>
+          <div class="btn-group w-100 dep-currency" role="radiogroup" aria-labelledby="depositCurrencyLabel">
+            <input type="radio" class="btn-check" name="currency" id="depositCurrencyMXN" value="MXN" autocomplete="off"
+                   data-amount="${{ pendingMXN | number_format(2, '.', ',') }}" {{ pendingMXN > 0 ? 'checked' : 'disabled' }}>
+            <label class="btn btn-outline-primary text-start" for="depositCurrencyMXN">
+              <span class="d-block fw-semibold">Pesos y morralla</span>
+              <span class="d-block small dep-num">{{ pendingMXN > 0 ? '$' ~ (pendingMXN | number_format(2, '.', ',')) ~ ' pendientes' : 'Sin fajillas pendientes' }}</span>
+            </label>
+            <input type="radio" class="btn-check" name="currency" id="depositCurrencyUSD" value="USD" autocomplete="off"
+                   data-amount="US${{ pendingUSD | number_format(2, '.', ',') }}" {{ pendingUSD > 0 ? (pendingMXN > 0 ? '' : 'checked') : 'disabled' }}>
+            <label class="btn btn-outline-success text-start" for="depositCurrencyUSD">
+              <span class="d-block fw-semibold">Dólares</span>
+              <span class="d-block small dep-num">{{ pendingUSD > 0 ? 'US$' ~ (pendingUSD | number_format(2, '.', ',')) ~ ' pendientes' : 'Sin fajillas pendientes' }}</span>
+            </label>
+          </div>
         </div>
-        <div class="col-12 col-sm-6 col-lg-4">
+        <div class="col-12 col-md-4 col-xl-3">
           <button type="submit" class="btn btn-primary btn-sm w-100" id="openDepositButton">Abrir depósito</button>
         </div>
       </form>
@@ -227,6 +235,8 @@
 
 <style>
   .deposit-tab .dep-num { font-variant-numeric: tabular-nums; }
+  .deposit-tab .dep-currency .btn { padding-top: .45rem; padding-bottom: .45rem; line-height: 1.25; }
+  .deposit-tab #openDepositButton { min-height: 3.1rem; }
   .deposit-tab .dep-denoms input { text-align: right; -moz-appearance: textfield; appearance: textfield; }
   .deposit-tab .dep-denoms input::-webkit-outer-spin-button,
   .deposit-tab .dep-denoms input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -322,9 +332,9 @@
     });
 
     // ---- Paso 1: el botón dice cuánto se va a depositar ----
-    const $currency = $('#depositCurrency');
+    const $currency = $('#formDeposit input[name="currency"]');
     const updateOpenLabel = function() {
-      const $opt = $currency.find('option:selected');
+      const $opt = $currency.filter(':checked');
       $('#openDepositButton').text($opt.length ? 'Abrir depósito de ' + $opt.data('amount') : 'Abrir depósito');
     };
     $currency.on('change', updateOpenLabel);
