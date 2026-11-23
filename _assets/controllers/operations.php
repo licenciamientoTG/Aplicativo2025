@@ -309,7 +309,8 @@ class Operations{
                             'totalMXN' => (isset($totalMXN['TotalMonto']) ? floatval($totalMXN['TotalMonto']) : 0.00),
                             'totalUSD' => (isset($totalUSD['TotalMonto']) ? floatval($totalUSD['TotalMonto']) : 0.00),
                             'totalTab' => floatval(($Total + $params['Valor'])),
-                            'TotalPending' => (floatval($_POST['TotalPending']) + $params['Valor'])
+                            'TotalPending' => (floatval($_POST['TotalPending']) + $params['Valor']),
+                            'pending' => $this->tabulatorDatailsModel->get_pending_by_currency($tabId)
                         ];
                         json_output($json);
                     } else {
@@ -705,7 +706,8 @@ class Operations{
 
         $exchange_now = $tabulator['TipoCambio']; // Para obtener el tipo de cambio más reciente
         // Estas lineas son para obtener las fajillas pendientes de depositar
-        $totalMXN = $tabulator['TotalPendingMXN'];
+        // Acumulado MXN incluye la morralla (igual que getPendingWads('MXN') tras agregar/eliminar)
+        $totalMXN = floatval($tabulator['TotalPendingMXN']) + floatval($tabulator['TotalPendingMRL']);
         $totalUSD = ($tabulator['TotalPendingUSD'] / $exchange_now);
 
         $json = [
@@ -753,7 +755,7 @@ class Operations{
                     'MONTO'       => $row['Monto'],
                     'CAMBIO'      => $row['TipoCambio'],
                     'TOTAL'       => $row['Valor'],
-                    'ESTATUS'     => (intval($row['IdRecolecta']) > 0 ? '<span class="badge bg-success">Deposito #'. $row['IdRecolecta'] .'</span>' : '<span class="badge bg-warning">Pendiente</span>' ),
+                    'ESTATUS'     => (intval($row['IdRecolecta']) > 0 ? '<span class="badge bg-success">Depositada (#'. $row['IdRecolecta'] .')</span>' : '<span class="badge bg-warning text-dark">Pendiente de depósito</span>' ),
                     'HORA'        => $row['Hora'],
                     'ACCIONES'    => $actions
                 ];
@@ -956,7 +958,8 @@ class Operations{
                     'totalMXN' => (isset($totalMXN['TotalMonto']) ? floatval($totalMXN['TotalMonto']) : 0.00),
                     'totalUSD' => (isset($totalUSD['TotalMonto']) ? floatval($totalUSD['TotalMonto']) : 0.00),
                     'totalPendingMXN' => (isset($totalMXN['TotalValor']) ? floatval($totalMXN['TotalValor']) : 0.00),
-                    'totalPendingUSD' => (isset($totalUSD['TotalValor']) ? floatval($totalUSD['TotalValor']) : 0.00)
+                    'totalPendingUSD' => (isset($totalUSD['TotalValor']) ? floatval($totalUSD['TotalValor']) : 0.00),
+                    'pending' => $this->tabulatorDatailsModel->get_pending_by_currency($tabId)
                 ]);
             }
             setFlashMessage('success','Fajilla eliminada correctamente');

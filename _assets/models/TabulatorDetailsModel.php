@@ -406,6 +406,33 @@ class TabulatorDetailsModel extends Model{
     }
 
     /**
+     * Pendiente de depositar por moneda, en pesos (Valor), con la misma
+     * definición que TotalPendingMXN/USD/MRL de sp_obtener_info_tabulador_completo.
+     * @return array{MXN: float, USD: float, MRL: float}
+     */
+    function get_pending_by_currency($tabId) : array {
+        $query = '
+            SELECT
+                COALESCE(SUM(CASE WHEN CodigoValor = 6   THEN Valor ELSE 0 END), 0) AS MXN,
+                COALESCE(SUM(CASE WHEN CodigoValor = 5   THEN Valor ELSE 0 END), 0) AS USD,
+                COALESCE(SUM(CASE WHEN CodigoValor = 192 THEN Valor ELSE 0 END), 0) AS MRL
+            FROM [TG].[dbo].[TabuladorDetalle] WITH (NOLOCK)
+            WHERE Id = ?
+                AND ISNULL(IdRecolecta, 0) = 0
+                AND Estatus = 1
+                AND CodigoValor IN (5, 6, 192);';
+
+        $rs = $this->sql->select($query, [$tabId]);
+        $row = $rs ? $rs[0] : [];
+
+        return [
+            'MXN' => floatval($row['MXN'] ?? 0),
+            'USD' => floatval($row['USD'] ?? 0),
+            'MRL' => floatval($row['MRL'] ?? 0),
+        ];
+    }
+
+    /**
      * @param $IdRecolecta
      * @param $IdTabulador
      * @param $CodigoValor

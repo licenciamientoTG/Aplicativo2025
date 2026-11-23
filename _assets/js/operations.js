@@ -282,9 +282,14 @@ function confirmDelete(id, secuencial) {
                         let totalUSD = new Intl.NumberFormat('es-MX', {style: 'currency', currency: 'USD'}).format(data.totalUSD || 0);
                         $('#acumulated_mxn').text(totalMXN);
                         $('#acumulated_usd').text(totalUSD);
-                        $('#TotalPendingMXN').val(parseFloat(data.totalPendingMXN || 0));
-                        $('#TotalPendingUSD').val(parseFloat(data.totalPendingUSD || 0));
-                        $('#TotalPending').val(parseFloat(data.totalPendingMXN || 0) + parseFloat(data.totalPendingUSD || 0));
+                        let pending = data.pending || {};
+                        let pendingMXN = parseFloat(pending.MXN) || 0;
+                        let pendingUSD = parseFloat(pending.USD) || 0;
+                        let pendingMRL = parseFloat(pending.MRL) || 0;
+                        $('#TotalPendingMXN').val(pendingMXN);
+                        $('#TotalPendingUSD').val(pendingUSD);
+                        $('#TotalPendingMRL').val(pendingMRL);
+                        $('#TotalPending').val(pendingMXN + pendingUSD + pendingMRL);
 
                         if (data.island) {
                             refreshIslandCard(data.island);
@@ -1700,40 +1705,43 @@ $('.refresh_islands_table').on('click', function () {
 });
 
 $(document).on('submit', '#wadForm', function(e) {
+    // Buscar los campos dentro del formulario: #amount, #currency y #submitButton
+    // también existen en salesTab.html / deposit.html, cargados en la misma página.
+    let $form = $(this);
+    let $amount = $form.find('[name="amount"]');
+    let $submitButton = $form.find('#submitButton');
+    let exchange_now = parseFloat($form.find('[name="exchange_now"]').val());
 
-
-    let amount = parseFloat($('#amount').val());
-    let LimiteRecolecta = parseFloat($('#LimiteRecolecta').val());
-    let TotalPending = parseFloat($('#TotalPending').val());
-    let TotalPendingUSD = parseFloat($('#TotalPendingUSD').val());
-    let TotalPendingMXN = parseFloat($('#TotalPendingMXN').val());
-    let TotalPendingMRL = parseFloat($('#TotalPendingMRL').val());
-    let currency = $('#currency').val();
+    let amount = parseFloat($amount.val());
+    let LimiteRecolecta = parseFloat($form.find('[name="LimiteRecolecta"]').val());
+    let TotalPendingUSD = parseFloat($form.find('[name="TotalPendingUSD"]').val());
+    let TotalPendingMXN = parseFloat($form.find('[name="TotalPendingMXN"]').val());
+    let TotalPendingMRL = parseFloat($form.find('[name="TotalPendingMRL"]').val());
+    let currency = $form.find('[name="currency"]').val();
 
     if (currency === 'USD') {
-        amount = amount * parseFloat($('#exchange_now').val());
-        if ((amount + TotalPendingUSD) > LimiteRecolecta) {
-            toastr.error('El monto USD excede el límite de recolección', '¡Error!', { timeOut: 3000 });
-            return false;
-        }
+        amount = amount * exchange_now;
     }
 
-    if (currency === 'MXN') {
-        if ((amount + TotalPendingMXN) > LimiteRecolecta) {
-            toastr.error('El monto MXN excede el límite de recolección', '¡Error!', { timeOut: 3000 });
-            return false;
-        }
-    }
-
-    if (currency === 'MRL') {
-        if ((amount + TotalPendingMRL) > LimiteRecolecta) {
-            toastr.error('El monto en Morralla excede el límite de recolección', '¡Error!', { timeOut: 3000 });
-            return false;
-        }
+    // Límite de recolección por moneda (todo en pesos)
+    let pendingByCurrency = { 'MXN': TotalPendingMXN, 'USD': TotalPendingUSD, 'MRL': TotalPendingMRL };
+    let currencyName = { 'MXN': 'pesos', 'USD': 'dólares', 'MRL': 'morralla' };
+    let pendingNow = pendingByCurrency[currency] || 0;
+    if ((amount + pendingNow) > LimiteRecolecta) {
+        let fmt = (v) => new Intl.NumberFormat('es-MX', {style: 'currency', currency: 'MXN'}).format(v || 0);
+        let available = Math.max(LimiteRecolecta - pendingNow, 0);
+        toastr.error(
+            'Pendiente en ' + currencyName[currency] + ': ' + fmt(pendingNow) + ' de ' + fmt(LimiteRecolecta) + '. ' +
+            (available > 0 ? 'Solo caben ' + fmt(available) + ' más. ' : '') +
+            'Registra un depósito en la pestaña "3. Depósitos" para seguir agregando fajillas.',
+            'La fajilla supera el límite de recolección',
+            { timeOut: 8000 }
+        );
+        return false;
     }
 
     e.preventDefault(); // Vamos a enviar el formulario por ajax
-    $('#submitButton').prop('disabled', true);  // Deshabilitar el botón de envío del formulario
+    $submitButton.prop('disabled', true);  // Deshabilitar el botón de envío del formulario
     $('.table-responsive').addClass('loading');
     let formData = new FormData(this);
 
@@ -1764,19 +1772,20 @@ $(document).on('submit', '#wadForm', function(e) {
                 $('#acumulated_usd').text(totalUSD);
                 // Vamos a actualizar el acumulado en totalTab
                 $('#totalTab').text('(Total: ' + totalTab + ')');
-                // Vamos a actualizar el acumulado en $('#Total').val()
-                $('#Total').val(totalTab);
-                // Vamos a actualizar el acumulado en $('#TotalPending').val()
+                // Total del tabulador como número (no el texto formateado)
+                $('#Total').val(parseFloat(data.totalTab) || 0);
+                // Pendientes por moneda (en pesos), calculados por el servidor
+                let pending = data.pending || {};
                 $('#TotalPending').val(data.TotalPending);
-                $('#TotalPendingUSD').val(parseFloat(data.totalUSD) * parseFloat($('#exchange_now').val()));
-                $('#TotalPendingMXN').val(parseFloat(data.totalMXN));
-                $('#TotalPendingMRL').val(parseFloat(data.totalMXN));
+                $('#TotalPendingUSD').val(parseFloat(pending.USD) || 0);
+                $('#TotalPendingMXN').val(parseFloat(pending.MXN) || 0);
+                $('#TotalPendingMRL').val(parseFloat(pending.MRL) || 0);
                 markProcessTabsDirty(['deposit', 'sales_tab', 'finish', 'ballot']);
                 $('#v-pills-wads').data('loaded', true).data('dirty', false);
 
                 // Vamos a vaciar el input llamado amount y a dejarle el focus
-                $('#amount').val('');
-                $('#amount').focus();
+                $amount.val('');
+                $amount.focus();
 
                 refreshIslandCard(island_id);
 
@@ -1799,7 +1808,7 @@ $(document).on('submit', '#wadForm', function(e) {
         },
         complete: function() {
             // Habilitar nuevamente el botón de envío del formulario después de que la solicitud AJAX se complete
-            $('#submitButton').prop('disabled', false);
+            $submitButton.prop('disabled', false);
             $('.table-responsive').removeClass('loading');
         }
     });
