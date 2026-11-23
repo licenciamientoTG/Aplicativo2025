@@ -254,7 +254,7 @@ class ConciliacionVentaModel extends Model {
               FROM SG12.dbo.Despachos t WITH (NOLOCK)
               LEFT JOIN TG.dbo.Estaciones E WITH (NOLOCK) ON E.Codigo = t.codgas
               LEFT JOIN SG12.dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
-             WHERE t.fchtrn BETWEEN @d AND @h AND t.codcli = @cli AND {$emp}
+             WHERE t.fchcor BETWEEN @d AND @h AND t.codcli = @cli AND {$emp}   -- fecha de corte, igual que ValesR.fch
             OPTION (RECOMPILE);
 
             SELECT codgas, nrotrn INTO #kd FROM #k;
@@ -266,7 +266,7 @@ class ConciliacionVentaModel extends Model {
               LEFT JOIN SG12.dbo.Empresas EMP WITH (NOLOCK) ON EMP.cod = E.codemp
              WHERE r.fch BETWEEN @d AND @h AND r.codcli = @cli AND r.codval = {$codval} AND {$emp}
                AND NOT EXISTS (SELECT 1 FROM SG12.dbo.Despachos t WITH (NOLOCK)
-                                WHERE t.codgas = r.codgas AND ABS(t.nrotrn) = -r.sec AND t.fchtrn BETWEEN @d AND @h AND t.codcli = @cli)
+                                WHERE t.codgas = r.codgas AND ABS(t.nrotrn) = -r.sec AND t.fchcor BETWEEN @d AND @h AND t.codcli = @cli)
             OPTION (RECOMPILE);
 
             -- Un renglón por vale (estación + folio + corte). Los vales manuales repiten folio (1, 2...) en cada corte,
