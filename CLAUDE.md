@@ -77,6 +77,7 @@ return [
 - Files in `routes/` load alphabetically and the first match wins. Inside a file, declare specific routes (`pay/new/`) before general ones (`pay/<str:id>/`); `tools/routes.php lint` reports any route shadowed by an earlier one.
 - Checks: `php tools/routes.php lint` (conflicts, missing handlers, unknown `url('x')` names), `php tools/routes.php list`, `php tools/routes.php legacy-hits`.
 - Tests (no framework): `php tests/RouterTest.php`, `php tests/RouteLogTest.php`, `php tests/RouteUsageTest.php`, `php tests/ErrorsTest.php`, `node tests/route_url_test.js`.
+- RFC/correos (reglas del SAT, PHP y JS espejo con casos compartidos en `tests/fixtures/validacion_fiscal_casos.json`): `php tests/ValidacionFiscalTest.php`, `node tests/validacion_fiscal_test.js`.
 
 ### Database
 

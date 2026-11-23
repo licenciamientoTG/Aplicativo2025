@@ -3343,6 +3343,7 @@ class Operations{
         $den    = (string)($_POST['den'] ?? '');
         $rfc    = trim((string)($_POST['rfc'] ?? ''));
         $codpos = trim((string)($_POST['codpos'] ?? ''));
+        $correo = (string)($_POST['correo'] ?? '');
 
         if (!$codgas || !$cod) {
             json_output(['success' => false, 'message' => 'Faltan datos requeridos (estación o código de cliente).']);
@@ -3365,12 +3366,14 @@ class Operations{
             return;
         }
 
-        // RFC: 12 (persona moral) o 13 (persona física) caracteres, formato SAT
-        $rfc = strtoupper($rfc);
-        if (!preg_match('/^[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}$/', $rfc)) {
-            json_output(['success' => false, 'message' => 'El RFC no es válido. Debe tener 12 o 13 caracteres con el formato del SAT.']);
+        // RFC: reglas del SAT (ValidacionFiscal). Un "aviso" (p. ej. dígito
+        // verificador que no cuadra) se permite guardar; un "error" no.
+        $vRfc = ValidacionFiscal::rfc($rfc);
+        if ($vRfc['nivel'] === 'error') {
+            json_output(['success' => false, 'message' => 'El RFC no es válido: ' . lcfirst($vRfc['mensaje']) . '.']);
             return;
         }
+        $rfc = $vRfc['rfc'];
 
         // Código postal: numérico, de 2 a 5 dígitos
         if (!preg_match('/^[0-9]{2,5}$/', $codpos)) {
@@ -3378,7 +3381,18 @@ class Operations{
             return;
         }
 
-        $result = $this->clientesModel->update_cliente_contado($codgas, $cod, $den, $rfc, $codpos, (int)$_SESSION['tg_user']['Id']);
+        // Correos: varios separados por ; (vacío permitido). Se guardan normalizados.
+        $vCorreo = ValidacionFiscal::correos($correo);
+        if ($vCorreo['nivel'] === 'error') {
+            json_output(['success' => false, 'message' => $vCorreo['mensaje'] . '.']);
+            return;
+        }
+        $correo = $vCorreo['normalizado'];
+
+        $result = $this->clientesModel->update_cliente_contado($codgas, $cod, $den, $rfc, $codpos, $correo, (int)$_SESSION['tg_user']['Id']);
+        if (!empty($result['success'])) {
+            $result['correo'] = $correo; // el front refresca la fila con el valor normalizado
+        }
         json_output($result);
     }
 

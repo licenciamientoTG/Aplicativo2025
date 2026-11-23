@@ -519,22 +519,22 @@ class ClientesModel extends Model{
         return $this->sql->selectSafe($query);
     }
 
-    /** Valores actuales (den/rfc/codpos) de un cliente en la estación, para capturar el "anterior" antes de editar. */
+    /** Valores actuales (den/rfc/codpos/correo) de un cliente en la estación, para capturar el "anterior" antes de editar. */
     public function get_cliente_contado_actual(array $est, int $cod) : ?array {
-        $inner = "SELECT cod, den, rfc, codpos FROM [{$est['BaseDatos']}].dbo.Clientes WHERE cod = {$cod}";
+        $inner = "SELECT cod, den, rfc, codpos, correo FROM [{$est['BaseDatos']}].dbo.Clientes WHERE cod = {$cod}";
         $query = sprintf("SELECT * FROM OPENQUERY([%s], '%s');", $est['Servidor'], str_replace("'", "''", $inner));
         $rs = $this->sql->selectSafe($query);
         return ($rs && count($rs) === 1) ? $rs[0] : null;
     }
 
     /**
-     * Edita razón social/RFC/código postal de un cliente de contado. Política
-     * todo o nada: primero se actualiza la estación (fuente de verdad); si la
-     * réplica a SG12 falla, se revierte la estación y no queda ningún cambio
-     * aplicado. Solo se registra en la bitácora cuando ambos lados quedaron
-     * correctos.
+     * Edita razón social/RFC/código postal/correo de un cliente de contado.
+     * Política todo o nada: primero se actualiza la estación (fuente de
+     * verdad); si la réplica a SG12 falla, se revierte la estación y no queda
+     * ningún cambio aplicado. Solo se registra en la bitácora cuando ambos
+     * lados quedaron correctos.
      */
-    public function update_cliente_contado(int $codgas, int $cod, string $den, string $rfc, string $codpos, int $usuario) : array {
+    public function update_cliente_contado(int $codgas, int $cod, string $den, string $rfc, string $codpos, ?string $correo, int $usuario) : array {
         $est = $this->get_estacion_conexion($codgas);
         if (!$est) {
             return ['success' => false, 'message' => 'Estación sin servidor/base de datos configurados.'];
@@ -545,12 +545,15 @@ class ClientesModel extends Model{
             return ['success' => false, 'message' => 'No se identificó exactamente un cliente con ese código en la estación.'];
         }
 
-        $inner = "SELECT cod, den, rfc, codpos FROM [{$est['BaseDatos']}].dbo.Clientes WHERE cod = {$cod}";
-        $updateSql = sprintf("UPDATE OPENQUERY([%s], '%s') SET den = ?, rfc = ?, codpos = ?;",
+        // Correo vacío sobre uno que ya era NULL: se conserva NULL en vez de escribir ''.
+        $correo = ($correo === '' && $actual['correo'] === null) ? null : $correo;
+
+        $inner = "SELECT cod, den, rfc, codpos, correo FROM [{$est['BaseDatos']}].dbo.Clientes WHERE cod = {$cod}";
+        $updateSql = sprintf("UPDATE OPENQUERY([%s], '%s') SET den = ?, rfc = ?, codpos = ?, correo = ?;",
             $est['Servidor'], str_replace("'", "''", $inner));
 
         // 1) Estación (updateSafe: no debe morir el proceso si la estación no responde)
-        $okEstacion = $this->sql->updateSafe($updateSql, [$den, $rfc, $codpos]);
+        $okEstacion = $this->sql->updateSafe($updateSql, [$den, $rfc, $codpos, $correo]);
         if ($okEstacion === false) {
             return ['success' => false, 'message' => 'No se pudo actualizar el cliente en la estación. No se realizó ningún cambio.'];
         }
@@ -564,15 +567,15 @@ class ClientesModel extends Model{
         // no tiene este cliente replicado desde la estación — se trata igual
         // que un fallo real: no queda ningún cambio a medias.
         $okSg12 = $this->sql->updateSafe(
-            'UPDATE [SG12].[dbo].[Clientes] SET den = ?, rfc = ?, codpos = ? WHERE cod = ?;',
-            [$den, $rfc, $codpos, $cod]
+            'UPDATE [SG12].[dbo].[Clientes] SET den = ?, rfc = ?, codpos = ?, correo = ? WHERE cod = ?;',
+            [$den, $rfc, $codpos, $correo, $cod]
         );
 
         if (!$okSg12) {
             $noReplicadoAun = ($okSg12 === 0);
 
             // Compensar: regresar la estación a sus valores anteriores
-            $revertOk = $this->sql->updateSafe($updateSql, [$actual['den'], $actual['rfc'], $actual['codpos']]);
+            $revertOk = $this->sql->updateSafe($updateSql, [$actual['den'], $actual['rfc'], $actual['codpos'], $actual['correo']]);
             if ($revertOk === false) {
                 error_log("update_cliente_contado: INCONSISTENCIA codgas={$codgas} cod={$cod} — SG12 falló y la reversión en la estación también falló. Requiere corrección manual.");
                 return ['success' => false, 'message' => 'Error crítico: el corporativo no se actualizó y tampoco se pudo revertir el cambio en la estación. Contacte a sistemas.'];
@@ -589,6 +592,7 @@ class ClientesModel extends Model{
             'den'    => [$actual['den'], $den],
             'rfc'    => [$actual['rfc'], $rfc],
             'codpos' => [$actual['codpos'], $codpos],
+            'correo' => [$actual['correo'], $correo],
         ];
         foreach ($cambios as $campo => [$anterior, $nuevo]) {
             if ((string)$anterior === (string)$nuevo) continue;

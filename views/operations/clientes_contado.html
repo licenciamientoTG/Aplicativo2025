@@ -2,6 +2,20 @@
 {% block title %}Clientes Contado{% endblock %}
 {% block menutitle %}Clientes Contado{% endblock %}
 
+{% block mycss %}
+<style>
+    /* Nota bajo el RFC / correo cuando no cumple las reglas */
+    .vf-nota { display: flex; gap: 4px; align-items: flex-start; margin-top: 2px;
+               font-size: .75rem; line-height: 1.25; max-width: 28ch; white-space: normal; }
+    .vf-nota svg { width: 12px; height: 12px; flex: none; margin-top: 1px; }
+    .vf-error    { color: #b02a37; }
+    .vf-aviso    { color: #8a5300; }  /* ámbar oscuro: contraste AA sobre blanco y renglón gris */
+    .vf-generico { color: #6c757d; }
+    .vf-correo   { display: block; white-space: nowrap; }
+    #edit_rfc_hint.vf-aviso, #edit_correo_hint.vf-aviso { color: #8a5300; }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="row mt-3">
@@ -27,7 +41,7 @@
                     <div class="invalid-feedback" id="contado_termino_feedback"></div>
                 </div>
                 <div class="col-auto d-flex flex-column justify-content-end">
-                    <button type="button" class="btn btn-success" id="btn_buscar_contado" disabled>
+                    <button type="button" class="btn btn-sm btn-success" id="btn_buscar_contado" disabled>
                         <i data-feather="search"></i> Buscar
                     </button>
                 </div>
@@ -39,7 +53,11 @@
 <div class="row mt-3">
     <div class="card shadow">
         <div class="card-header">
-            <div class="card-actions float-end">
+            <div class="card-actions float-end d-flex align-items-center gap-3">
+                <div class="form-check form-switch mb-0 small">
+                    <input class="form-check-input" type="checkbox" role="switch" id="solo_revisar_contado" disabled>
+                    <label class="form-check-label" for="solo_revisar_contado">Solo RFC o correo a revisar</label>
+                </div>
                 <div class="dropdown position-relative">
                     <a href="#" role="button" data-bs-toggle="dropdown" data-bs-display="static"
                        aria-label="Más acciones" aria-expanded="false">
@@ -53,21 +71,25 @@
                         </svg>
                     </a>
                     <div class="dropdown-menu dropdown-menu-end">
-                        <a class="dropdown-item" href="#" id="exportExcelContado">
+                        <a class="dropdown-item disabled" href="#" id="exportExcelContado"
+                           aria-disabled="true" tabindex="-1">
                             <i data-feather="file-text"></i> Exportar a Excel
                         </a>
                     </div>
                 </div>
             </div>
-            <h5 class="card-title mb-0">Clientes Contado</h5>
+            <h5 class="card-title mb-0">
+                Clientes Contado
+                <span class="text-muted fw-normal" id="clientes_contado_resumen"></span>
+            </h5>
         </div>
         <div class="card-body table-responsive" id="clientes_contado_wrapper">
-            <table class="table table-borderless my-0 w-100 table-striped table-sm"
-                   style="font-size: small" id="clientes_contado_table">
+            <table class="table table-borderless my-0 w-100 table-striped table-sm small"
+                   id="clientes_contado_table">
                 <thead>
                     <tr>
                         <th>Estación</th><th>Código</th><th>Nombre</th><th>Domicilio</th>
-                        <th>RFC</th><th>C.P.</th><th>Teléfono</th><th>Correo</th><th>Estatus</th><th>Registrado</th><th>Acciones</th>
+                        <th>RFC</th><th>C.P.</th><th>Teléfono</th><th>Correo</th><th>Estatus</th><th>Registrado</th><th>Acciones</th><th>Revisión</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -106,9 +128,10 @@
                 <div class="mb-2">
                     <label class="col-form-label-sm" for="edit_rfc">RFC</label>
                     <input type="text" class="form-control form-control-sm text-uppercase" id="edit_rfc" maxlength="13"
-                           required autocomplete="off" aria-describedby="edit_rfc_feedback"
+                           required autocomplete="off" aria-describedby="edit_rfc_feedback edit_rfc_hint"
                            placeholder="12 o 13 caracteres">
                     <div class="invalid-feedback" id="edit_rfc_feedback"></div>
+                    <div class="form-text small" id="edit_rfc_hint" aria-live="polite"></div>
                 </div>
                 <div class="mb-2">
                     <label class="col-form-label-sm" for="edit_codpos">Código Postal</label>
@@ -116,6 +139,17 @@
                            required autocomplete="off" aria-describedby="edit_codpos_feedback"
                            placeholder="2 a 5 dígitos" inputmode="numeric">
                     <div class="invalid-feedback" id="edit_codpos_feedback"></div>
+                </div>
+                <div class="mb-2">
+                    <label class="col-form-label-sm" for="edit_correo">Correo(s)</label>
+                    <textarea class="form-control form-control-sm" id="edit_correo" rows="2"
+                              autocomplete="off" spellcheck="false" inputmode="email"
+                              aria-describedby="edit_correo_feedback edit_correo_hint"
+                              placeholder="contabilidad@empresa.com;compras@empresa.com"></textarea>
+                    <div class="invalid-feedback" id="edit_correo_feedback"></div>
+                    <div class="form-text small" id="edit_correo_hint" aria-live="polite">
+                        Varios correos se separan con punto y coma (;) o uno por renglón. Puede quedar vacío.
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -129,5 +163,6 @@
 {% endblock %}
 
 {% block myjs %}
+<script src="{{ js_v('validacion_fiscal.js') }}"></script>
 <script src="{{ js_v('operations/clientes_contado.js') }}"></script>
 {% endblock %}
