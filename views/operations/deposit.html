@@ -236,6 +236,13 @@
 <style>
   .deposit-tab .dep-num { font-variant-numeric: tabular-nums; }
   .deposit-tab .dep-currency .btn { padding-top: .45rem; padding-bottom: .45rem; line-height: 1.25; }
+  /* Estados explícitos: el hover del tema (outline) dejaba el texto blanco sobre fondo claro */
+  .deposit-tab .dep-currency .btn-check + .btn { background-color: var(--bs-body-bg); color: var(--bs-body-color); }
+  .deposit-tab .dep-currency .btn-check + .btn-outline-primary:hover { background-color: var(--bs-primary-bg-subtle); color: var(--bs-primary-text-emphasis); }
+  .deposit-tab .dep-currency .btn-check + .btn-outline-success:hover { background-color: var(--bs-success-bg-subtle); color: var(--bs-success-text-emphasis); }
+  .deposit-tab .dep-currency .btn-check:checked + .btn-outline-primary { background-color: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+  .deposit-tab .dep-currency .btn-check:checked + .btn-outline-success { background-color: var(--bs-success); border-color: var(--bs-success); color: #fff; }
+  .deposit-tab .dep-currency .btn-check:disabled + .btn { background-color: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
   .deposit-tab #openDepositButton { min-height: 3.1rem; }
   .deposit-tab .dep-denoms input { text-align: right; -moz-appearance: textfield; appearance: textfield; }
   .deposit-tab .dep-denoms input::-webkit-outer-spin-button,
