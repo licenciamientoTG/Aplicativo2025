@@ -125,7 +125,7 @@ class AttachmentsPath {
             if (stripos($cand, self::$nasRoot) === 0 && !self::nasDisponible()) {
                 continue;
             }
-            if (is_file($cand) && is_readable($cand)) {
+            if (is_file($cand) && self::legible($cand)) {
                 // Si realpath() resuelve y sigue dentro de base, se devuelve ese; si la carpeta
                 // es un enlace/junction a otra unidad, realpath() la sacaría de base y se usa la
                 // candidata (ya validada por prefijo y sin "..").
@@ -152,6 +152,22 @@ class AttachmentsPath {
     private static function candidataSegura(string $cand): bool {
         // Solo se rechaza ".." como SEGMENTO (\..\); un nombre como "F-123..pdf" es válido.
         return !preg_match('/(^|\\\\)\.\.(\\\\|$)/', $cand) && self::dentroDeBase($cand);
+    }
+
+    /**
+     * is_readable() da falso negativo en rutas UNC con la identidad del pool de IIS
+     * (IIS APPPOOL\TG_PHP en la NAS, prueba 2026-11-23): se confirma abriendo el archivo.
+     */
+    private static function legible(string $ruta): bool {
+        if (is_readable($ruta)) {
+            return true;
+        }
+        $h = @fopen($ruta, 'rb');
+        if ($h === false) {
+            return false;
+        }
+        fclose($h);
+        return true;
     }
 
     private static function cerrar(string $dir): string {
