@@ -9,21 +9,25 @@
         <div class="card-body">
             <div class="row g-2">
                 <div class="col-12 col-md-4">
-                    <label class="col-form-label-sm">Estación</label>
-                    <select class="form-control form-control-sm" id="contado_estacion">
-                        <option value="">Selecciona una estación...</option>
+                    <label class="col-form-label-sm" for="contado_estacion">Estación</label>
+                    <select class="form-control form-control-sm selectpicker" id="contado_estacion"
+                            data-live-search="true" data-width="100%" data-size="10"
+                            title="Selecciona una estación..."
+                            data-none-results-text="Ninguna estación coincide con {0}">
                         {% for st in stations %}
                         <option value="{{ st.Codigo }}">{{ st.Nombre }}</option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="col-12 col-md-4">
-                    <label class="col-form-label-sm">Buscar (nombre, RFC o código)</label>
+                    <label class="col-form-label-sm" for="contado_termino">Buscar (nombre, RFC o código)</label>
                     <input type="text" class="form-control form-control-sm" id="contado_termino"
-                           placeholder="Vacío = todos los clientes">
+                           placeholder="Primero selecciona una estación" disabled
+                           aria-describedby="contado_termino_feedback">
+                    <div class="invalid-feedback" id="contado_termino_feedback"></div>
                 </div>
                 <div class="col-auto d-flex flex-column justify-content-end">
-                    <button type="button" class="btn btn-success" id="btn_buscar_contado">
+                    <button type="button" class="btn btn-success" id="btn_buscar_contado" disabled>
                         <i data-feather="search"></i> Buscar
                     </button>
                 </div>
@@ -37,10 +41,11 @@
         <div class="card-header">
             <div class="card-actions float-end">
                 <div class="dropdown position-relative">
-                    <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <a href="#" role="button" data-bs-toggle="dropdown" data-bs-display="static"
+                       aria-label="Más acciones" aria-expanded="false">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                              fill="none" stroke="currentColor" stroke-width="2"
-                             stroke-linecap="round" stroke-linejoin="round"
+                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
                              class="feather feather-more-horizontal align-middle">
                             <circle cx="12" cy="12" r="1"></circle>
                             <circle cx="19" cy="12" r="1"></circle>
@@ -56,7 +61,7 @@
             </div>
             <h5 class="card-title mb-0">Clientes Contado</h5>
         </div>
-        <div class="card-body table-responsive">
+        <div class="card-body table-responsive" id="clientes_contado_wrapper">
             <table class="table table-borderless my-0 w-100 table-striped table-sm"
                    style="font-size: small" id="clientes_contado_table">
                 <thead>
@@ -72,11 +77,12 @@
 </div>
 
 {# ── Modal: editar razón social / RFC / código postal ── #}
-<div class="modal fade" id="modal_edit_cliente_contado" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="modal_edit_cliente_contado" tabindex="-1"
+     aria-labelledby="modal_edit_cliente_contado_title" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
+        <form class="modal-content" id="form_edit_cliente_contado" novalidate>
             <div class="modal-header">
-                <h5 class="modal-title">Editar cliente de contado</h5>
+                <h5 class="modal-title" id="modal_edit_cliente_contado_title">Editar cliente de contado</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body">
@@ -87,30 +93,36 @@
                 <input type="hidden" id="edit_codgas">
                 <input type="hidden" id="edit_cod">
                 <div class="mb-2">
-                    <label class="col-form-label-sm">Estación</label>
+                    <label class="col-form-label-sm" for="edit_estacion_nombre">Estación</label>
                     <input type="text" class="form-control form-control-sm" id="edit_estacion_nombre" disabled>
                 </div>
                 <div class="mb-2">
-                    <label class="col-form-label-sm">Razón social</label>
+                    <label class="col-form-label-sm" for="edit_den">Razón social</label>
                     <input type="text" class="form-control form-control-sm" id="edit_den" maxlength="255"
+                           required aria-describedby="edit_den_feedback"
                            placeholder="Letras, números, espacios y & . , - / ( ) '">
+                    <div class="invalid-feedback" id="edit_den_feedback"></div>
                 </div>
                 <div class="mb-2">
-                    <label class="col-form-label-sm">RFC</label>
-                    <input type="text" class="form-control form-control-sm" id="edit_rfc" maxlength="13"
+                    <label class="col-form-label-sm" for="edit_rfc">RFC</label>
+                    <input type="text" class="form-control form-control-sm text-uppercase" id="edit_rfc" maxlength="13"
+                           required autocomplete="off" aria-describedby="edit_rfc_feedback"
                            placeholder="12 o 13 caracteres">
+                    <div class="invalid-feedback" id="edit_rfc_feedback"></div>
                 </div>
                 <div class="mb-2">
-                    <label class="col-form-label-sm">Código Postal</label>
+                    <label class="col-form-label-sm" for="edit_codpos">Código Postal</label>
                     <input type="text" class="form-control form-control-sm" id="edit_codpos" maxlength="5"
+                           required autocomplete="off" aria-describedby="edit_codpos_feedback"
                            placeholder="2 a 5 dígitos" inputmode="numeric">
+                    <div class="invalid-feedback" id="edit_codpos_feedback"></div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-sm btn-primary" id="btn_guardar_cliente_contado">Guardar</button>
+                <button type="submit" class="btn btn-sm btn-primary" id="btn_guardar_cliente_contado">Guardar</button>
             </div>
-        </div>
+        </form>
     </div>
 </div>
 
