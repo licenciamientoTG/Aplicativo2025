@@ -11,15 +11,14 @@ declare(strict_types=1);
  * Estructura del RFC:
  *   Persona moral  (12): 3 letras + fecha AAMMDD + homoclave de 3
  *   Persona física (13): 4 letras + fecha AAMMDD + homoclave de 3
- * Las letras admiten Ñ y &. El último carácter de la homoclave es el dígito
- * verificador (0-9 o A), calculado con el módulo 11 del SAT.
+ * Las letras admiten Ñ y &. El último carácter de la homoclave (dígito
+ * verificador) debe ser 0-9 o A; su cálculo (módulo 11) no se verifica.
  */
 final class ValidacionFiscal
 {
     /** Longitud de la columna Clientes.correo en estaciones y SG12 (varchar(200)). */
     public const CORREO_MAX = 200;
 
-    private const DICCIONARIO = '0123456789ABCDEFGHIJKLMN&OPQRSTUVWXYZ Ñ';
     private const GENERICOS = [
         'XAXX010101000' => 'RFC genérico (público en general)',
         'XEXX010101000' => 'RFC genérico (extranjero)',
@@ -76,30 +75,10 @@ final class ValidacionFiscal
             return $r('error', "La homoclave «{$homoclave}» no es válida: debe terminar en un dígito o en A{$pista}");
         }
 
-        $esperado = self::digitoVerificador($rfc);
-        if ($esperado !== mb_substr($rfc, -1, 1, 'UTF-8')) {
-            return $r('aviso', "Dígito verificador incorrecto: debería ser «{$esperado}»");
-        }
         if ($original !== $rfc) {
             return $r('aviso', 'Está capturado en minúsculas');
         }
         return $r('ok', '');
-    }
-
-    /** Dígito verificador del SAT (módulo 11) para un RFC de 12 o 13 caracteres. */
-    public static function digitoVerificador(string $rfc): string
-    {
-        $base = mb_substr($rfc, 0, -1, 'UTF-8');
-        if (mb_strlen($base, 'UTF-8') === 11) {
-            $base = ' ' . $base; // persona moral: se completa a 12 con un espacio al inicio
-        }
-        $suma = 0;
-        for ($i = 0; $i < 12; $i++) {
-            $pos = mb_strpos(self::DICCIONARIO, mb_substr($base, $i, 1, 'UTF-8'), 0, 'UTF-8');
-            $suma += ($pos === false ? 0 : $pos) * (13 - $i);
-        }
-        $digito = 11 - ($suma % 11);
-        return $digito === 11 ? '0' : ($digito === 10 ? 'A' : (string)$digito);
     }
 
     private static function errorFecha(string $aammdd): ?string

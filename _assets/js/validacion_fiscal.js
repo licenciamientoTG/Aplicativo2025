@@ -4,24 +4,11 @@
 // pruebas en node: node tests/validacion_fiscal_test.js).
 (function () {
     var CORREO_MAX = 200;
-    var DICCIONARIO = '0123456789ABCDEFGHIJKLMN&OPQRSTUVWXYZ Ñ';
     var GENERICOS = {
         XAXX010101000: 'RFC genérico (público en general)',
         XEXX010101000: 'RFC genérico (extranjero)'
     };
     var CORREO_REGEX = /^[A-Za-z0-9._%+\-']+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}$/;
-
-    function digitoVerificador(rfc) {
-        var base = Array.from(rfc).slice(0, -1);
-        if (base.length === 11) base.unshift(' '); // persona moral: se completa a 12
-        var suma = 0;
-        for (var i = 0; i < 12; i++) {
-            var pos = DICCIONARIO.indexOf(base[i]);
-            suma += (pos < 0 ? 0 : pos) * (13 - i);
-        }
-        var d = 11 - (suma % 11);
-        return d === 11 ? '0' : d === 10 ? 'A' : String(d);
-    }
 
     function errorFecha(aammdd) {
         var aa = parseInt(aammdd.slice(0, 2), 10);
@@ -72,10 +59,6 @@
             var pista = homoclave.slice(-1) === 'O' ? ' (¿una letra O en lugar de cero?)' : '';
             return res('error', 'La homoclave «' + homoclave + '» no es válida: debe terminar en un dígito o en A' + pista);
         }
-        var esperado = digitoVerificador(r);
-        if (esperado !== r.slice(-1)) {
-            return res('aviso', 'Dígito verificador incorrecto: debería ser «' + esperado + '»');
-        }
         if (original !== r) return res('aviso', 'Está capturado en minúsculas');
         return res('ok', '');
     }
@@ -109,7 +92,7 @@
         return res('ok', '');
     }
 
-    var ValidacionFiscal = { rfc: rfc, correos: correos, digitoVerificador: digitoVerificador, CORREO_MAX: CORREO_MAX };
+    var ValidacionFiscal = { rfc: rfc, correos: correos, CORREO_MAX: CORREO_MAX };
     if (typeof window !== 'undefined') window.ValidacionFiscal = ValidacionFiscal;
     if (typeof module !== 'undefined' && module.exports) module.exports = ValidacionFiscal;
 })();
