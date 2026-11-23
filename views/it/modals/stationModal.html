@@ -1,42 +1,82 @@
-<form action="/it/stations" method="post">
+<form id="stationForm" novalidate>
+    {% if station %}
+        <input type="hidden" name="original_codigo" value="{{ station.Codigo }}">
+    {% endif %}
     <div class="modal-body">
-
-
-        <div class="mb-1">
-            <label for="Nombre" class="form-label col-form-label-sm mb-0">Nombre: </label>
-            <input type="text" class="form-control form-control-sm" placeholder="Agregue el nombre de la estación" id="Nombre" name="Nombre">
+        <div class="alert alert-danger py-2 px-3 small d-none" id="stationFormError" role="alert"><div></div></div>
+        <div class="row g-2">
+            <div class="col-4">
+                <label for="st_Codigo" class="form-label small fw-semibold mb-0">Código <span class="text-danger">*</span></label>
+                {% if station %}
+                    <input type="text" class="form-control form-control-sm" id="st_Codigo" value="{{ station.Codigo }}" disabled>
+                    <div class="form-text">No se puede cambiar.</div>
+                {% else %}
+                    <input type="text" inputmode="numeric" class="form-control form-control-sm" id="st_Codigo" name="Codigo" required>
+                    <div class="form-text">El codgas de ControlGas.</div>
+                {% endif %}
+                <div class="invalid-feedback" data-for="Codigo"></div>
+            </div>
+            <div class="col-8">
+                <label for="st_Nombre" class="form-label small fw-semibold mb-0">Nombre <span class="text-danger">*</span></label>
+                <input type="text" class="form-control form-control-sm" id="st_Nombre" name="Nombre" value="{{ station.Nombre|default('') }}" placeholder="07 Gemela Grande" maxlength="100" required>
+                <div class="invalid-feedback" data-for="Nombre"></div>
+            </div>
+            <div class="col-12">
+                <label for="st_Domicilio" class="form-label small fw-semibold mb-0">Domicilio</label>
+                <input type="text" class="form-control form-control-sm" id="st_Domicilio" name="Domicilio" value="{{ station.Domicilio|default('') }}" maxlength="250">
+                <div class="invalid-feedback" data-for="Domicilio"></div>
+            </div>
+            <div class="col-6">
+                <label for="st_Estacion" class="form-label small fw-semibold mb-0">Estación</label>
+                <input type="text" class="form-control form-control-sm" id="st_Estacion" name="Estacion" value="{{ station.Estacion|default('') }}" placeholder="E04288" maxlength="20">
+                <div class="invalid-feedback" data-for="Estacion"></div>
+            </div>
+            <div class="col-3">
+                <label for="st_Zona" class="form-label small fw-semibold mb-0">Zona <span class="text-danger">*</span></label>
+                <input type="text" inputmode="numeric" class="form-control form-control-sm" id="st_Zona" name="Zona" value="{{ station.Zona|default('') }}" required>
+                <div class="invalid-feedback" data-for="Zona"></div>
+            </div>
+            <div class="col-3">
+                <label for="st_activa" class="form-label small fw-semibold mb-0">Estatus</label>
+                <select class="form-select form-select-sm" id="st_activa" name="activa">
+                    <option value="1" {{ station is null or station.activa == 1 ? 'selected' : '' }}>Activa</option>
+                    <option value="0" {{ station is not null and station.activa != 1 ? 'selected' : '' }}>Inactiva</option>
+                </select>
+            </div>
+            <div class="col-6">
+                <label for="st_Servidor" class="form-label small fw-semibold mb-0">Servidor</label>
+                <input type="text" class="form-control form-control-sm" id="st_Servidor" name="Servidor" value="{{ station.Servidor|default('') }}" placeholder="192.168.7.101" maxlength="50">
+                <div class="invalid-feedback" data-for="Servidor"></div>
+            </div>
+            <div class="col-6">
+                <label for="st_BaseDatos" class="form-label small fw-semibold mb-0">Base de datos</label>
+                <input type="text" class="form-control form-control-sm" id="st_BaseDatos" name="BaseDatos" value="{{ station.BaseDatos|default('') }}" placeholder="SG12_41882020" maxlength="50">
+                <div class="invalid-feedback" data-for="BaseDatos"></div>
+            </div>
+            <div class="col-6">
+                <label for="st_PermisoCRE" class="form-label small fw-semibold mb-0">Permiso CRE</label>
+                <input type="text" class="form-control form-control-sm" id="st_PermisoCRE" name="PermisoCRE" value="{{ station.PermisoCRE|default('') }}" placeholder="PL/xxxx/EXP/ES/2015" maxlength="50">
+                <div class="invalid-feedback" data-for="PermisoCRE"></div>
+            </div>
+            <div class="col-6">
+                <label for="st_RFC" class="form-label small fw-semibold mb-0">RFC</label>
+                <input type="text" class="form-control form-control-sm text-uppercase" id="st_RFC" name="RFC" value="{{ station.RFC|default('') }}" maxlength="13" autocomplete="off">
+                <div class="invalid-feedback" data-for="RFC"></div>
+            </div>
+            <div class="col-12">
+                <label for="st_Denominacion" class="form-label small fw-semibold mb-0">Denominación (razón social)</label>
+                <input type="text" class="form-control form-control-sm" id="st_Denominacion" name="Denominacion" value="{{ station.Denominacion|default('') }}" maxlength="150">
+                <div class="invalid-feedback" data-for="Denominacion"></div>
+            </div>
         </div>
-        <div class="mb-1">
-            <label for="Domicilio" class="form-label col-form-label-sm mb-0">Domicilio: </label>
-            <input type="text" class="form-control form-control-sm" placeholder="Agregue el domicilio de la estación" id="Domicilio" name="Domicilio">
-        </div>
-        <div class="mb-1">
-            <label for="Estacion" class="form-label col-form-label-sm mb-0">Estación: </label>
-            <input type="text" class="form-control form-control-sm" placeholder="Agregue la estación" id="Estacion" name="Estacion">
-        </div>
-        <div class="mb-1">
-            <label for="Servidor" class="form-label col-form-label-sm mb-0">Servidor: </label>
-            <input type="text" class="form-control form-control-sm" placeholder="Agregue el servidor" id="Servidor" name="Servidor">
-        </div>
-        <div class="mb-1">
-            <label for="BaseDatos" class="form-label col-form-label-sm mb-0">Base de datos: </label>
-            <input type="text" class="form-control form-control-sm" placeholder="Agregue la Base de datos" id="BaseDatos" name="BaseDatos">
-        </div>
-        <div class="mb-1">
-            <label for="PermisoCRE" class="form-label col-form-label-sm mb-0">Permiso CRE: </label>
-            <input type="text" class="form-control form-control-sm" placeholder="Agregue el permiso de la CRE" id="PermisoCRE" name="PermisoCRE">
-        </div>
-        <div class="mb-1">
-            <label for="Denominacion" class="form-label col-form-label-sm mb-0">Denominación: </label>
-            <input type="text" class="form-control form-control-sm" placeholder="Agregue la denominación" id="Denominacion" name="Denominacion">
-        </div>
-        <div class="mb-1">
-            <label for="Zona" class="form-label col-form-label-sm mb-0">Zona: </label>
-            <input type="number" step="1" min="1" max="3" class="form-control form-control-sm" placeholder="Agregue la zona de la estación" id="Zona" name="Zona">
-        </div>
+        {% if not station %}
+            <p class="small text-body-secondary mt-3 mb-0">
+                El código debe ser el mismo <b>codgas</b> que tiene la estación en ControlGas; otras partes del sistema lo usan para encontrar su servidor.
+            </p>
+        {% endif %}
     </div>
     <div class="modal-footer">
-          <button type="submit" class="btn btn-primary">Guardar estación</button>
-        <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cerrar</button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="stationFormSubmit">{{ station ? 'Guardar cambios' : 'Crear estación' }}</button>
     </div>
 </form>

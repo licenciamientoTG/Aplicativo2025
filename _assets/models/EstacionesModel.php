@@ -65,44 +65,36 @@ class EstacionesModel extends Model{
         return ($this->sql->select($query)) ?: false ;
     }
 
+    /** Columnas editables desde el creador de estaciones (/it/stations). */
+    private const EDITABLE = ['Nombre', 'Domicilio', 'Estacion', 'Servidor', 'BaseDatos', 'PermisoCRE', 'Denominacion', 'Zona', 'RFC', 'activa'];
+
     /**
-     * @param $data
-     * @return bool
-     * @throws Exception
+     * Alta de estación. El Codigo lo captura el usuario: debe coincidir con el
+     * codgas de ControlGas (y con los arreglos de Model.php).
+     *
+     * @param array $data Codigo + columnas de EDITABLE, ya validadas y normalizadas.
+     * @throws Exception si el INSERT falla.
      */
-    function add($data) : bool {
-        // Obtenemos el máximo ID de la tabla llamado Codigo
-        $query = 'SELECT MAX(Codigo) AS Codigo FROM [TG].[dbo].[Estaciones];';
-        $rs = $this->sql->select($query);
-        $data['Codigo'] = $rs[0]['Codigo'] + 1;
+    function create(array $data) : bool {
+        $columns = array_merge(['Codigo'], self::EDITABLE);
+        $query = 'INSERT INTO [TG].[dbo].[Estaciones] (' . implode(', ', $columns) . ') VALUES (' . implode(', ', array_fill(0, count($columns), '?')) . ');';
+        $params = array_map(fn($c) => $data[$c] ?? null, $columns);
+        return (bool)$this->sql->insert($query, $params);
+    }
 
-        // Insertamos el registro
-        $query = 'INSERT INTO [TG].[dbo].[Estaciones]
-                (Codigo
-                ,Nombre
-                ,Domicilio
-                ,Estacion
-                ,Servidor
-                ,BaseDatos
-                ,PermisoCRE
-                ,Denominacion
-                ,Zona
-                ,activa)
-        VALUES
-                (?,?,?,?,?,?,?,?,?,1);';
+    /**
+     * Edición de estación (no cambia el Codigo).
+     * @param array $data Columnas de EDITABLE, ya validadas y normalizadas.
+     */
+    function update_station(int $codigo, array $data) : bool {
+        $set = implode(', ', array_map(fn($c) => "{$c} = ?", self::EDITABLE));
+        $params = array_map(fn($c) => $data[$c] ?? null, self::EDITABLE);
+        $params[] = $codigo;
+        return $this->sql->updateSafe("UPDATE [TG].[dbo].[Estaciones] SET {$set} WHERE Codigo = ?;", $params) !== false;
+    }
 
-        $params = [
-            trim($data['Codigo']),
-            trim($data['Nombre']),
-            trim($data['Domicilio']),
-            trim($data['Estacion']),
-            trim($data['Servidor']),
-            trim($data['BaseDatos']),
-            trim($data['PermisoCRE']),
-            trim($data['Denominacion']),
-            trim($data['Zona'])
-        ];
-        return $this->sql->insert($query, $params);
+    function exists(int $codigo) : bool {
+        return (bool)$this->sql->select('SELECT 1 AS x FROM [TG].[dbo].[Estaciones] WHERE Codigo = ?;', [$codigo]);
     }
 
     function sp_monitor_tabulador($from) : array {

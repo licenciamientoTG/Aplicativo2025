@@ -422,108 +422,158 @@ $('#applyProfileEncargado').on('click', function (e) {
 
 
 
-// Tabla de usuarios/permisos
+// Creador de estaciones (/it/stations)
+// La tabla carga sin revisar la conexión; después se revisa cada servidor en paralelo.
 let datatables_stations = $('#datatables_stations').DataTable({
-    colReorder: true,
-    dom: '<"top"Bf>rt<"bottom"lip>',
-    pageLength: 100,
+    dom: '<"d-none"B>rt<"bottom"ip>',
+    paging: false,
+    order: [[0, 'asc']],
+    language: {
+        info: '_TOTAL_ estaciones',
+        infoEmpty: 'Sin estaciones',
+        infoFiltered: '(de _MAX_)',
+        zeroRecords: 'Ninguna estación coincide con los filtros.',
+        emptyTable: 'No hay estaciones registradas.',
+        loadingRecords: 'Cargando estaciones…'
+    },
     buttons: [
         {
             extend: 'excel',
-            className: 'd-none',
-        },
-        {
-            extend: 'pdf', // Agrega el botón de exportación a PDF
-            className: 'd-none',
-            text: 'PDF',
-            customize: function (doc) {
-                // Establecer la orientación horizontal (apaisada)
-                doc.pageOrientation = 'landscape';
-                // Ajustar todas las columnas al ancho del PDF
-                let colWidths = [];
-                let tableWidth = doc.pageOrientation === 'landscape' ? 1060 : 500; // Ancho de página para orientación horizontal o vertical
-                let totalColWidths = 0;
-
-                console.log(tableWidth);
-                $('#datatables_stations thead th').each(function () {
-                    let colWidth = $(this).outerWidth() / tableWidth;
-                    totalColWidths += colWidth;
-                    colWidths.push(colWidth * 100 + '%');
-                });
-
-                if (totalColWidths < 1) {
-                    colWidths.push('*'); // Columna extra para completar el ancho restante
-                }
-
-                doc.content[1].table.widths = colWidths;
-            }
-        },
-        {
-            extend: 'print', // Agrega el botón de impresión
-            className: 'd-none',
+            title: 'Estaciones',
+            exportOptions: { columns: ':not(:last-child)', orthogonal: 'export' }
         }
     ],
     ajax: {
         url: '/it/datatables_stations',
-        error: function() {
-            alertify.myAlert(
-                `<div class="container text-center text-danger">
-                    <h4 class="mt-2 text-danger">¡Error!</h4>
-                </div>
-                <div class="text-dark">
-                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                </div>`
-            );
-        },
-        beforeSend: function() {
-            $('.table-responsive').addClass('loading');
+        error: function (xhr) {
+            console.error(xhr.responseText);
+            const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'No se pudo cargar el catálogo de estaciones. Presiona Recargar.';
+            toastr.error(msg, 'Error', { timeOut: 6000 });
         }
     },
-    deferRender: true,
     columns: [
-        {'data': 'ID'},
-        {'data': 'NOMBRE'},
-        {'data': 'DOMICILIO'},
-        {'data': 'ESTACIÓN'},
-        {'data': 'SERVIDOR'},
-        {'data': 'BD'},
-        {'data': 'CRE'},
-        {'data': 'DENOMINACIÓN'},
-        {'data': 'ZONA'},
-        {'data': 'RFC'},
-        {'data': 'STATUS'},
-        {'data': 'CONEXION'},
+        { data: 'ID', className: 'st-num' },
+        { data: 'NOMBRE', className: 'fw-semibold' },
+        { data: 'DOMICILIO' },
+        { data: 'ESTACION' },
+        { data: 'SERVIDOR', className: 'st-num' },
+        { data: 'BD' },
+        { data: 'CRE' },
+        { data: 'DENOMINACION' },
+        { data: 'ZONA', className: 'text-center st-num' },
+        { data: 'RFC' },
+        {
+            data: 'ACTIVA',
+            render: function (activa, type) {
+                if (type === 'display') {
+                    return activa ? '<span class="badge bg-success">Activa</span>' : '<span class="badge bg-secondary">Inactiva</span>';
+                }
+                return activa ? 'Activa' : 'Inactiva';
+            }
+        },
+        {
+            data: null,
+            name: 'conexion',
+            orderable: false,
+            render: function (row, type) {
+                const estado = stationConnections[row.ID];
+                if (type !== 'display') {
+                    return { conectado: 'Sí', sin_conexion: 'No', sin_servidor: 'Sin servidor' }[estado] || '';
+                }
+                if (estado === 'conectado')    { return '<span class="text-success" title="El servidor responde en el puerto 1433">● Conectado</span>'; }
+                if (estado === 'sin_conexion') { return '<span class="text-danger fw-semibold" title="El servidor no responde en el puerto 1433">● Sin conexión</span>'; }
+                if (estado === 'sin_servidor') { return '<span class="text-body-secondary">Sin servidor</span>'; }
+                if (estado === 'error')        { return '<span class="text-warning-emphasis">No se pudo revisar</span>'; }
+                return '<span class="text-body-secondary"><span class="spinner-border spinner-border-sm" style="width:.7rem;height:.7rem" aria-hidden="true"></span> Revisando…</span>';
+            }
+        },
+        {
+            data: 'ID',
+            orderable: false,
+            className: 'text-end',
+            render: function (id, type) {
+                return type === 'display'
+                    ? '<button type="button" class="btn btn-sm btn-link p-0" data-bs-toggle="modal" data-bs-target="#stationModal" data-codgas="' + id + '">Editar</button>'
+                    : '';
+            }
+        }
     ],
     rowId: 'ID',
-    createdRow: function (row, data, dataIndex) {
-    },
-    initComplete: function () {
-        $('.dt-buttons').addClass('d-none');
-        $('.table-responsive').removeClass('loading');
-    }
+    initComplete: function () { fillStationsZonas(); },
 });
 
-// Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
-$('#filtro-datatables_stations input').on('keyup change clear', function () {
-    datatables_stations
-        .column(0).search($('#ID').val().trim())
-        .column(1).search($('#NOMBRE').val().trim())
-        .column(2).search($('#DOMICILIO').val().trim())
-        .column(3).search($('#ESTACIÓN').val().trim())
-        .column(4).search($('#SERVIDOR').val().trim())
-        .column(5).search($('#BD').val().trim())
-        .column(6).search($('#CRE').val().trim())
-        .column(7).search($('#DENOMINACIÓN').val().trim())
-        .column(8).search($('#ZONA').val().trim())
-        .column(9).search($('#RFC').val().trim())
-        .column(10).search($('#STATUS').val().trim())
-        .draw();
-  });
+let stationConnections = {};
+let stationConnQueue = [];
+let stationConnRunning = 0;
 
-// Agregar un evento clic de refresh
-$('.refresh_datatables_stations').on('click', function () {
-    datatables_stations.clear().draw();
-    datatables_stations.ajax.reload();
+function fillStationsZonas() {
+    const $sel = $('#stationsZona');
+    if (!$sel.length) { return; }
+    const current = $sel.val();
+    const zonas = [...new Set(datatables_stations.column(8).data().toArray().filter(z => z !== null && z !== '').map(String))]
+        .sort((a, b) => Number(a) - Number(b));
+    $sel.find('option:not(:first)').remove();
+    zonas.forEach(z => $sel.append($('<option>').val(z).text('Zona ' + z)));
+    $sel.val(zonas.includes(current) ? current : '');
+}
+
+function renderStationsConnSummary() {
+    const values = Object.values(stationConnections);
+    const pending = datatables_stations.rows().count() - values.length;
+    const down = values.filter(v => v === 'sin_conexion').length;
+    let text = pending > 0 ? 'Revisando conexión… faltan ' + pending : 'Conexión revisada';
+    if (down > 0) { text += ' · <span class="text-danger fw-semibold">' + down + ' sin conexión</span>'; }
+    $('#stationsConnSummary').html(text);
+}
+
+function nextStationConnection() {
+    while (stationConnRunning < 6 && stationConnQueue.length) {
+        const id = stationConnQueue.shift();
+        stationConnRunning++;
+        $.ajax({ url: '/it/station_connection/' + id, dataType: 'json', timeout: 15000 })
+            .done(data => { stationConnections[id] = (data && data.ok) ? data.estado : 'error'; })
+            .fail(() => { stationConnections[id] = 'error'; })
+            .always(() => {
+                stationConnRunning--;
+                const row = datatables_stations.row('#' + id);
+                if (row.any()) { row.invalidate(); }
+                datatables_stations.draw(false);
+                renderStationsConnSummary();
+                nextStationConnection();
+            });
+    }
+}
+
+datatables_stations.on('xhr', function () {
+    stationConnections = {};
+    stationConnQueue = [];
+    setTimeout(function () {
+        stationConnQueue = datatables_stations.rows().data().toArray().map(r => r.ID);
+        renderStationsConnSummary();
+        nextStationConnection();
+        fillStationsZonas();
+    }, 0);
+});
+
+let stationsSearchTimer = null;
+$('#stationsSearch').on('input', function () {
+    clearTimeout(stationsSearchTimer);
+    const value = $(this).val();
+    stationsSearchTimer = setTimeout(() => datatables_stations.search(value.trim()).draw(), 250);
+});
+$('#stationsZona').on('change', function () {
+    const v = $(this).val();
+    datatables_stations.column(8).search(v ? '^' + $.fn.dataTable.util.escapeRegex(v) + '$' : '', true, false).draw();
+});
+$('#stationsStatus').on('change', function () {
+    const v = $(this).val();
+    datatables_stations.column(10).search(v ? '^' + v + '$' : '', true, false).draw();
+});
+$('#reloadStations').on('click', function () {
+    datatables_stations.ajax.reload(null, false);
+});
+$('#exportStations').on('click', function () {
+    datatables_stations.button(0).trigger();
 });
 
 
@@ -1243,23 +1293,65 @@ $('#permissionModal').on('show.bs.modal', function (event) {
 });
 
 
+// Modal de alta / edición de estación
 $('#stationModal').on('show.bs.modal', function (event) {
-    let modal = $(this);
-    // Acciones que deseas realizar antes de que el modal se muestre
+    const modal = $(this);
+    const codgas = $(event.relatedTarget).data('codgas') || '';
+    modal.find('#stationModalLabel').text(codgas ? 'Editar estación' : 'Nueva estación');
+    modal.find('#stationModalContent').html('<div class="modal-body text-center text-body-secondary py-5"><span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> Cargando…</div>');
     $.ajax({
         url: '/it/stationModal',
         method: 'GET',
-        dataType: 'json',
-        success: function(data) {
-            modal.find('.modal-dialog').addClass(data.size + ' ' + data.position);
-            modal.find('#stationModalLabel').text(data.title);
-            modal.find('#content').html(data.content);
-            $('.selectpicker').selectpicker();
-        },
-        error: function(xhr, textStatus, errorThrown) {
-            console.error('AJAX error:', errorThrown);
+        data: codgas ? { codgas: codgas } : {},
+        dataType: 'json'
+    }).done(function (data) {
+        if (!data || !data.ok) {
+            modal.find('#stationModalContent').html('<div class="modal-body"><div class="alert alert-danger mb-0"><div>' + ((data && data.message) || 'No se pudo abrir el formulario.') + '</div></div></div>');
+            return;
         }
+        modal.find('#stationModalLabel').text(data.title);
+        modal.find('#stationModalContent').html(data.content);
+        setTimeout(() => modal.find(codgas ? '#st_Nombre' : '#st_Codigo').trigger('focus'), 200);
+    }).fail(function (xhr) {
+        const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'No se pudo abrir el formulario. Intenta de nuevo.';
+        modal.find('#stationModalContent').html('<div class="modal-body"><div class="alert alert-danger mb-0"><div>' + msg + '</div></div></div>');
     });
+});
+
+$(document).on('submit', '#stationForm', function (e) {
+    e.preventDefault();
+    const $form = $(this);
+    const $btn = $('#stationFormSubmit');
+    const label = $btn.text();
+    $form.find('.is-invalid').removeClass('is-invalid');
+    $('#stationFormError').addClass('d-none');
+    $btn.prop('disabled', true).text('Guardando…');
+
+    $.ajax({ url: '/it/save_station', method: 'POST', data: $form.serialize(), dataType: 'json' })
+        .done(function (data) {
+            if (data && data.ok) {
+                toastr.success(data.message, 'Listo', { timeOut: 2500 });
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('stationModal')).hide();
+                datatables_stations.ajax.reload(null, false);
+                return;
+            }
+            const errors = (data && data.errors) || {};
+            Object.keys(errors).forEach(function (field) {
+                $form.find('[name="' + field + '"]').addClass('is-invalid');
+                $form.find('.invalid-feedback[data-for="' + field + '"]').text(errors[field]);
+            });
+            $('#stationFormError').removeClass('d-none').find('div').text((data && data.message) || 'No se pudo guardar la estación.');
+            $form.find('.is-invalid').first().trigger('focus');
+        })
+        .fail(function (xhr) {
+            const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'No se pudo guardar la estación. Intenta de nuevo.';
+            $('#stationFormError').removeClass('d-none').find('div').text(msg);
+        })
+        .always(function () { $btn.prop('disabled', false).text(label); });
+});
+
+$(document).on('input', '#stationForm .is-invalid', function () {
+    $(this).removeClass('is-invalid');
 });
 
 

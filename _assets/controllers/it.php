@@ -546,17 +546,41 @@ class It{
         json_output($modal);
     }
 
+    /** Permiso del creador de estaciones (el mismo que muestra el enlace en el menú). */
+    private const PERM_STATIONS = 22;
+
+    private function require_stations_permission(bool $json = true) : void {
+        if (authorized(self::PERM_STATIONS)) {
+            return;
+        }
+        http_response_code(403);
+        if ($json) {
+            json_output(['ok' => false, 'message' => 'No tienes permiso para administrar estaciones.']);
+        }
+        echo 'No tienes permiso para acceder a esta sección';
+        exit;
+    }
+
     /**
+     * Formulario de alta (sin codgas) o edición (?codgas=N) de una estación.
      * @return void
+     * @throws Exception
      */
     public function stationModal() : void {
-        $modal = [
-            "title"    => "Estaciones",
-            "size"     => "modal-sm",
-            "position" => "modal-dialog-centered",
-            "content"  => $this->twig->render($this->route . 'modals/stationModal.html')
-        ];
-        json_output($modal);
+        $this->require_stations_permission();
+        $codgas = intval($_GET['codgas'] ?? 0);
+        $station = null;
+        if ($codgas > 0) {
+            $station = $this->estacionesModel->get_station($codgas);
+            if (!$station) {
+                json_output(['ok' => false, 'message' => 'La estación ya no existe.']);
+            }
+        }
+        json_output([
+            'ok'      => true,
+            'title'   => $station ? 'Editar estación ' . $station['Codigo'] : 'Nueva estación',
+            'content' => $this->twig->render($this->route . 'modals/stationModal.html', compact('station')),
+        ]);
     }
 
     /**
@@ -836,47 +860,158 @@ class It{
     }
 
     /**
+     * Creador de estaciones (TG.dbo.Estaciones).
      * @return void
-     * @throws Exception
      */
     public function stations() : void {
-        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
-            echo $this->twig->render($this->route . 'stations.html');
-        } else {
-            if ($this->estacionesModel->add($_POST)) {
-                setFlashMessage('success', 'Estación agregada correctamente');
-            } else {
-                setFlashMessage('error', 'La estación no pudo ser agregada');
-            }
-            redirect();
-        }
+        $this->require_stations_permission(false);
+        echo $this->twig->render($this->route . 'stations.html');
     }
 
     /**
+     * Alta o edición de una estación (POST, JSON).
+     * Alta: viene Codigo (el codgas de ControlGas). Edición: viene original_codigo y el Codigo no cambia.
+     * @return void
+     * @throws Exception
+     */
+    public function save_station() : void {
+        $this->require_stations_permission();
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            json_output(['ok' => false, 'message' => 'Método no permitido.']);
+        }
+
+        $editing = intval($_POST['original_codigo'] ?? 0);
+        $errors = [];
+        $text = function (string $field, int $max, bool $required = false) use (&$errors) {
+            $value = trim((string)($_POST[$field] ?? ''));
+            if ($value === '') {
+                if ($required) { $errors[$field] = 'Este dato es obligatorio.'; }
+                return null;
+            }
+            if (mb_strlen($value, 'UTF-8') > $max) {
+                $errors[$field] = "Máximo {$max} caracteres.";
+            }
+            return $value;
+        };
+
+        $data = [
+            'Nombre'       => $text('Nombre', 100, true),
+            'Domicilio'    => $text('Domicilio', 250),
+            'Estacion'     => $text('Estacion', 20),
+            'Servidor'     => $text('Servidor', 50),
+            'BaseDatos'    => $text('BaseDatos', 50),
+            'PermisoCRE'   => $text('PermisoCRE', 50),
+            'Denominacion' => $text('Denominacion', 150),
+            'RFC'          => null,
+            'Zona'         => null,
+            'activa'       => ($_POST['activa'] ?? '1') === '0' ? 0 : 1,
+        ];
+
+        $zona = trim((string)($_POST['Zona'] ?? ''));
+        if ($zona === '' || !ctype_digit($zona) || intval($zona) > 99) {
+            $errors['Zona'] = 'Captura la zona como número entero (0 a 99).';
+        } else {
+            $data['Zona'] = intval($zona);
+        }
+
+        if ($data['Servidor'] !== null && !preg_match('/^[A-Za-z0-9.\-]+$/', $data['Servidor'])) {
+            $errors['Servidor'] = 'Solo la IP o el nombre del servidor, sin espacios ni corchetes (por ejemplo 192.168.7.101).';
+        }
+        if ($data['BaseDatos'] !== null && !preg_match('/^[A-Za-z0-9_+\-]+$/', $data['BaseDatos'])) {
+            $errors['BaseDatos'] = 'Solo el nombre de la base, sin corchetes ni espacios (por ejemplo SG12_41882020).';
+        }
+
+        $rfc = trim((string)($_POST['RFC'] ?? ''));
+        if ($rfc !== '') {
+            $check = ValidacionFiscal::rfc($rfc);
+            if ($check['nivel'] === 'error') {
+                $errors['RFC'] = $check['mensaje'];
+            } else {
+                $data['RFC'] = $check['rfc'];
+            }
+        }
+
+        if ($editing > 0) {
+            if (!$this->estacionesModel->exists($editing)) {
+                json_output(['ok' => false, 'message' => 'La estación que intentas editar ya no existe.']);
+            }
+        } else {
+            $codigo = trim((string)($_POST['Codigo'] ?? ''));
+            if ($codigo === '' || !ctype_digit($codigo) || intval($codigo) < 1 || intval($codigo) > 9999) {
+                $errors['Codigo'] = 'Captura el código (codgas de ControlGas) como número entero.';
+            } elseif ($this->estacionesModel->exists(intval($codigo))) {
+                $errors['Codigo'] = "Ya existe una estación con el código {$codigo}.";
+            } else {
+                $data['Codigo'] = intval($codigo);
+            }
+        }
+
+        if ($errors) {
+            json_output(['ok' => false, 'message' => 'Revisa los datos marcados.', 'errors' => $errors]);
+        }
+
+        try {
+            $saved = $editing > 0
+                ? $this->estacionesModel->update_station($editing, $data)
+                : $this->estacionesModel->create($data);
+        } catch (\Throwable $th) {
+            $saved = false;
+        }
+        if (!$saved) {
+            json_output(['ok' => false, 'message' => 'No se pudo guardar la estación. Intenta de nuevo.']);
+        }
+        json_output([
+            'ok'      => true,
+            'message' => $editing > 0 ? "Estación {$editing} actualizada." : "Estación {$data['Codigo']} creada.",
+        ]);
+    }
+
+    /**
+     * Listado de estaciones (sin revisar conexión: eso lo hace station_connection por estación).
      * @return void
      * @throws Exception
      */
     public function datatables_stations() : void {
-        $data = [];
-        if ($stations = $this->estacionesModel->get_stations('0,4,20')) {
-            $data = array_map(function ($station) {
-                return [
-                    'ID'           => $station['Codigo'],
-                    'NOMBRE'       => preg_replace('/^[0-9]+/', '', $station['Nombre']),
-                    'DOMICILIO'    => $station['Domicilio'],
-                    'ESTACIÓN'     => $station['Estacion'],
-                    'SERVIDOR'     => $station['Servidor'],
-                    'BD'           => $station['BaseDatos'],
-                    'CRE'          => $station['PermisoCRE'],
-                    'DENOMINACIÓN' => $station['Denominacion'],
-                    'ZONA'         => $station['Zona'],
-                    'RFC'          => $station['RFC'],
-                    'STATUS'       => ( $station['activa'] == 1 ? '<span class="badge bg-success">Activa</span>' : '<span class="badge bg-primary">Inactiva</span>' ),
-                    'CONEXION'     => (function() use ($station) { $s = @fsockopen($station['Servidor'], 1433, $errno, $errstr, 2); if ($s !== false) { fclose($s); return "✅"; } return "❌"; })()
-                ];
-            }, $stations);
+        $this->require_stations_permission();
+        $data = array_map(function ($station) {
+            return [
+                'ID'           => intval($station['Codigo']),
+                'NOMBRE'       => trim(preg_replace('/^[0-9]+/', '', (string)$station['Nombre'])),
+                'DOMICILIO'    => $station['Domicilio'],
+                'ESTACION'     => $station['Estacion'],
+                'SERVIDOR'     => $station['Servidor'],
+                'BD'           => $station['BaseDatos'],
+                'CRE'          => $station['PermisoCRE'],
+                'DENOMINACION' => $station['Denominacion'],
+                'ZONA'         => $station['Zona'],
+                'RFC'          => $station['RFC'],
+                'ACTIVA'       => intval($station['activa']) === 1,
+            ];
+        }, $this->estacionesModel->get_stations('0,4,20') ?: []);
+        json_output(['data' => $data]);
+    }
+
+    /**
+     * ¿Responde el SQL Server de la estación (puerto 1433)? JSON. La página lo pide por estación y en paralelo.
+     * @return void
+     * @throws Exception
+     */
+    public function station_connection($codgas = 0) : void {
+        $this->require_stations_permission();
+        // Liberar el lock de sesión para que las revisiones corran en paralelo.
+        session_write_close();
+        $station = $this->estacionesModel->get_station(intval($codgas));
+        $server = trim((string)($station['Servidor'] ?? ''));
+        if ($server === '') {
+            json_output(['ok' => true, 'estado' => 'sin_servidor']);
         }
-        json_output(array("data" => $data));
+        $socket = @fsockopen($server, 1433, $errno, $errstr, 2);
+        if ($socket !== false) {
+            fclose($socket);
+            json_output(['ok' => true, 'estado' => 'conectado']);
+        }
+        json_output(['ok' => true, 'estado' => 'sin_conexion']);
     }
 
     /**
