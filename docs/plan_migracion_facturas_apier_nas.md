@@ -23,7 +23,7 @@ aquí la NAS se usa con la misma estructura de carpetas de hoy, montada en ApiER
 - Disco de ApiER: 12 GB libres (80 % usado). No se acumulan archivos locales; solo temporales.
 - Raíz de la NAS: ACL con **"Todos: Control total"** → quitar al terminar (fase 5).
 
-**Pendiente de verificar:** la lectura desde IIS por UNC sobre `combustible\` (las pruebas anteriores de lectura no están en mi contexto). Se re-prueba en la fase 0 con la identidad real del pool `TG_PHP`.
+**Verificado 2026-11-23 — IIS → NAS:** el pool `IIS APPPOOL\TG_PHP` sale a la red como la cuenta de equipo `TOTALGAS\SERVIDORAPLICAC$`. Se creó el grupo AD `NAS_Facturas_IIS` (Global, Seguridad) con ese equipo y se le dieron permisos en `FacturasProveedores` y `combustible`; después `klist -li 0x3e7 purge` (consola elevada) y reciclar `TG_PHP`. Resultado con `test_nas_facturas.php` (ya borrado): listar, crear carpeta, escribir `.tmp` → rename, leer, `AttachmentsPath::resolver('combustible\...')` y borrar, todo OK (≈0.2 s). Hoy el grupo también puede **escribir** (sirve para la fase 4). `is_readable()` da falso negativo en UNC con esa identidad: el resolver confirma con `fopen`.
 
 ## 3. Arquitectura destino
 
