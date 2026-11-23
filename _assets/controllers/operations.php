@@ -2496,6 +2496,67 @@ class Operations{
         }
     }
 
+    /**
+     * Reporte: ¿ControlGas hizo el corte del turno 4? Solo consulta, no modifica nada.
+     * La página lista las estaciones y el navegador pide el estado de cada una a corte_t4_estacion().
+     */
+    function corte_t4() : void {
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        $fecha = $_GET['fecha'] ?? $yesterday;
+        $date = DateTime::createFromFormat('Y-m-d', $fecha);
+        if (!$date || $date->format('Y-m-d') !== $fecha || $fecha > date('Y-m-d')) {
+            $fecha = $yesterday;
+        }
+
+        $stations = [];
+        // Sin ping previo (get_active_station_TG descarta las que no responden): aquí
+        // queremos ver también las estaciones sin conexión.
+        foreach ($this->estacionesModel->get_actives_stations() ?: [] as $station) {
+            $codgas = intval($station['Codigo']);
+            if (isset($this->tabulatorModel->linked_server[$codgas])) {
+                $stations[] = ['codgas' => $codgas, 'nombre' => $station['Nombre']];
+            }
+        }
+        usort($stations, fn($a, $b) => $a['codgas'] <=> $b['codgas']);
+
+        $isToday = $fecha === date('Y-m-d');
+        echo $this->twig->render($this->route . 'corte_t4.html', compact('fecha', 'stations', 'isToday', 'yesterday'));
+    }
+
+    /**
+     * Estado del turno 4 de una estación en ControlGas (JSON). Solo lectura.
+     */
+    function corte_t4_estacion(int $codgas) : void {
+        set_time_limit(90);
+        $fecha = $_GET['fecha'] ?? '';
+        $date = DateTime::createFromFormat('Y-m-d', $fecha);
+        if (!$date || $date->format('Y-m-d') !== $fecha) {
+            http_response_code(400);
+            json_output(['ok' => false, 'message' => 'Fecha no válida.']);
+        }
+
+        $status = $this->tabulatorModel->controlgas_turn_status($codgas, dateToInt($fecha), 41);
+        if ($status === false) {
+            json_output(['ok' => false, 'codgas' => $codgas, 'message' => 'No se pudo consultar el ControlGas de la estación.']);
+        }
+
+        if ($status['Cortes'] > 0) {
+            $estado = 'cortado';
+        } elseif ($status['Despachos'] > 0) {
+            $estado = 'sin_corte_con_ventas';
+        } else {
+            $estado = 'sin_corte_sin_ventas';
+        }
+
+        json_output([
+            'ok'        => true,
+            'codgas'    => $codgas,
+            'estado'    => $estado,
+            'despachos' => $status['Despachos'],
+            'monto'     => $status['Monto'],
+        ]);
+    }
+
     function open_tabulator() : void {
         $tabId           = $_POST['tabulator_id'];
         $turno           = $_POST['turno'];

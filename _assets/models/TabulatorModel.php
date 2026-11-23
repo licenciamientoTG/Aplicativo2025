@@ -200,6 +200,46 @@ class TabulatorModel extends Model{
         return (bool)$this->sql->update('UPDATE [TG].[dbo].TabuladorEncabezado SET Estatus = 1 WHERE Id = ?;', [intval($tabuladorId)]);
     }
 
+    /**
+     * Estado de un turno en el ControlGas de la estación. SOLO LECTURA.
+     *
+     * - Cortes: renglones en VentasC (el corte del turno existe).
+     * - Despachos / Monto: ventas registradas con ese nrotur, por fecha de
+     *   despacho o de corte (si el turno no se cortó, fchcor puede no estar).
+     *   El monto descarta jarreos (tiptrn 74 y 65), igual que get_turn_sales().
+     *
+     * @param int $fch    Fecha en formato ControlGas (dateToInt()).
+     * @param int $nrotur Turno*10 + subcorte (41 = turno 4).
+     * @return array{Cortes:int, Despachos:int, Monto:float}|false  false si la estación no está configurada o no responde.
+     */
+    function controlgas_turn_status(int $codgas, int $fch, int $nrotur) : array|false {
+        $linked = $this->linked_server[$codgas] ?? null;
+        $short  = $this->short_databases[$codgas] ?? null;
+        if (!$linked || !$short) {
+            return false;
+        }
+        $query = "SELECT * FROM OPENQUERY({$linked}, '
+            SELECT
+                (SELECT COUNT(*) FROM {$short}.[VentasC] WITH (NOLOCK) WHERE fch = {$fch} AND nrotur = {$nrotur}) AS Cortes,
+                d.Despachos,
+                d.Monto
+            FROM (
+                SELECT COUNT(*) AS Despachos,
+                       CAST(ISNULL(SUM(CASE WHEN tiptrn NOT IN (74, 65) THEN mto ELSE 0 END), 0) AS DECIMAL(14, 2)) AS Monto
+                FROM {$short}.[Despachos] WITH (NOLOCK)
+                WHERE nrotur = {$nrotur} AND (fchtrn = {$fch} OR fchcor = {$fch})
+            ) d')";
+        $rs = $this->sql->selectSafe($query);
+        if (!$rs) {
+            return false;
+        }
+        return [
+            'Cortes'    => intval($rs[0]['Cortes'] ?? 0),
+            'Despachos' => intval($rs[0]['Despachos'] ?? 0),
+            'Monto'     => floatval($rs[0]['Monto'] ?? 0),
+        ];
+    }
+
     function is_closed_controlgas($turno, $fecha, $db_string) : bool {
         return (bool)$this->sql->select("SELECT 1 FROM {$db_string}.VentasC WHERE fch = ? AND nrotur = ?", [$fecha, $turno]);
     }

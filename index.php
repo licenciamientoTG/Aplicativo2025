@@ -106,6 +106,7 @@ if ($routeMatch !== null) {
         'efc_conc_resumen_general_datos',
         'efc_conc_tipo_cambio_turnos',
         'get_cash_banorte_deposits',
+        'corte_t4_estacion',
     ];
     if (in_array($_SERVER['REQUEST_METHOD'], ['GET', 'POST'], true)
         && in_array($def['handler'][1], $parallelReadMethods, true)
