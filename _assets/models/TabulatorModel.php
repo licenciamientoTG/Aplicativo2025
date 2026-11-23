@@ -203,14 +203,16 @@ class TabulatorModel extends Model{
     /**
      * Estado de un turno en el ControlGas de la estación. SOLO LECTURA.
      *
-     * - Cortes: renglones en VentasC (el corte del turno existe).
-     * - Despachos / Monto: ventas registradas con ese nrotur, por fecha de
-     *   despacho o de corte (si el turno no se cortó, fchcor puede no estar).
-     *   El monto descarta jarreos (tiptrn 74 y 65), igual que get_turn_sales().
+     * - Lecturas: renglones en Medicion (lecturas electrónicas de las bombas).
+     *   Si hay al menos uno, el turno está CERRADO. Es lo que decide el estado.
+     * - Declaraciones: renglones en VentasC (las islas cerraron y declararon
+     *   ventas). Solo informativo.
+     * - Despachos / Monto: ventas con ese nrotur, por fecha de despacho o de
+     *   corte. El monto descarta jarreos (tiptrn 74 y 65), igual que get_turn_sales().
      *
      * @param int $fch    Fecha en formato ControlGas (dateToInt()).
      * @param int $nrotur Turno*10 + subcorte (41 = turno 4).
-     * @return array{Cortes:int, Despachos:int, Monto:float}|false  false si la estación no está configurada o no responde.
+     * @return array{Lecturas:int, Declaraciones:int, Despachos:int, Monto:float}|false  false si la estación no está configurada o no responde.
      */
     function controlgas_turn_status(int $codgas, int $fch, int $nrotur) : array|false {
         $linked = $this->linked_server[$codgas] ?? null;
@@ -220,7 +222,8 @@ class TabulatorModel extends Model{
         }
         $query = "SELECT * FROM OPENQUERY({$linked}, '
             SELECT
-                (SELECT COUNT(*) FROM {$short}.[VentasC] WITH (NOLOCK) WHERE fch = {$fch} AND nrotur = {$nrotur}) AS Cortes,
+                (SELECT COUNT(*) FROM {$short}.[Medicion] WITH (NOLOCK) WHERE fch = {$fch} AND nrotur = {$nrotur}) AS Lecturas,
+                (SELECT COUNT(*) FROM {$short}.[VentasC] WITH (NOLOCK) WHERE fch = {$fch} AND nrotur = {$nrotur}) AS Declaraciones,
                 d.Despachos,
                 d.Monto
             FROM (
@@ -234,9 +237,10 @@ class TabulatorModel extends Model{
             return false;
         }
         return [
-            'Cortes'    => intval($rs[0]['Cortes'] ?? 0),
-            'Despachos' => intval($rs[0]['Despachos'] ?? 0),
-            'Monto'     => floatval($rs[0]['Monto'] ?? 0),
+            'Lecturas'      => intval($rs[0]['Lecturas'] ?? 0),
+            'Declaraciones' => intval($rs[0]['Declaraciones'] ?? 0),
+            'Despachos'     => intval($rs[0]['Despachos'] ?? 0),
+            'Monto'         => floatval($rs[0]['Monto'] ?? 0),
         ];
     }
 

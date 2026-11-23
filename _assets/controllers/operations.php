@@ -2496,8 +2496,13 @@ class Operations{
         }
     }
 
+    /** Servidores de estación sin ControlGas: se excluyen del reporte de cierre del turno 4. */
+    private const CORTE_T4_SIN_CONTROLGAS = [
+        '[192.168.40.101]', // Praxedis
+    ];
+
     /**
-     * Reporte: ¿ControlGas hizo el corte del turno 4? Solo consulta, no modifica nada.
+     * Reporte: ¿el turno 4 quedó cerrado en ControlGas (tabla Medicion)? Solo consulta, no modifica nada.
      * La página lista las estaciones y el navegador pide el estado de cada una a corte_t4_estacion().
      */
     function corte_t4() : void {
@@ -2513,7 +2518,8 @@ class Operations{
         // queremos ver también las estaciones sin conexión.
         foreach ($this->estacionesModel->get_actives_stations() ?: [] as $station) {
             $codgas = intval($station['Codigo']);
-            if (isset($this->tabulatorModel->linked_server[$codgas])) {
+            $linked = $this->tabulatorModel->linked_server[$codgas] ?? null;
+            if ($linked && !in_array($linked, self::CORTE_T4_SIN_CONTROLGAS, true)) {
                 $stations[] = ['codgas' => $codgas, 'nombre' => $station['Nombre']];
             }
         }
@@ -2540,20 +2546,22 @@ class Operations{
             json_output(['ok' => false, 'codgas' => $codgas, 'message' => 'No se pudo consultar el ControlGas de la estación.']);
         }
 
-        if ($status['Cortes'] > 0) {
-            $estado = 'cortado';
+        // Lo que decide si el turno está cerrado es Medicion (lecturas electrónicas).
+        if ($status['Lecturas'] > 0) {
+            $estado = 'cerrado';
         } elseif ($status['Despachos'] > 0) {
-            $estado = 'sin_corte_con_ventas';
+            $estado = 'abierto_con_ventas';
         } else {
-            $estado = 'sin_corte_sin_ventas';
+            $estado = 'abierto_sin_ventas';
         }
 
         json_output([
-            'ok'        => true,
-            'codgas'    => $codgas,
-            'estado'    => $estado,
-            'despachos' => $status['Despachos'],
-            'monto'     => $status['Monto'],
+            'ok'         => true,
+            'codgas'     => $codgas,
+            'estado'     => $estado,
+            'declarado'  => $status['Declaraciones'] > 0,
+            'despachos'  => $status['Despachos'],
+            'monto'      => $status['Monto'],
         ]);
     }
 

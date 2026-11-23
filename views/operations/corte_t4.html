@@ -1,16 +1,16 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Corte turno 4{% endblock %}
+{% block title %}Cierre turno 4{% endblock %}
 {% block mycss %}
 <style>
   .t4-report .t4-num { font-variant-numeric: tabular-nums; }
   .t4-report .t4-summary .t4-chip { border: 1px solid var(--bs-border-color); border-radius: .5rem; padding: .5rem .75rem; min-width: 9.5rem; background: var(--bs-body-bg); }
   .t4-report .t4-summary .t4-chip .t4-count { font-size: 1.5rem; font-weight: 700; line-height: 1.1; }
   .t4-report .t4-summary .t4-chip.is-alert { border-color: var(--bs-danger); background: var(--bs-danger-bg-subtle); }
-  .t4-report tr[data-estado="sin_corte_con_ventas"] { --bs-table-bg: var(--bs-danger-bg-subtle); }
+  .t4-report tr[data-estado="abierto_con_ventas"] { --bs-table-bg: var(--bs-danger-bg-subtle); }
   .t4-report tr[data-estado="error"] { --bs-table-bg: var(--bs-warning-bg-subtle); }
 </style>
 {% endblock %}
-{% block menutitle %}Corte del turno 4 en ControlGas{% endblock %}
+{% block menutitle %}Cierre del turno 4 en ControlGas{% endblock %}
 {% block content %}
 <div class="t4-report">
   <div class="card">
@@ -30,30 +30,31 @@
         </div>
       </form>
       <p class="small text-body-secondary mt-3 mb-0">
-        Revisa en el ControlGas de cada estación si existe el corte del turno 4 (10:00 p. m. – 12:00 a. m.) del
-        <b>{{ fecha|date('d/m/Y') }}</b>. El corte debería hacerse solo; si falta, la estación lo muestra en rojo.
-        Este reporte solo consulta: no cierra ni modifica nada.
+        Revisa en el ControlGas de cada estación si el turno 4 (10:00 p. m. – 12:00 a. m.) del
+        <b>{{ fecha|date('d/m/Y') }}</b> quedó cerrado. El turno se cierra solo a las 12:00 a. m.; se considera
+        cerrado cuando ControlGas registró las lecturas electrónicas de las bombas (tabla Medicion).
+        Si una estación con ventas sigue abierta, sale en rojo. Este reporte solo consulta: no cierra ni modifica nada.
       </p>
       {% if isToday %}
         <div class="alert alert-warning py-2 px-3 small mt-3 mb-0" role="alert">
-          <div>Elegiste <b>hoy</b>: el turno 4 todavía no termina, así que es normal que salga sin corte.</div>
+          <div>Elegiste <b>hoy</b>: el turno 4 todavía no termina, así que es normal que salga abierto.</div>
         </div>
       {% endif %}
     </div>
   </div>
 
   <div class="d-flex flex-wrap gap-2 mb-3 t4-summary" aria-live="polite">
-    <div class="t4-chip" id="chip-sin_corte_con_ventas">
-      <div class="small text-body-secondary">Sin corte, con ventas</div>
+    <div class="t4-chip" id="chip-abierto_con_ventas">
+      <div class="small text-body-secondary">Abiertos con ventas</div>
       <div class="t4-count text-danger t4-num" data-count>0</div>
     </div>
     <div class="t4-chip">
-      <div class="small text-body-secondary">Cortados</div>
-      <div class="t4-count text-success t4-num" id="count-cortado">0</div>
+      <div class="small text-body-secondary">Cerrados</div>
+      <div class="t4-count text-success t4-num" id="count-cerrado">0</div>
     </div>
     <div class="t4-chip">
-      <div class="small text-body-secondary">Sin corte, sin ventas</div>
-      <div class="t4-count text-body-secondary t4-num" id="count-sin_corte_sin_ventas">0</div>
+      <div class="small text-body-secondary">Abiertos sin ventas</div>
+      <div class="t4-count text-body-secondary t4-num" id="count-abierto_sin_ventas">0</div>
     </div>
     <div class="t4-chip">
       <div class="small text-body-secondary">Sin conexión</div>
@@ -82,7 +83,8 @@
         <thead>
           <tr>
             <th>Estación</th>
-            <th>Corte T4</th>
+            <th>Turno 4</th>
+            <th>Ventas declaradas</th>
             <th class="text-end">Despachos T4</th>
             <th class="text-end">Venta T4</th>
             <th class="text-end"><span class="visually-hidden">Acciones</span></th>
@@ -93,12 +95,13 @@
             <tr data-codgas="{{ station.codgas }}" data-estado="pending">
               <td>{{ station.nombre }}</td>
               <td class="t4-estado"><span class="spinner-border spinner-border-sm text-secondary me-1" aria-hidden="true"></span><span class="text-body-secondary small">Consultando…</span></td>
+              <td class="t4-declarado text-body-secondary">—</td>
               <td class="text-end t4-num t4-despachos">—</td>
               <td class="text-end t4-num t4-monto">—</td>
               <td class="text-end t4-accion"></td>
             </tr>
           {% else %}
-            <tr><td colspan="5" class="text-center text-body-secondary py-4">No hay estaciones activas con ControlGas configurado.</td></tr>
+            <tr><td colspan="6" class="text-center text-body-secondary py-4">No hay estaciones activas con ControlGas configurado.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -114,9 +117,9 @@ $(function () {
   const MAX_PARALLEL = 6;
   const money = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
   const labels = {
-    cortado:              '<span class="badge bg-success">Cortado</span>',
-    sin_corte_con_ventas: '<span class="badge bg-danger">Sin corte</span> <span class="small text-danger">tiene ventas</span>',
-    sin_corte_sin_ventas: '<span class="badge bg-secondary">Sin corte</span> <span class="small text-body-secondary">sin ventas en el turno</span>',
+    cerrado:            '<span class="badge bg-success">Cerrado</span>',
+    abierto_con_ventas: '<span class="badge bg-danger">Abierto</span> <span class="small text-danger">tiene ventas</span>',
+    abierto_sin_ventas: '<span class="badge bg-secondary">Abierto</span> <span class="small text-body-secondary">sin ventas en el turno</span>',
     error:                '<span class="badge bg-warning text-dark">Sin conexión</span>'
   };
 
@@ -126,11 +129,11 @@ $(function () {
 
   function refreshSummary() {
     const count = (estado) => $rows.filter('[data-estado="' + estado + '"]').length;
-    const problems = count('sin_corte_con_ventas');
-    $('#chip-sin_corte_con_ventas [data-count]').text(problems);
-    $('#chip-sin_corte_con_ventas').toggleClass('is-alert', problems > 0);
-    $('#count-cortado').text(count('cortado'));
-    $('#count-sin_corte_sin_ventas').text(count('sin_corte_sin_ventas'));
+    const problems = count('abierto_con_ventas');
+    $('#chip-abierto_con_ventas [data-count]').text(problems);
+    $('#chip-abierto_con_ventas').toggleClass('is-alert', problems > 0);
+    $('#count-cerrado').text(count('cerrado'));
+    $('#count-abierto_sin_ventas').text(count('abierto_sin_ventas'));
     const errors = count('error');
     $('#count-error').text(errors);
     const done = total - count('pending');
@@ -145,7 +148,7 @@ $(function () {
     const only = $('#onlyProblems').is(':checked');
     $rows.each(function () {
       const estado = $(this).attr('data-estado');
-      $(this).toggleClass('d-none', only && (estado === 'cortado' || estado === 'sin_corte_sin_ventas'));
+      $(this).toggleClass('d-none', only && (estado === 'cerrado' || estado === 'abierto_sin_ventas'));
     });
   }
 
@@ -153,9 +156,10 @@ $(function () {
     $row.attr('data-estado', estado);
     $row.find('.t4-estado').html(labels[estado] || '');
     if (estado === 'error') {
-      $row.find('.t4-despachos, .t4-monto').text('—');
+      $row.find('.t4-declarado, .t4-despachos, .t4-monto').text('—');
       $row.find('.t4-accion').html('<button type="button" class="btn btn-sm btn-link p-0 t4-retry">Reintentar</button>');
     } else {
+      $row.find('.t4-declarado').html(data.declarado ? '<span class="text-body">Sí</span>' : '<span class="text-body-secondary">No</span>');
       $row.find('.t4-despachos').text(Number(data.despachos).toLocaleString('es-MX'));
       $row.find('.t4-monto').text(money.format(data.monto || 0));
       $row.find('.t4-accion').empty();
