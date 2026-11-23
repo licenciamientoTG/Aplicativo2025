@@ -100,56 +100,88 @@ class Operations{
     }
 
     /**
-     * @return void
+     * Estación a la que está limitado el usuario (0 = puede ver todas).
      */
-    public function tabulator() : void {
-        // Imprimimos el segmento de red del cliente
-        $stations = $this->gasolinerasModel->get_active_stations();
-        echo $this->twig->render($this->route . 'index.html', compact('stations'));
+    private function user_station() : int {
+        return intval($_SESSION['tg_user']['IdEstacion'] ?? 0);
     }
 
     /**
      * @return void
+     */
+    public function tabulator() : void {
+        $stations = $this->gasolinerasModel->get_active_stations() ?: [];
+        $userStation = $this->user_station();
+        $stations = array_values(array_filter($stations, function ($station) use ($userStation) {
+            return intval($station['cod']) !== 0 && ($userStation === 0 || intval($station['cod']) === $userStation);
+        }));
+        echo $this->twig->render($this->route . 'index.html', compact('stations'));
+    }
+
+    /**
+     * Listado de tabuladores para DataTables en modo serverSide.
+     * @return void
      * @throws Exception
      */
     function datatables_top_tabulators() : void {
-        $data = [];
-        if ($tabulators = $this->tabulatorModel->all(8000, (isset($_SESSION['tg_user']['IdEstacion']) ? $_SESSION['tg_user']['IdEstacion'] : 0))) {
-            $data = array_map(function ($tab) {
-                $actions = "
-                    <div class='dropdown'>
-                        <button class='btn btn-primary btn-sm dropdown-toggle' type='button' data-bs-toggle='dropdown' aria-expanded='false'> Acciones</button>
-                        <ul class='dropdown-menu' data-container='body'>
-                            <li><a class='dropdown-item' href='/operations/tab_process/{$tab['Id']}'>Procesar</a></li>
-                            <li><a class='dropdown-item' href='/operations/consult/{$tab['Id']}'>Consultar</a></li>
-                            ";
-                            if (authorized(30)) {
-                                $actions .= "<li><a class='dropdown-item' href='/operations/tab_delete/{$tab['Id']}'>Eliminar</a></li>";
-                            }
-                            $actions .= "
-                        </ul>
-                    </div>
-                ";
-                // Extraer el turno (primer dígito)
-                $turno_numero = substr($tab['Turno'], 0, 1);
+        $columns = ['id', 'nombre', 'turno', 'subcorte', 'fecha', 'usuario', 'estatus', 'total'];
+        $req = $_POST ?: $_GET;
 
-                // Extraer el subcorte (segundo dígito)
-                $subcorte_numero = substr($tab['Turno'], 1, 1);
-                return [
-                    'Id'       => $tab['Id'],
-                    'Nombre'   => $tab['Nombre'],
-                    'Turno'    => $turno_numero,
-                    'Subcorte' => $subcorte_numero,
-                    'Fecha'    => $tab['FechaTabular'],
-                    'Usuario'  => $tab['Usuario'],
-                    'Estatus'  => $tab['Estatus'],
-                    'Productos'=> 0,
-                    'Total'    => $tab['Total'],
-                    'Acciones' => $actions
-                ];
-            }, $tabulators);
+        $filters = ['global' => $req['search']['value'] ?? ''];
+        foreach ($columns as $i => $name) {
+            $filters[$name] = $req['columns'][$i]['search']['value'] ?? '';
         }
-        json_output(array("data" => $data));
+        $orderIndex = intval($req['order'][0]['column'] ?? 0);
+        $orderDir = ($req['order'][0]['dir'] ?? 'desc') === 'asc' ? 'asc' : 'desc';
+        $length = intval($req['length'] ?? 100);
+        if ($length === -1) { $length = 10000; } elseif ($length < 1) { $length = 100; }
+
+        $result = $this->tabulatorModel->search_datatable(
+            $this->user_station(),
+            $filters,
+            intval($req['start'] ?? 0),
+            $length,
+            $columns[$orderIndex] ?? 'id',
+            $orderDir
+        );
+
+        $canDelete = authorized(30);
+        $data = array_map(function ($tab) use ($canDelete) {
+            $id = intval($tab['Id']);
+            $actions = "
+                <div class='dropdown'>
+                    <button class='btn btn-primary btn-sm dropdown-toggle' type='button' data-bs-toggle='dropdown' aria-expanded='false'>Acciones</button>
+                    <ul class='dropdown-menu'>
+                        <li><a class='dropdown-item' href='/operations/tab_process/{$id}'>Procesar</a></li>
+                        <li><a class='dropdown-item' href='/operations/consult/{$id}'>Consultar</a></li>";
+            if ($canDelete) {
+                $actions .= "
+                        <li><hr class='dropdown-divider'></li>
+                        <li><button type='button' class='dropdown-item text-danger delete-tabulator' data-id='{$id}'>Eliminar…</button></li>";
+            }
+            $actions .= "
+                    </ul>
+                </div>";
+            $turno = (string)$tab['Turno'];
+            return [
+                'Id'       => $id,
+                'Nombre'   => $tab['Nombre'],
+                'Turno'    => substr($turno, 0, 1),
+                'Subcorte' => substr($turno, 1, 1),
+                'Fecha'    => $tab['FechaTabular'],
+                'Usuario'  => $tab['Usuario'],
+                'Estatus'  => $tab['Estatus'],
+                'Total'    => $tab['Total'],
+                'Acciones' => $actions,
+            ];
+        }, $result['rows']);
+
+        json_output([
+            'draw'            => intval($req['draw'] ?? 0),
+            'recordsTotal'    => $result['total'],
+            'recordsFiltered' => $result['filtered'],
+            'data'            => $data,
+        ]);
     }
 
     /**
@@ -157,35 +189,58 @@ class Operations{
      * @throws Exception
      */
     function createTabulatorForm() : void {
-        if (empty($_POST['Estacion']) || empty($_POST['FechaTabular']) || empty($_POST['Turno'])) {
-            setFlashMessage('error', 'Faltan datos para crear el tabulador. Por favor, complete el formulario.');
-            redirect();
-        }
-        // Obtenemos los datos de la estación
-        $station = $this->estacionesModel->get_station($_POST['Estacion']);
-        // Obtenemos el tipo de cambio más reciente
-        $exchange_now = $this->cotizacionesModel->get_last_exchange($_POST['Estacion']); // Para obtener el tipo de cambio más reciente
+        $back = '/operations/tabulator';
+        $codgas = intval($_POST['Estacion'] ?? 0);
+        $fecha  = trim($_POST['FechaTabular'] ?? '');
+        $turno  = intval($_POST['Turno'] ?? 0);
 
-        if ($_POST['FechaTabular'] == date('Y-m-d') AND $_POST['Turno'] == '41' ) {
-            setFlashMessage('error', 'No es posible crear un tabulador para el turno 4 del día de hoy. Por favor, seleccione otro turno o cambie la fecha tabular');
-            redirect();
+        if ($codgas <= 0 || $fecha === '' || $turno === 0) {
+            setFlashMessage('error', 'Faltan datos para crear el tabulador. Elige la fecha, la estación y el turno.');
+            redirect($back);
         }
-        // Si logramos crear el tabulador retornamos una respuesta json
-        $rs = $this->tabulatorModel->add(intval($_POST['Estacion']), $_POST['FechaTabular'], intval($_POST['Turno']), $_SESSION['tg_user']['Usuario'], $exchange_now, $station['LimiteFajilla'], $station['LimiteRecolecta']);
-        switch ($rs) {
-            case '0':
-                setFlashMessage('error', 'No fue posible crear un nuevo tabulador');
-                break;
-
-            case '1':
-                setFlashMessage('success', 'El tabulador se creo correctamente');
-                break;
-
-            case '2':
-                setFlashMessage('warning', 'El tabulador ya existe');
-                break;
+        $date = DateTime::createFromFormat('Y-m-d', $fecha);
+        if (!$date || $date->format('Y-m-d') !== $fecha) {
+            setFlashMessage('error', 'La fecha del tabulador no es válida.');
+            redirect($back);
         }
-        redirect();
+        if (!in_array($turno, [11, 21, 31, 41], true)) {
+            setFlashMessage('error', 'El turno elegido no es válido.');
+            redirect($back);
+        }
+        $userStation = $this->user_station();
+        if ($userStation !== 0 && $codgas !== $userStation) {
+            setFlashMessage('error', 'Solo puedes crear tabuladores para tu estación.');
+            redirect($back);
+        }
+        if ($fecha === date('Y-m-d') && $turno === 41) {
+            setFlashMessage('error', 'No es posible crear el tabulador del turno 4 de hoy: el turno aún no termina. Elige otro turno o cambia la fecha.');
+            redirect($back);
+        }
+
+        $station = $this->estacionesModel->get_station($codgas);
+        if (!$station) {
+            setFlashMessage('error', 'La estación elegida no está dada de alta en el catálogo de estaciones. Avisa a sistemas.');
+            redirect($back);
+        }
+        $exchange_now = $this->cotizacionesModel->get_last_exchange($codgas);
+        if ($exchange_now === false) {
+            setFlashMessage('error', 'No se encontró el tipo de cambio de la estación, por eso no se pudo crear el tabulador. Avisa a sistemas.');
+            redirect($back);
+        }
+
+        $rs = $this->tabulatorModel->add($codgas, $fecha, $turno, $_SESSION['tg_user']['Usuario'], $exchange_now, intval($station['LimiteFajilla']), intval($station['LimiteRecolecta']));
+        if ($rs === 0) {
+            setFlashMessage('error', 'No fue posible crear el tabulador. Intenta de nuevo.');
+            redirect($back);
+        }
+
+        $tabId = $this->tabulatorModel->find_id($codgas, $fecha, $turno);
+        if ($rs === 2) {
+            setFlashMessage('warning', 'Ese tabulador ya existía; te llevamos a él.');
+        } else {
+            setFlashMessage('success', 'Tabulador creado. Ya puedes capturar la información del turno.');
+        }
+        redirect($tabId ? '/operations/tab_process/' . $tabId : $back);
     }
 
     /**
@@ -639,24 +694,33 @@ class Operations{
     }
 
     function tab_delete($tabId) : void {
-        $tabulator = $this->tabulatorModel->get_tabulator($tabId);
-        // Primero verificamos que el tabulador no tenga asignaciones
-        if ($this->assignacionesModel->get_assignations_by_tabulator($tabulator['CodigoEstacion'], $tabulator['FechaTabular'], $tabulator['Turno'])) {
-            setFlashMessage('error','La eliminación del tabulador no es posible debido a que actualmente tiene personal asignado a las islas. Por favor, proceda a eliminar las asignaciones asociadas antes de intentar eliminar el tabulador.');
-        } else {
-            // Ahora verificamos si tiene fajillas asignadas
-            if ($this->tabulatorDatailsModel->get_wads($tabId)) {
-                setFlashMessage('error','No se puede eliminar el tabulador porque tiene fajillas asignadas. Elimine las fajillas primero');
-            } else {
-                // Si no tiene asignaciones ni fajillas asignadas, entonces lo eliminamos
-                if ($this->deleteTabulator($tabId)) {
-                    setFlashMessage('success','Tabulador eliminado correctamente');
-                } else {
-                    setFlashMessage('error','No se pudo eliminar el tabulador');
-                }
-            }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            json_output(['result' => 0, 'message' => 'Método no permitido.']);
         }
-        redirect();
+        if (!authorized(30)) {
+            http_response_code(403);
+            json_output(['result' => 0, 'message' => 'No tienes permiso para eliminar tabuladores.']);
+        }
+        $tabulator = $this->tabulatorModel->get_tabulator(intval($tabId));
+        if (!$tabulator) {
+            json_output(['result' => 0, 'message' => 'El tabulador no existe o ya fue eliminado.']);
+        }
+        $userStation = $this->user_station();
+        if ($userStation !== 0 && intval($tabulator['CodigoEstacion']) !== $userStation) {
+            http_response_code(403);
+            json_output(['result' => 0, 'message' => 'Solo puedes eliminar tabuladores de tu estación.']);
+        }
+        if ($this->assignacionesModel->get_assignations_by_tabulator($tabulator['CodigoEstacion'], $tabulator['FechaTabular'], $tabulator['Turno'])) {
+            json_output(['result' => 0, 'message' => 'No se puede eliminar: el tabulador tiene personal asignado a las islas. Elimina primero las asignaciones.']);
+        }
+        if ($this->tabulatorDatailsModel->get_wads(intval($tabId))) {
+            json_output(['result' => 0, 'message' => 'No se puede eliminar: el tabulador tiene fajillas. Elimina primero las fajillas.']);
+        }
+        if ($this->deleteTabulator(intval($tabId))) {
+            json_output(['result' => 1, 'message' => "Tabulador #" . intval($tabId) . " eliminado."]);
+        }
+        json_output(['result' => 0, 'message' => 'No se pudo eliminar el tabulador. Intenta de nuevo.']);
     }
 
     /**

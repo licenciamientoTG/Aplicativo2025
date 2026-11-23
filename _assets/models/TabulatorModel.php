@@ -45,37 +45,98 @@ class TabulatorModel extends Model{
     }
 
     /**
-     * @param int $limit
-     * @return array|false
+     * Listado paginado de tabuladores para DataTables (serverSide).
+     *
+     * @param int   $codgas  Estación del usuario (0 = todas)
+     * @param array $filters Filtros por columna: folio, nombre, turno, subcorte, fecha, usuario, estatus, total, global
+     * @param int   $start   Desplazamiento
+     * @param int   $length  Filas por página (máx. 10000)
+     * @param string $orderColumn Columna lógica de orden (id, nombre, turno, subcorte, fecha, usuario, estatus, total)
+     * @param string $orderDir    asc | desc
+     * @return array{total:int, filtered:int, rows:array}
      * @throws Exception
      */
-    function all(int $limit = 1000, int $codgas = 0) : array|false {
-        $query = "
-            DECLARE @codgas INT = ?;
-            SELECT TOP ({$limit})
-                t1.Id
-                ,t1.CodigoEstacion
-                ,t2.Estacion
-                ,t2.Denominacion
-                ,t2.Nombre
-                ,t1.FechaTabular
-                ,t1.Turno
-                ,t1.Usuario
-                ,t1.Total
-                , CASE
-                    WHEN t1.Estatus = 1 THEN 'Abierto'
-                    WHEN t1.Estatus = 2 THEN 'Cerrado'
-                    ELSE 'Desconocido' -- Opcional, para manejar otros valores de Estatus
-                END AS Estatus
-                ,t1.FechaCreacion
-                ,t1.FechaCierre
-            FROM
-                [TG].[dbo].[TabuladorEncabezado] t1
-                LEFT JOIN [TG].[dbo].[Estaciones] t2 ON t1.CodigoEstacion = t2.Codigo
-            WHERE (@codgas = 0 OR (t2.Codigo = @codgas))
-            ORDER BY t1.Id DESC;
-            ";
-        return $this->sql->select($query, [$codgas]) ?: false;
+    function search_datatable(int $codgas, array $filters, int $start, int $length, string $orderColumn = 'id', string $orderDir = 'desc') : array {
+        $statusExpr = "CASE WHEN t1.Estatus = 1 THEN 'Abierto' WHEN t1.Estatus = 2 THEN 'Cerrado' ELSE 'Desconocido' END";
+        $from = "FROM [TG].[dbo].[TabuladorEncabezado] t1 WITH (NOLOCK)
+                 LEFT JOIN [TG].[dbo].[Estaciones] t2 WITH (NOLOCK) ON t1.CodigoEstacion = t2.Codigo";
+
+        $baseWhere = [];
+        $baseParams = [];
+        if ($codgas > 0) {
+            $baseWhere[] = 't1.CodigoEstacion = ?';
+            $baseParams[] = $codgas;
+        }
+
+        $where = $baseWhere;
+        $params = $baseParams;
+        $like = fn(string $v) => '%' . str_replace(['[', '%', '_'], ['[[]', '[%]', '[_]'], $v) . '%';
+
+        if (($v = trim($filters['folio'] ?? '')) !== '') {
+            $where[] = 'CAST(t1.Id AS varchar(20)) LIKE ?';      $params[] = $like($v);
+        }
+        if (($v = trim($filters['nombre'] ?? '')) !== '') {
+            $where[] = 't2.Nombre LIKE ?';                         $params[] = $like($v);
+        }
+        if (($v = trim($filters['turno'] ?? '')) !== '') {
+            $where[] = 'LEFT(CAST(t1.Turno AS varchar(4)), 1) = ?'; $params[] = substr($v, 0, 1);
+        }
+        if (($v = trim($filters['subcorte'] ?? '')) !== '') {
+            $where[] = 'SUBSTRING(CAST(t1.Turno AS varchar(4)), 2, 1) = ?'; $params[] = substr($v, 0, 1);
+        }
+        if (($v = trim($filters['fecha'] ?? '')) !== '') {
+            $where[] = 'CONVERT(varchar(10), t1.FechaTabular, 23) LIKE ?'; $params[] = $like($v);
+        }
+        if (($v = trim($filters['usuario'] ?? '')) !== '') {
+            $where[] = 't1.Usuario LIKE ?';                        $params[] = $like($v);
+        }
+        if (($v = trim($filters['estatus'] ?? '')) !== '') {
+            $where[] = "{$statusExpr} LIKE ?";                     $params[] = $like($v);
+        }
+        if (($v = trim(str_replace(['$', ',', ' '], '', $filters['total'] ?? ''))) !== '') {
+            $where[] = 'CONVERT(varchar(30), CAST(t1.Total AS decimal(18,2))) LIKE ?'; $params[] = $like($v);
+        }
+        if (($v = trim($filters['global'] ?? '')) !== '') {
+            $where[] = '(CAST(t1.Id AS varchar(20)) LIKE ? OR t2.Nombre LIKE ? OR t1.Usuario LIKE ?)';
+            array_push($params, $like($v), $like($v), $like($v));
+        }
+
+        $orderMap = [
+            'id' => 't1.Id', 'nombre' => 't2.Nombre', 'turno' => 't1.Turno', 'subcorte' => 't1.Turno',
+            'fecha' => 't1.FechaTabular', 'usuario' => 't1.Usuario', 'estatus' => 't1.Estatus', 'total' => 't1.Total',
+        ];
+        $orderBy = ($orderMap[$orderColumn] ?? 't1.Id') . (strtolower($orderDir) === 'asc' ? ' ASC' : ' DESC');
+        if ($orderBy !== 't1.Id DESC' && $orderBy !== 't1.Id ASC') {
+            $orderBy .= ', t1.Id DESC';
+        }
+
+        $whereSql = fn(array $w) => $w ? 'WHERE ' . implode(' AND ', $w) : '';
+        $length = max(1, min($length, 10000));
+        $start = max(0, $start);
+
+        $total = $this->sql->select("SELECT COUNT(*) AS n {$from} " . $whereSql($baseWhere), $baseParams);
+        $filtered = $this->sql->select("SELECT COUNT(*) AS n {$from} " . $whereSql($where), $params);
+        $rows = $this->sql->select("
+            SELECT t1.Id, t1.CodigoEstacion, t2.Nombre, t1.FechaTabular, t1.Turno, t1.Usuario, t1.Total,
+                   {$statusExpr} AS Estatus
+            {$from} " . $whereSql($where) . "
+            ORDER BY {$orderBy}
+            OFFSET {$start} ROWS FETCH NEXT {$length} ROWS ONLY;", $params);
+
+        return [
+            'total'    => intval($total[0]['n'] ?? 0),
+            'filtered' => intval($filtered[0]['n'] ?? 0),
+            'rows'     => $rows ?: [],
+        ];
+    }
+
+    /**
+     * Id del tabulador de una estación, fecha y turno (o false si no existe).
+     * @throws Exception
+     */
+    function find_id($CodigoEstacion, $FechaTabular, $Turno) : int|false {
+        $rs = $this->sql->select('SELECT TOP 1 Id FROM [TG].[dbo].[TabuladorEncabezado] WHERE CodigoEstacion = ? AND FechaTabular = ? AND Turno = ? ORDER BY Id DESC;', [$CodigoEstacion, $FechaTabular, $Turno]);
+        return $rs ? intval($rs[0]['Id']) : false;
     }
 
     /**

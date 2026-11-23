@@ -1,127 +1,162 @@
 const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
 const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
-// Tabla de Top Tabulators
-// Table de Despachos de Crédito y Débito
+
+// Listado de tabuladores (/operations/tabulator). Paginado, filtrado y ordenado en el servidor.
 let datatables_top_tabulators = $('#datatables_top_tabulators').DataTable({
-    colReorder: true,
-    order: [3, "desc"],
-    dom: '<"top"Bf>rt<"bottom"lip>',
+    serverSide: true,
+    processing: true,
+    order: [[0, 'desc']],
+    dom: '<"top"B>rt<"bottom"lip>',
     pageLength: 100,
+    lengthMenu: [25, 50, 100, 250],
+    searchDelay: 400,
+    language: {
+        processing: 'Cargando tabuladores…',
+        lengthMenu: 'Mostrar _MENU_',
+        info: '_START_–_END_ de _TOTAL_ tabuladores',
+        infoEmpty: 'Sin tabuladores',
+        infoFiltered: '(filtrados de _MAX_)',
+        zeroRecords: 'Ningún tabulador coincide con los filtros.',
+        emptyTable: 'Todavía no hay tabuladores.',
+        paginate: { previous: 'Anterior', next: 'Siguiente' }
+    },
     buttons: [
         {
             extend: 'excel',
             className: 'd-none',
-            // Título del archivo de exportación
             title: 'Tabuladores',
-            // Prevenimos la exportación de la columna de checkbox y de las acciones
-            exportOptions: {
-                columns: [0, 1, 2, 3, 4, 5, 6, 7, 8]
-            }
-        },
-        {
-            extend: 'pdf', // Agrega el botón de exportación a PDF
-            className: 'd-none',
-            text: 'PDF',
-            customize: function (doc) {
-                // Establecer la orientación horizontal (apaisada)
-                doc.pageOrientation = 'landscape';
-                // Ajustar todas las columnas al ancho del PDF
-                let colWidths = [];
-                let tableWidth = doc.pageOrientation === 'landscape' ? 1060 : 500; // Ancho de página para orientación horizontal o vertical
-                let totalColWidths = 0;
-
-                $('#datatables_top_tabulators thead th').each(function () {
-                    let colWidth = $(this).outerWidth() / tableWidth;
-                    totalColWidths += colWidth;
-                    colWidths.push(colWidth * 100 + '%');
+            exportOptions: { columns: [0, 1, 2, 3, 4, 5, 6, 7], orthogonal: 'export' },
+            // Con serverSide solo está cargada la página actual: pedimos todo lo filtrado, exportamos y regresamos.
+            action: function (e, dt, button, config) {
+                const self = this;
+                const settings = dt.settings()[0];
+                const oldStart = settings._iDisplayStart;
+                dt.one('preXhr', function (e, s, data) {
+                    data.start = 0;
+                    data.length = -1;
+                    dt.one('preDraw', function (e, s) {
+                        $.fn.dataTable.ext.buttons.excelHtml5.action.call(self, e, dt, button, config);
+                        dt.one('preXhr', function (e, s, data) {
+                            s._iDisplayStart = oldStart;
+                            data.start = oldStart;
+                        });
+                        setTimeout(() => dt.ajax.reload(null, false), 0);
+                        return false;
+                    });
                 });
-
-                if (totalColWidths < 1) {
-                    colWidths.push('*'); // Columna extra para completar el ancho restante
-                }
-
-                doc.content[1].table.widths = colWidths;
+                dt.ajax.reload();
             }
-        },
-        {
-            extend: 'print', // Agrega el botón de impresión
-            className: 'd-none',
-        },
-        // Botón para recargar la tabla
-        {
-            text: '<i class="fas fa-sync-alt"></i>',
-            className: 'btn btn-secondary refresh_datatables_top_tabulators',
-            action: function ( e, dt, node, config ) {
-                datatables_top_tabulators.clear().draw();
-                datatables_top_tabulators.ajax.reload();
-                $('#datatables_top_tabulators').waitMe('hide');
-            }
-        }   
+        }
     ],
     ajax: {
         url: '/operations/datatables_top_tabulators',
-        error: function() {
-            $('#datatables_top_tabulators').waitMe('hide');
-            alertify.myAlert(
-                `<div class="container text-center text-danger">
-                    <h4 class="mt-2 text-danger">¡Error!</h4>
-                </div>
-                <div class="text-dark">
-                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                </div>`
-            );
-        },
-        beforeSend: function() {
-            $('.table-responsive').addClass('loading');
+        type: 'POST',
+        error: function(xhr) {
+            if (xhr.statusText === 'abort') { return; }
+            console.error(xhr.responseText);
+            toastr.error('No se pudo cargar el listado de tabuladores. Revisa tu conexión y presiona Recargar.', 'Error', { timeOut: 6000 });
+            $('#datatables_top_tabulators_processing').hide();
         }
     },
-    deferRender: true,
     columns: [
-        {'data': 'Id'},
-        {'data': 'Nombre'},
-        {'data': 'Turno'},
-        {'data': 'Subcorte'},
-        {'data': 'Fecha'},
-        {'data': 'Usuario'},
-        {'data': 'Estatus'},
-        {'data': 'Productos', 'render': $.fn.dataTable.render.number( ',', '.', 2, '$' )},
-        {'data': 'Total', 'render': $.fn.dataTable.render.number( ',', '.', 2, '$' )},
-        {'data': 'Acciones'},
+        { data: 'Id' },
+        { data: 'Nombre' },
+        { data: 'Turno', className: 'text-center' },
+        { data: 'Subcorte', className: 'text-center' },
+        { data: 'Fecha' },
+        { data: 'Usuario' },
+        {
+            data: 'Estatus',
+            createdCell: function (td, cellData) {
+                $(td).addClass('fw-bold ' + (cellData === 'Cerrado' ? 'text-success' : 'text-primary'));
+            }
+        },
+        { data: 'Total', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+        { data: 'Acciones', orderable: false, className: 'text-end' },
     ],
-    rowId: 'Id',
-    createdRow: function (row, data, dataIndex) {
-        if (data.Estatus === 'Cerrado') {
-            $(row).find('td:eq(6)').addClass('fw-bold text-success');
-        } else {
-            $(row).find('td:eq(6)').addClass('fw-bold text-primary');
-        }
-    },
-    initComplete: function () {
-        $('.dt-buttons').addClass('d-none');
-        $('.table-responsive').removeClass('loading');
-    }
+    rowId: 'Id'
 });
 
-// Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
-$('#filtro-datatables_top_tabulators input').on('keyup  change clear', function () {
-    datatables_top_tabulators
-        .column(0).search($('#FOLIO').val().trim())
-        .column(1).search($('#NOMBRE').val().trim())
-        .column(2).search($('#TURNO').val().trim())
-        .column(3).search($('#SUBCORTE').val().trim())
-        .column(4).search($('#FECHA').val().trim())
-        .column(5).search($('#USUARIO').val().trim())
-        .column(6).search($('#ESTATUS').val().trim())
-        .column(7).search($('#PRODUCTOS').val().trim())
-        .column(8).search($('#TOTAL').val().trim())
-        .draw();
-  });
+// Filtros por columna (el índice de cada input corresponde a la columna de la tabla)
+let tabulatorFilterTimer = null;
+$('#filtro-datatables_top_tabulators [data-column]').on('input change', function () {
+    clearTimeout(tabulatorFilterTimer);
+    tabulatorFilterTimer = setTimeout(function () {
+        $('#filtro-datatables_top_tabulators [data-column]').each(function () {
+            datatables_top_tabulators.column($(this).data('column')).search($(this).val().trim());
+        });
+        datatables_top_tabulators.draw();
+    }, 400);
+});
 
-// Agregar un evento clic de refresh
-$('.refresh_datatables_top_tabulators').on('click', function () {
-    datatables_top_tabulators.clear().draw();
-    datatables_top_tabulators.ajax.reload();
-    $('#datatables_top_tabulators').waitMe('hide');
+$('#clear-tabulator-filters').on('click', function () {
+    $('#filtro-datatables_top_tabulators [data-column]').val('');
+    datatables_top_tabulators.columns().search('').draw();
+});
+
+$('#reload-tabulators').on('click', function () {
+    datatables_top_tabulators.ajax.reload(null, false);
+});
+
+// Eliminar tabulador (solo se muestra con permiso; el servidor vuelve a validar)
+$(document).on('click', '#datatables_top_tabulators .delete-tabulator', function () {
+    const id = $(this).data('id');
+    alertify.confirm('Eliminar tabulador',
+        `¿Eliminar el tabulador <b>#${id}</b>? Esta acción no se puede deshacer.<br><small class="text-body-secondary">Solo se puede eliminar si no tiene asignaciones ni fajillas.</small>`,
+        function () {
+            $.ajax({
+                url: '/operations/tab_delete/' + id,
+                method: 'POST',
+                dataType: 'json',
+                success: function (data) {
+                    if (data && data.result == 1) {
+                        toastr.success(data.message, 'Listo', { timeOut: 2500 });
+                        datatables_top_tabulators.ajax.reload(null, false);
+                    } else {
+                        toastr.error((data && data.message) || 'No se pudo eliminar el tabulador.', 'No se eliminó', { timeOut: 8000 });
+                    }
+                },
+                error: function (xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) || 'No se pudo eliminar el tabulador. Intenta de nuevo.';
+                    toastr.error(msg, 'Error', { timeOut: 8000 });
+                }
+            });
+        },
+        function () {}
+    ).set('labels', { ok: 'Eliminar', cancel: 'Cancelar' });
+});
+
+// Nuevo tabulador: validación antes de enviar
+$('#newTabulatorForm').on('submit', function (e) {
+    const $form = $(this);
+    const fecha = $('#FechaTabular').val();
+    const estacion = $('#Estacion').val();
+    const turno = $('#Turno').val();
+    const today = new Date();
+    const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    let error = '';
+
+    if (!fecha) {
+        error = 'Elige la fecha del tabulador.';
+    } else if (!estacion) {
+        error = 'Elige la estación.';
+    } else if (!turno) {
+        error = 'Elige el turno.';
+    } else if (fecha === todayStr && turno === '41') {
+        error = 'El turno 4 de hoy aún no termina. Elige otro turno o cambia la fecha.';
+    }
+
+    if (error) {
+        e.preventDefault();
+        $('#newTabulatorError').text(error).removeClass('d-none');
+        return;
+    }
+    $('#newTabulatorError').addClass('d-none');
+    $form.find('[type=submit]').prop('disabled', true).text('Creando tabulador…');
+});
+
+$('#newTabulatorForm').on('change input', 'input, select', function () {
+    $('#newTabulatorError').addClass('d-none');
 });
 
 // Manejar el evento de clic en los botones de píldora

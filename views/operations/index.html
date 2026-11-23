@@ -1,116 +1,104 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Operaciones{% endblock %}
-{% block mycss %}{% endblock %}
+{% block mycss %}
+<style>
+  #datatables_top_tabulators { font-size: .8rem; font-variant-numeric: tabular-nums; }
+  #datatables_top_tabulators td { vertical-align: middle; }
+  #filtro-datatables_top_tabulators .form-control { min-width: 0; }
+</style>
+{% endblock %}
 {% block menutitle %}Tabulador{% endblock %}
 {% block content %}
 <div class="row">
-    <div class="col-4">
+    <div class="col-12 col-xl-4 col-xxl-3">
         <div class="card">
             <div class="card-header">
                 <h5 class="card-title mb-0">Nuevo tabulador</h5>
             </div>
-            <div class="card-body h-100">
-                <form action="/operations/createTabulatorForm" method="post">
+            <div class="card-body">
+                <p class="small text-body-secondary">Al crearlo te llevamos directo a capturar el turno. Si ya existe, te llevamos al existente.</p>
+                <form action="/operations/createTabulatorForm" method="post" id="newTabulatorForm" novalidate>
                     <div class="mb-3">
-                        <label for="FechaTabular" class="form-label">Fecha: </label>
-                        <input type="date" class="form-control" name="FechaTabular" id="FechaTabular" value="{{ now | date('Y-m-d') }}">
+                        <label for="FechaTabular" class="form-label">Fecha</label>
+                        <input type="date" class="form-control" name="FechaTabular" id="FechaTabular" value="{{ "now" | date('Y-m-d') }}" max="{{ "now" | date('Y-m-d') }}" required>
                     </div>
                     <div class="mb-3">
-                        <label for="Estacion" class="form-label">Estación: </label>
-                        <select class="form-control selectpicker get_exchange" data-live-search="true" name="Estacion" id="Estacion" placeholder="Estación" required>
-                            {% for station in stations %}
-                                {% if station.cod != 0 %}
-                                <option value="{{ station.cod }}">{{ station.abr }}</option>
-                                {% endif%}
-                            {% endfor %}
+                        <label for="Estacion" class="form-label">Estación</label>
+                        {% if stations | length == 1 %}
+                            <select class="form-select" name="Estacion" id="Estacion" required>
+                                <option value="{{ stations[0].cod }}" selected>{{ stations[0].abr }}</option>
+                            </select>
+                        {% else %}
+                            <select class="form-control selectpicker" data-live-search="true" title="Elige la estación" name="Estacion" id="Estacion" required>
+                                {% for station in stations %}
+                                    <option value="{{ station.cod }}">{{ station.abr }}</option>
+                                {% endfor %}
+                            </select>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        <label for="Turno" class="form-label">Turno</label>
+                        <select class="form-control selectpicker" title="Elige el turno" name="Turno" id="Turno" required>
+                            <option value="11">Turno 1 (12:00 a. m. – 6:00 a. m.)</option>
+                            <option value="21">Turno 2 (6:00 a. m. – 2:00 p. m.)</option>
+                            <option value="31">Turno 3 (2:00 p. m. – 10:00 p. m.)</option>
+                            <option value="41">Turno 4 (10:00 p. m. – 12:00 a. m.)</option>
                         </select>
                     </div>
-                    <div class="mb-3">
-                        <label for="Turno" class="form-label">Turno: </label>
-                        <select class="selectpicker form-control get_exchange" data-live-search="true" name="Turno" id="Turno" placeholder="Turno" required>
-                            <option value="11">Tuno 1 (12:00am - 06:00am)</option>
-                            <option value="21">Tuno 2 (06:00am - 02:00pm)</option>
-                            <option value="31">Tuno 3 (02:00pm - 10:00pm)</option>
-                            <option value="41">Tuno 4 (10:00pm - 12:00am)</option>
-                        </select>
-                    </div>
-<!--                    <div class="mb-3">-->
-<!--                        <label for="exchange" class="form-label">Tipo de cambio: </label>-->
-<!--                        <input type="number" step="0.01" min="0.00" max="99.99" class="form-control" name="exchange" id="exchange" value="" readonly disabled>-->
-<!--                    </div>-->
-                    <div class="mb-3">
-                        <input type="hidden" name="IdEstacion" value="{{ station.id }}">
-                        <input type="submit" value="Generar nuevo tabulador" class="btn btn-primary w-100">
-                    </div>
+                    <div class="alert alert-danger py-2 px-3 small d-none" id="newTabulatorError" role="alert"></div>
+                    <button type="submit" class="btn btn-primary w-100">Crear tabulador</button>
                 </form>
             </div>
         </div>
     </div>
-    <div class="col-8">
+    <div class="col-12 col-xl-8 col-xxl-9">
         <div class="card">
-            <div class="card-header">
-                <div class="card-actions float-end">
-                    <div class="dropdown position-relative">
-                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
-                                <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
-                            </svg>
-                        </a>
-                        <div class="dropdown-menu dropdown-menu-end">
-                            <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+            <div class="card-header d-flex align-items-center gap-2">
+                <h5 class="card-title mb-0 me-auto">Listado de tabuladores</h5>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="reload-tabulators" title="Recargar listado" aria-label="Recargar listado">
+                    <i data-feather="refresh-ccw"></i> Recargar
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-success" id="exportExcel" title="Exporta todos los tabuladores que coinciden con los filtros">
+                    <i data-feather="file-text"></i> Excel
+                </button>
+            </div>
+            <div class="card-body table-responsive">
+                <div id="filtro-datatables_top_tabulators" class="mb-2">
+                    <div class="row g-1 align-items-center">
+                        <div class="col-6 col-md"><input type="search" class="form-control form-control-sm" data-column="0" placeholder="Folio" aria-label="Filtrar por folio" inputmode="numeric"></div>
+                        <div class="col-6 col-md"><input type="search" class="form-control form-control-sm" data-column="1" placeholder="Estación" aria-label="Filtrar por estación"></div>
+                        <div class="col-3 col-md-1"><input type="search" class="form-control form-control-sm" data-column="2" placeholder="Turno" aria-label="Filtrar por turno" inputmode="numeric" maxlength="1"></div>
+                        <div class="col-3 col-md-1"><input type="search" class="form-control form-control-sm" data-column="3" placeholder="Sub" aria-label="Filtrar por subcorte" inputmode="numeric" maxlength="1"></div>
+                        <div class="col-6 col-md"><input type="search" class="form-control form-control-sm" data-column="4" placeholder="Fecha (aaaa-mm-dd)" aria-label="Filtrar por fecha, por ejemplo 2026-11-23"></div>
+                        <div class="col-6 col-md"><input type="search" class="form-control form-control-sm" data-column="5" placeholder="Usuario" aria-label="Filtrar por usuario"></div>
+                        <div class="col-6 col-md">
+                            <select class="form-select form-select-sm" data-column="6" aria-label="Filtrar por estatus">
+                                <option value="">Estatus: todos</option>
+                                <option value="Abierto">Abierto</option>
+                                <option value="Cerrado">Cerrado</option>
+                            </select>
+                        </div>
+                        <div class="col-6 col-md"><input type="search" class="form-control form-control-sm" data-column="7" placeholder="Total" aria-label="Filtrar por total" inputmode="decimal"></div>
+                        <div class="col-12 col-md-auto text-end">
+                            <button type="button" class="btn btn-sm btn-link" id="clear-tabulator-filters">Limpiar filtros</button>
                         </div>
                     </div>
                 </div>
-                <h5 class="card-title mb-0">Listado de tabuladores</h5>
-            </div>
-            <div class="card-body h-100 table-responsive">
-                <div id="filtro-datatables_top_tabulators" class="mb-1">
-                    <div class="row">
-                        <!-- Agrega tus elementos de filtrado aquí -->
-                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FOLIO" placeholder="Folio"></div>
-                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="NOMBRE" placeholder="Nombre"></div>
-                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TURNO" placeholder="Turno"></div>
-                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="SUBCORTE" placeholder="Subcorte"></div>
-                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FECHA" placeholder="Fecha"></div>
-                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="USUARIO" placeholder="Usuario"></div>
-                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ESTATUS" placeholder="estatus"></div>
-                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTOS" placeholder="productos"></div>
-                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TOTAL" placeholder="total"></div>
-                        <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
-                    </div>
-                <!-- Puedes agregar más filtros según tus necesidades -->
-                </div>
-                <table id="datatables_top_tabulators" class="table table-sm w-100" style="font-size:x-small;" data-codgas="{{ tg_user['IdEstacion'] }}">
+                <table id="datatables_top_tabulators" class="table table-sm table-hover w-100">
                     <thead>
                         <tr>
-                            <th>FOLIO</th>
-                            <th>ESTACION</th>
-                            <th>TURNO</th>
-                            <th>SUB</th>
-                            <th>FECHA TABULAR</th>
-                            <th>USUARIO</th>
-                            <th>ESTATUS</th>
-                            <th>PRODS</th>
-                            <th>TOTAL</th>
-                            <th>ACCIONES</th>
+                            <th>Folio</th>
+                            <th>Estación</th>
+                            <th class="text-center">Turno</th>
+                            <th class="text-center">Sub</th>
+                            <th>Fecha tabular</th>
+                            <th>Usuario</th>
+                            <th>Estatus</th>
+                            <th class="text-end">Total</th>
+                            <th class="text-end"><span class="visually-hidden">Acciones</span></th>
                         </tr>
                     </thead>
-                    <tbody>
-                    </tbody>
-                    <tfoot>
-                        <tr>
-                            <th>FOLIO</th>
-                            <th>ESTACION</th>
-                            <th>TURNO</th>
-                            <th>SUB</th>
-                            <th>FECHA TABULAR</th>
-                            <th>USUARIO</th>
-                            <th>ESTATUS</th>
-                            <th>PRODS</th>
-                            <th>TOTAL</th>
-                            <th>ACCIONES</th>
-                        </tr>
-                    </tfoot>
+                    <tbody></tbody>
                 </table>
             </div>
         </div>
@@ -119,15 +107,4 @@
 {% endblock %}
 {% block myjs %}
 <script src="{{ js_v('operations.js') }}"></script>
-// Vamos a agregar la funcionalidad para que el botón refrresh funcione
-<script>
-    $(document).ready(function() {
-        // Evento para el botón de recarga
-        $('.refresh').on('click', function() {
-            datatables_top_tabulators.clear().draw();
-            datatables_top_tabulators.ajax.reload();
-            $('.table-responsive').removeClass('loading');
-        });
-    });
-</script>
 {% endblock %}
