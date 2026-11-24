@@ -202,6 +202,27 @@ Diferencias deliberadas contra el script viejo: no se reapunta `RutaArchivo` de 
 ```
    (en sombra se agrega `--sombra`; `/var/log/apier` debe ser escribible por `www-data`).
 
+### Cambio total HECHO (2026-11-23, ~17:15 Juárez)
+
+- ApiER `master` = `1a0380e`, desplegado con `./deploy.sh`; 29 tests OK en el servidor. `/etc/apier/gmail_sa.json` (640 root:www-data).
+- Sombra 2026-11-01..23 de todos + `comparar 2026-11-03 2026-11-21`: **todos OK, `faltan_en_sombra = 0`**.
+
+  | Proveedor | BD | Sombra | Sombra no en BD |
+  |---|---|---|---|
+  | aemsa | 63 | 131 | 0 |
+  | tesoro | 349 | 406 | 0 |
+  | mcg | 453 | 679 | 0 |
+  | petrotal | 86 | 97 | 0 (+ PET 31705/31706 del 22) |
+  | premiergas | 111 | 129 | 1 (`001-FE-00044611 GASOMEX EJERCITO MAGNA BOL 1261495`, 2026-11-03) |
+  | essafuel / enerey | 0 | 0 | 0 |
+
+- 0.3: `sya_descargar_facturas_proveedor` y `_respaldo_ayer` **deshabilitadas** (CIM/DCOM); `_importar` ya lo estaba. Para volver atrás: habilitarlas y poner `Motor='python'`.
+- `FacturasCorreoProveedorEstado`: los 7 activos en `Motor='apier'` (lobo sigue `python`, inactivo).
+- Primera corrida en vivo `hoy`: PET 31705 (Id 78002) y PET 31706 (Id 78003) importadas con XML; lo demás `duplicada`. **PET 31704 es PDF escaneado (sin texto)** → `combustible/petrotal/errores/` + `erroresXml/`: capturar a mano.
+- Cron instalado en `/etc/cron.d/apier_facturas_correo` (el servidor está en America/Mexico_City, por eso el respaldo es `35 7`). Lock en `/run/lock/ciclo_facturas.lock`. Log `/var/log/apier/ciclo.log`.
+- Alerta de $0 (la única que mandaba el Python): ApiER `8ed6e64` la manda por el **relay SMTP de Google** (`smtp-relay.gmail.com:587` STARTTLS, por IP, sin contraseña), igual que `send_mail` del aplicativo; la contraseña de aplicación de `main.py` ya no sirve. Destinatarios en `/etc/apier/facturas_correo.env` (`FACTURAS_ALERTA_A`, 640 root:www-data), que el cron carga. Prueba enviada OK.
+- `/etc/logrotate.d/apier` (semanal, 8 copias, comprimido). Carpeta `combustible/_sombra` borrada.
+
 ### Fase 1 — Descarga en modo sombra (por proveedor, sin tocar la BD)
 - `ciclo_facturas --sombra`: lee Gmail, filtra, escribe en `combustible\_sombra\<prov>\` y **no** importa ni archiva.
 - Comparación contra lo que ya bajó Python en el mismo rango: nº de correos, de archivos y **UUIDs** idénticos.
