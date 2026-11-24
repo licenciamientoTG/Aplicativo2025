@@ -873,10 +873,12 @@ class station_portal
             exit;
         }
 
-        $rutaArchivo = $tipo === 'pdf' ? ($asignacion['RutaArchivo'] ?? '') : ($asignacion['RutaXml'] ?? '');
+        $rutaDb = $tipo === 'pdf' ? ($asignacion['RutaArchivo'] ?? '') : ($asignacion['RutaXml'] ?? '');
         $nombreArchivo = $tipo === 'pdf' ? ($asignacion['NombreArchivo'] ?? '') : ($asignacion['NombreXml'] ?? '');
 
-        if (empty($rutaArchivo) || !file_exists($rutaArchivo)) {
+        // Ruta de BD -> archivo real (NAS o carpeta vieja), validado dentro de las raíces permitidas
+        $rutaArchivo = empty($rutaDb) ? null : AttachmentsPath::resolver((string)$rutaDb);
+        if ($rutaArchivo === null) {
             http_response_code(404);
             echo "Archivo no encontrado en el servidor";
             exit;

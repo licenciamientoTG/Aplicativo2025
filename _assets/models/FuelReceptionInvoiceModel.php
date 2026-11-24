@@ -407,22 +407,20 @@ class FuelReceptionInvoiceModel extends Model {
             mkdir($dirXml, 0755, true);
         }
 
-        $nombreBase = strtoupper(str_replace('-', '_', $uuid));
-        $nombrePdf = $nombreBase . '.pdf';
-        $nombreXml = $nombreBase . '.xml';
+        // El UUID viene del XML que sube el usuario: se valida antes de usarlo como nombre.
+        $nombrePdf = AttachmentsPath::nombreDesdeUuid($uuid, 'pdf');
+        $nombreXml = AttachmentsPath::nombreDesdeUuid($uuid, 'xml');
         $rutaPdf = $dirPdf . '\\' . $nombrePdf;
         $rutaXml = $dirXml . '\\' . $nombreXml;
 
-        if (!move_uploaded_file($tmpPdfPath, $rutaPdf)) {
-            throw new Exception('No se pudo guardar el PDF en la carpeta de facturas');
-        }
-        if (!move_uploaded_file($tmpXmlPath, $rutaXml)) {
-            throw new Exception('No se pudo guardar el XML en la carpeta de facturas');
-        }
+        // .tmp + rename: un corte de la NAS no deja un archivo a medias encima del bueno
+        AttachmentsPath::guardarSubido($tmpXmlPath, $rutaXml);
+        AttachmentsPath::guardarSubido($tmpPdfPath, $rutaPdf);
 
+        // En la NAS se guarda la ruta lógica combustible\<prov>\... (ver AttachmentsPath::rutaParaBd).
         return [
-            'rutaPdf' => $rutaPdf, 'nombrePdf' => $nombrePdf,
-            'rutaXml' => $rutaXml, 'nombreXml' => $nombreXml,
+            'rutaPdf' => AttachmentsPath::rutaParaBd($rutaPdf), 'nombrePdf' => $nombrePdf,
+            'rutaXml' => AttachmentsPath::rutaParaBd($rutaXml), 'nombreXml' => $nombreXml,
         ];
     }
 

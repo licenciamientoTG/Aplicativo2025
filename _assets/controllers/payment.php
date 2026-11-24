@@ -725,7 +725,7 @@ class Payment
                     $uuidsEncontrados[] = $uuidBD;
 
                     // Verificar que el archivo exista ANTES de agregarlo como exitosa
-                    if (!empty($factura['RutaArchivo']) && file_exists($factura['RutaArchivo'])) {
+                    if (!empty($factura['RutaArchivo']) && AttachmentsPath::resolver((string)$factura['RutaArchivo']) !== null) {
                         // ✅ Factura completa y disponible
                         $facturasExitosas[] = [
                             'id' => $factura['Id'],
@@ -797,14 +797,15 @@ class Payment
                 return;
             }
 
-            if (empty($factura['RutaArchivo']) || !file_exists($factura['RutaArchivo'])) {
+            // Ruta de BD (lógica combustible\... o vieja) -> archivo real (NAS o carpeta vieja)
+            $rutaArchivo = empty($factura['RutaArchivo']) ? null : AttachmentsPath::resolver((string)$factura['RutaArchivo']);
+            if ($rutaArchivo === null) {
                 http_response_code(404);
                 echo json_encode(['message' => 'Archivo no encontrado en el servidor']);
                 return;
             }
 
-            $nombreArchivo = $factura['NombreArchivo'] ?? basename($factura['RutaArchivo']);
-            $rutaArchivo = $factura['RutaArchivo'];
+            $nombreArchivo = $factura['NombreArchivo'] ?? basename($rutaArchivo);
 
             // Establecer headers para descarga
             header('Content-Type: application/pdf');
@@ -868,11 +869,13 @@ class Payment
             foreach ($ids as $id) {
                 $factura = $this->facturasRecibidasModel->obtenerPorId($id);
 
-                if ($factura && !empty($factura['RutaArchivo']) && file_exists($factura['RutaArchivo'])) {
-                    $nombreArchivo = $factura['NombreArchivo'] ?? basename($factura['RutaArchivo']);
+                $real = ($factura && !empty($factura['RutaArchivo']))
+                    ? AttachmentsPath::resolver((string)$factura['RutaArchivo']) : null;
+                if ($real !== null) {
+                    $nombreArchivo = $factura['NombreArchivo'] ?? basename($real);
 
                     // Agregar archivo al ZIP
-                    if ($zip->addFile($factura['RutaArchivo'], $nombreArchivo)) {
+                    if ($zip->addFile($real, $nombreArchivo)) {
                         $archivosAgregados++;
                     } else {
                         $archivosNoEncontrados[] = $nombreArchivo;
@@ -5821,8 +5824,6 @@ class Payment
         header('Content-Type: application/json');
 
         try {
-            $rut = 'C:\Software\TareasProgramadas\Facturas_proveedores\correoFacturas\attachments\aemsa\procesadas';
-            $existe = is_dir($rut);
             // 1. Validaciones iniciales
             $this->validate_pdf_request();
             $proveedor = $this->get_validated_provider();
@@ -6182,9 +6183,10 @@ class Payment
         $uuid = $apiData['uuid'] ?? '';
 
         // 2. Construir la ruta del directorio: Base + Proveedor + "procesadas"
-        $rutaDir = AttachmentsPath::BASE . '\\' . $proveedor . '\\procesadas';
+        $rutaDir = AttachmentsPath::procesadasDir($proveedor);
         // 3. Generar el nombre del archivo final (UUID en mayúsculas y sin guiones medios)
-        $nombreArchivo = strtoupper(str_replace('-', '_', $uuid)) . '.pdf';
+        //    (valida el formato: el nombre del archivo nunca sale de procesadas\)
+        $nombreArchivo = AttachmentsPath::nombreDesdeUuid((string)$uuid, 'pdf');
 
         // 4. Ruta completa final (Directorio + Nombre)
         $rutaCompleta = $rutaDir . '\\' . $nombreArchivo;
@@ -6200,23 +6202,19 @@ class Payment
             throw new Exception("El archivo temporal no existe: $tmpFile");
         }
 
-        if (!is_writable($rutaDir)) {
-            throw new Exception("El directorio no tiene permisos de escritura: $rutaDir");
-        }
+        // Sin is_writable(): en rutas UNC de la NAS da falso negativo con la identidad
+        // del pool de IIS; si no se puede escribir, move_uploaded_file() falla abajo.
         // 6. Mover el archivo desde la carpeta temporal de PHP a la ruta final
-        if (!move_uploaded_file($tmpFile, $rutaCompleta)) {
-            throw new Exception("Error al guardar el archivo PDF en el servidor local.");
-        }
+        //    (vía .tmp + rename: un corte de la NAS no deja un PDF a medias encima del bueno)
+        AttachmentsPath::guardarSubido($tmpFile, $rutaCompleta);
 
         // 7. Retornar información necesaria para actualizar la Base de Datos
+        //    (en la NAS se guarda la ruta lógica combustible\<prov>\procesadas\...)
+        $rutaBd = AttachmentsPath::rutaParaBd($rutaCompleta);
         return [
-            'ruta_completa'  => $rutaCompleta,
+            'ruta_completa'  => $rutaBd,
             'nombre_archivo' => $nombreArchivo,
-            'debug'          => [
-                'dir_exists'   => true,
-                'rutaDir'      => $rutaDir,
-                'rutaCompleta' => $rutaCompleta
-            ]
+            'debug'          => ['dir_exists' => true, 'ruta' => $rutaBd],
         ];
     }
 

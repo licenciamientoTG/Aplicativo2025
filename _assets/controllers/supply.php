@@ -3670,6 +3670,14 @@ class Supply
         $fac       = $parseado['factura'];
         $uuid      = $fac['UUID'];
 
+        // El UUID se usa como nombre de archivo: se valida ANTES de insertar nada en BD.
+        try {
+            AttachmentsPath::nombreDesdeUuid((string)$uuid, 'xml');
+        } catch (Exception $e) {
+            json_output(['success' => false, 'message' => 'El XML no trae un UUID (TimbreFiscalDigital) válido']);
+            return;
+        }
+
         $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
         $existente = $this->fuelReceptionInvoiceModel->buscarPorUuid($uuid);
 
@@ -3688,7 +3696,7 @@ class Supply
         // patrón que main.py::archivo_falta_en_disco() en el pipeline de
         // correos (hallado 2026-09-10 al revisar el mismo hueco ahí).
         $archivoFalta = $existente && (
-            !$existente['RutaArchivo'] || !file_exists($existente['RutaArchivo'])
+            !$existente['RutaArchivo'] || AttachmentsPath::resolver((string)$existente['RutaArchivo']) === null
         );
 
         if ($existente && !$archivoFalta) {

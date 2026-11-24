@@ -10,10 +10,12 @@
 // (servidor 192.168.0.3) a \\192.168.0.15\FacturasProveedores\combustible\<prov>\...
 // Este es el UNICO lugar que sabe resolver una ruta guardada en BD. Para LEER
 // siempre se prueba primero la NAS y luego la ruta vieja ("lectura doble"),
-// así cada proveedor puede migrar por separado sin romper nada. Las
-// escrituras (procesadasDir / procesadasXmlDir) siguen en la ruta vieja hasta
-// la fase 4 del plan.
+// así cada proveedor puede migrar por separado sin romper nada.
+// Fase 4 (2026-11-23): las ESCRITURAS (procesadasDir / procesadasXmlDir) van a la
+// NAS (combustible\<prov>\...) y en BD se guarda la ruta lógica (rutaParaBd()).
+// Si la NAS no responde se escribe en la ruta vieja para no bloquear la captura.
 class AttachmentsPath {
+    /** Carpeta vieja (servidor 192.168.0.3). Solo respaldo de escritura si la NAS no responde. */
     const BASE = 'C:\Software\TareasProgramadas\Facturas_proveedores\correoFacturas\attachments';
 
     /** Raíz vieja (servidor de aplicaciones). Termina en "\". */
@@ -25,13 +27,75 @@ class AttachmentsPath {
     private static $nasRoot = self::NAS_ROOT;
     /** Cache por petición: ¿la raíz NAS responde? null = aún no se pregunta. */
     private static $nasDisponible = null;
+    /** Cache por petición de baseEscritura(): PDF y XML de una subida van a la misma raíz. */
+    private static $baseEscritura = null;
 
     public static function procesadasDir(string $proveedorCarpeta): string {
-        return self::BASE . '\\' . $proveedorCarpeta . '\\procesadas';
+        return self::baseEscritura() . '\\' . $proveedorCarpeta . '\\procesadas';
     }
 
     public static function procesadasXmlDir(string $proveedorCarpeta): string {
-        return self::BASE . '\\' . $proveedorCarpeta . '\\procesadasXml';
+        return self::baseEscritura() . '\\' . $proveedorCarpeta . '\\procesadasXml';
+    }
+
+    /**
+     * Carpeta donde se escriben los archivos nuevos: NAS combustible\ si responde,
+     * si no la carpeta vieja (la lectura doble del resolver encuentra ambas).
+     */
+    public static function baseEscritura(): string {
+        if (self::$baseEscritura === null) {
+            $nas = self::$nasRoot . 'combustible';
+            self::$baseEscritura = (self::nasDisponible() && @is_dir($nas))
+                ? $nas
+                : rtrim(self::$legacyRoot, '\\') . '\\correoFacturas\\attachments';
+        }
+        return self::$baseEscritura;
+    }
+
+    /** Nombre de archivo a partir de un UUID de CFDI; Exception si no tiene formato de UUID. */
+    public static function nombreDesdeUuid(string $uuid, string $extension): string {
+        $uuid = trim($uuid);
+        if (!preg_match('/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i', $uuid)) {
+            throw new Exception('UUID inválido para nombrar el archivo: ' . substr($uuid, 0, 60));
+        }
+        return strtoupper(str_replace('-', '_', $uuid)) . '.' . $extension;
+    }
+
+    /**
+     * Guarda un archivo subido ($_FILES[..]['tmp_name']) en $destino sin dejar nunca
+     * un archivo a medias: primero a "<destino>.tmp", se compara el tamaño y luego se
+     * renombra encima (rename reemplaza en Windows). Hacia la NAS move_uploaded_file
+     * copia, no renombra, así que un corte a media copia no pisa el archivo bueno.
+     */
+    public static function guardarSubido(string $tmpSubido, string $destino): void {
+        $parcial = $destino . '.tmp';
+        $tam = @filesize($tmpSubido);
+        if (!move_uploaded_file($tmpSubido, $parcial)) {
+            @unlink($parcial);   // copia cortada a media: no dejar basura en la NAS
+            throw new Exception('No se pudo copiar el archivo a ' . dirname($destino));
+        }
+        clearstatcache(true, $parcial);
+        if ($tam === false || @filesize($parcial) !== $tam) {
+            @unlink($parcial);
+            throw new Exception('La copia quedó incompleta en ' . dirname($destino));
+        }
+        if (!@rename($parcial, $destino)) {
+            @unlink($parcial);
+            throw new Exception('No se pudo dejar el archivo en ' . dirname($destino));
+        }
+    }
+
+    /**
+     * Ruta que se guarda en BD para un archivo recién escrito: "combustible\<prov>\..."
+     * si está en la NAS (independiente del servidor), o la absoluta tal cual si cayó
+     * en la carpeta vieja.
+     */
+    public static function rutaParaBd(string $rutaAbsoluta): string {
+        $ruta = self::normalizar($rutaAbsoluta);
+        if (stripos($ruta, self::$nasRoot) === 0) {
+            return substr($ruta, strlen(self::$nasRoot));
+        }
+        return $ruta;
     }
 
     /** Solo para pruebas: cambia las raíces. Sin argumentos las restablece. */
@@ -39,6 +103,7 @@ class AttachmentsPath {
         self::$legacyRoot = self::cerrar($legacy ?? self::LEGACY_ROOT);
         self::$nasRoot = self::cerrar($nas ?? self::NAS_ROOT);
         self::$nasDisponible = null;
+        self::$baseEscritura = null;
     }
 
     /**
@@ -71,7 +136,7 @@ class AttachmentsPath {
      *  - combustible\<prov>\...                 -> NAS (y, de respaldo, attachments\ viejo)
      *  - \\servidor\...                         -> tal cual
      *  - attachments\<prov>\...  (relativa vieja) -> NAS combustible\ y luego ruta vieja
-     *  - C:\...\correoFacturas\attachments\...  (absoluta vieja) -> NAS combustible\ y luego tal cual
+     *  - C:\...\correoFacturas\attachments\...  (absoluta vieja) -> tal cual y luego NAS combustible\
      *  - cualquier otra absoluta                -> tal cual
      *  - cualquier otra relativa                -> bajo correoFacturas\ viejo (comportamiento histórico)
      */
@@ -95,7 +160,10 @@ class AttachmentsPath {
         }
         if (preg_match('/^[A-Za-z]:\\\\/', $ruta)) {
             if (preg_match('/\\\\correoFacturas\\\\attachments\\\\(.+)$/i', $ruta, $m)) {
-                return [self::$nasRoot . 'combustible\\' . $m[1], $ruta];
+                // La absoluta vieja se prueba PRIMERO: desde la fase 4 solo se guarda una
+                // absoluta cuando se escribió en la vieja por NAS caída, y esa es la versión
+                // vigente (la de la NAS puede ser una anterior). Si ya no existe, la NAS.
+                return [$ruta, self::$nasRoot . 'combustible\\' . $m[1]];
             }
             return [$ruta];
         }

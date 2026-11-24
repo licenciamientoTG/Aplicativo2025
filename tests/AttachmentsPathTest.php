@@ -24,11 +24,11 @@ check('attachments\\ relativa -> vieja después', $c[1] === $leg . 'correoFactur
 
 $abs = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\attachments\\aemsa\\procesadas\\C.pdf';
 $c = AttachmentsPath::candidatos($abs);
-check('absoluta vieja -> NAS primero', $c[0] === $nas . 'combustible\\aemsa\\procesadas\\C.pdf');
-check('absoluta vieja -> ella misma después', $c[1] === $abs && count($c) === 2);
+check('absoluta vieja -> ella misma primero', $c[0] === $abs && count($c) === 2);
+check('absoluta vieja -> NAS después', $c[1] === $nas . 'combustible\\aemsa\\procesadas\\C.pdf');
 
 $c = AttachmentsPath::candidatos('c:/software/tareasprogramadas/facturas_proveedores/correoFacturas/attachments/petrotal/procesadas/D.pdf');
-check('barras "/" y minúsculas se aceptan', $c[0] === $nas . 'combustible\\petrotal\\procesadas\\D.pdf');
+check('barras "/" y minúsculas se aceptan', $c[1] === $nas . 'combustible\\petrotal\\procesadas\\D.pdf');
 
 $c = AttachmentsPath::candidatos('\\\\192.168.0.15\\FacturasProveedores\\combustible\\mcg\\E.pdf');
 check('UNC se respeta tal cual', $c === ['\\\\192.168.0.15\\FacturasProveedores\\combustible\\mcg\\E.pdf']);
@@ -90,6 +90,43 @@ check('"F-123..pdf" (no es segmento) se sirve', $leerDe(AttachmentsPath::resolve
 AttachmentsPath::setRoots($legacyDir, $tmp . '\\nas_no_existe');
 check('NAS caída -> se usa la vieja', $leerDe(AttachmentsPath::resolver('attachments\\mcg\\procesadas\\EN_AMBAS.pdf')) === 'vieja');
 check('NAS caída -> archivo solo en NAS = null', AttachmentsPath::resolver('combustible\\mcg\\procesadas\\SOLO_NAS.pdf') === null);
+
+// Escritura (fase 4): NAS si responde, vieja si no; en BD la ruta lógica
+check('NAS caída -> se escribe en la vieja',
+    AttachmentsPath::procesadasDir('mcg') === $legacyDir . '\\correoFacturas\\attachments\\mcg\\procesadas');
+check('vieja -> rutaParaBd la deja absoluta',
+    AttachmentsPath::rutaParaBd($legacyDir . '\\correoFacturas\\attachments\\mcg\\procesadas\\X.pdf')
+        === $legacyDir . '\\correoFacturas\\attachments\\mcg\\procesadas\\X.pdf');
+AttachmentsPath::setRoots($legacyDir, $nasDir);
+check('NAS arriba -> PDF a combustible\\<prov>\\procesadas',
+    AttachmentsPath::procesadasDir('petrotal') === $nasDir . '\\combustible\\petrotal\\procesadas');
+check('NAS arriba -> XML a combustible\\<prov>\\procesadasXml',
+    AttachmentsPath::procesadasXmlDir('petrotal') === $nasDir . '\\combustible\\petrotal\\procesadasXml');
+$lógica = AttachmentsPath::rutaParaBd($nasDir . '\\combustible\\petrotal\\procesadas\\X.pdf');
+check('NAS -> rutaParaBd = combustible\\...', $lógica === 'combustible\\petrotal\\procesadas\\X.pdf');
+check('ruta lógica guardada se vuelve a resolver en la NAS',
+    AttachmentsPath::candidatos($lógica)[0] === $nasDir . '\\combustible\\petrotal\\procesadas\\X.pdf');
+check('rutaParaBd acepta "/" y mayúsculas distintas',
+    AttachmentsPath::rutaParaBd(str_replace('\\', '/', strtoupper($nasDir)) . '/combustible/mcg/procesadas/Y.pdf') === 'combustible\\mcg\\procesadas\\Y.pdf');
+mkdir($tmp . '\\nas_sin_comb', 0777, true);
+AttachmentsPath::setRoots($legacyDir, $tmp . '\\nas_sin_comb');
+check('NAS responde pero sin combustible\\ -> se escribe en la vieja',
+    AttachmentsPath::procesadasDir('mcg') === $legacyDir . '\\correoFacturas\\attachments\\mcg\\procesadas');
+
+// Absoluta vieja: gana la vieja (versión escrita con la NAS caída), si no existe la NAS
+AttachmentsPath::setRoots($legacyDir, $nasDir);
+check('absoluta vieja existente en ambas -> gana la vieja',
+    $leerDe(AttachmentsPath::resolver($legacyDir . '\\correoFacturas\\attachments\\mcg\\procesadas\\EN_AMBAS.pdf')) === 'vieja');
+check('absoluta vieja que ya solo está en la NAS -> NAS',
+    $leerDe(AttachmentsPath::resolver($legacyDir . '\\correoFacturas\\attachments\\mcg\\procesadas\\SOLO_NAS.pdf')) === 'nas');
+
+// UUID -> nombre de archivo
+check('nombreDesdeUuid normal', AttachmentsPath::nombreDesdeUuid('ec88babf-4fbb-4588-8465-a5eea90306d3', 'pdf') === 'EC88BABF_4FBB_4588_8465_A5EEA90306D3.pdf');
+foreach (['', '..\\..\\x', 'EC88BABF-4FBB-4588-8465-A5EEA90306D3\\..\\a', 'no-es-uuid'] as $malo) {
+    $lanzo = false;
+    try { AttachmentsPath::nombreDesdeUuid($malo, 'xml'); } catch (Exception $e) { $lanzo = true; }
+    check('nombreDesdeUuid rechaza "' . $malo . '"', $lanzo);
+}
 
 // limpieza
 $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($tmp, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
