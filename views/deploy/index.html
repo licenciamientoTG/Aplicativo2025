@@ -18,6 +18,8 @@
   .item{border:1px solid #e0e6e3;border-radius:12px;padding:14px;margin-top:12px}
   .item b{word-break:break-all;font-size:.95rem}
   .item small{display:block;color:#667;margin-top:2px}
+  .qr{display:flex;justify-content:center;margin-top:14px}
+  .qr img{width:220px;height:220px;image-rendering:pixelated}
   .out{display:block;margin-top:18px;text-align:center;color:#667;font-size:.85rem}
 </style>
 </head>
@@ -38,6 +40,8 @@
         <b>{{ f.name }}</b>
         <small>{{ f.size }} MB · {{ f.date }}</small>
         <a class="btn" href="{{ url('deploy.download', {file: f.name}) }}">Descargar APK</a>
+        <div class="qr" data-url="{{ f.qr }}"></div>
+        <small style="text-align:center">Escanea con «Scan Install» del equipo</small>
       </div>
     {% else %}
       <p class="sub">No hay APKs publicadas todavía.</p>
@@ -45,5 +49,12 @@
     <a class="out" href="{{ url('deploy.logout') }}">Salir</a>
   {% endif %}
 </div>
+<script src="/_assets/vendor/qrcode/qrcode.min.js"></script>
+<script>
+document.querySelectorAll('.qr').forEach(function (el) {
+  var q = qrcode(0, 'M'); q.addData(el.dataset.url); q.make();
+  el.innerHTML = q.createImgTag(6, 8);
+});
+</script>
 </body>
 </html>

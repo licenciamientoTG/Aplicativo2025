@@ -8,6 +8,8 @@ vendor/
 !_assets/vendor/
 !_assets/vendor/tesseract/
 !_assets/vendor/tesseract/**
+!_assets/vendor/qrcode/
+!_assets/vendor/qrcode/**
 
 .claude/
 

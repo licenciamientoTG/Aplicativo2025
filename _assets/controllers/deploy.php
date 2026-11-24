@@ -50,13 +50,31 @@ class Deploy {
         ]);
     }
 
+    /** Token por archivo para la URL directa del QR (el lector del equipo no maneja sesión). */
+    private function token(string $name): string {
+        return substr(hash_hmac('sha256', $name, self::ACCESS_CODE . '|deploy-qr'), 0, 32);
+    }
+
+    /** Descarga directa por URL firmada (la que codifica el QR de "Scan Install"). */
+    public function get(string $token, string $file): void {
+        if (!hash_equals($this->token(basename($file)), $token)) {
+            http_response_code(403);
+            echo 'Enlace no válido';
+            return;
+        }
+        $this->send(basename($file));
+    }
+
     public function download(string $file): void {
         if (!$this->unlocked()) {
             http_response_code(403);
             echo 'Acceso no autorizado';
             return;
         }
-        $name = basename($file);
+        $this->send(basename($file));
+    }
+
+    private function send(string $name): void {
         $path = $this->dir . $name;
         if (strtolower(pathinfo($name, PATHINFO_EXTENSION)) !== 'apk' || !is_file($path)) {
             http_response_code(404);
@@ -80,12 +98,14 @@ class Deploy {
 
     private function listApks(): array {
         $out = [];
+        $base = 'http://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
         foreach (glob($this->dir . '*.apk') ?: [] as $f) {
             $out[] = [
                 'name' => basename($f),
                 'size' => round(filesize($f) / 1048576, 1),
                 'date' => date('d/m/Y H:i', filemtime($f)),
                 'ts'   => filemtime($f),
+                'qr'   => $base . Router::reverse('deploy.get', ['token' => $this->token(basename($f)), 'file' => basename($f)]),
             ];
         }
         usort($out, fn($a, $b) => $b['ts'] <=> $a['ts']);

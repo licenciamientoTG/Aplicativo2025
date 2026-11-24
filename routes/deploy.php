@@ -4,6 +4,7 @@ return [
     group('deploy/', [
         route('', [Deploy::class, 'index'], name: 'deploy.index', methods: ['GET', 'POST'], public: true),
         route('download/<str:file>/', [Deploy::class, 'download'], name: 'deploy.download', methods: ['GET'], public: true),
+        route('get/<str:token>/<str:file>/', [Deploy::class, 'get'], name: 'deploy.get', methods: ['GET'], public: true),
         route('salir/', [Deploy::class, 'logout'], name: 'deploy.logout', methods: ['GET'], public: true),
     ]),
 ];
