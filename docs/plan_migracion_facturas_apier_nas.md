@@ -223,6 +223,17 @@ Diferencias deliberadas contra el script viejo: no se reapunta `RutaArchivo` de 
 - Alerta de $0 (la única que mandaba el Python): ApiER `8ed6e64` la manda por el **relay SMTP de Google** (`smtp-relay.gmail.com:587` STARTTLS, por IP, sin contraseña), igual que `send_mail` del aplicativo; la contraseña de aplicación de `main.py` ya no sirve. Destinatarios en `/etc/apier/facturas_correo.env` (`FACTURAS_ALERTA_A`, 640 root:www-data), que el cron carga. Prueba enviada OK.
 - `/etc/logrotate.d/apier` (semanal, 8 copias, comprimido). Carpeta `combustible/_sombra` borrada.
 
+### Fase 3 y 4 HECHAS (2026-11-23 noche)
+
+- robocopy 0.3 → NAS de los 8 proveedores (~85 000 archivos, ~6 GB), 0 errores, sin sobrescribir lo que ApiER ya había dejado.
+- Verificación: 21 553 de 21 575 filas con archivo en la NAS y mismo tamaño que en el 0.3; los 13 860 XML con SHA-256 idéntico.
+- Fase 4 en `main` `e7871427` (desplegada por el usuario): PHP escribe en `combustible\...` (respaldo: carpeta vieja si la NAS no responde), `.tmp` + rename, UUID validado; los lectores que usaban `file_exists(RutaArchivo)` pasan por `AttachmentsPath::resolver()`.
+- UPDATE lote `fase3_20261123_1824`: 21 553 `RutaArchivo` y 6 378 `RutaXml` → `combustible\...`; respaldo en `dbo.FacturasRecibidas_rutas_bkp`. Muestra de 300 rutas: todas abren en la NAS.
+  Revertir: `UPDATE f SET RutaArchivo=b.RutaArchivo, RutaXml=b.RutaXml FROM dbo.FacturasRecibidas f JOIN dbo.FacturasRecibidas_rutas_bkp b ON b.Id=f.Id AND b.Lote='fase3_20261123_1824'`.
+- Quedan con ruta vieja 22: 12 AEMSA de julio 2026 sin archivo en ningún lado (Ids 60792, 60793, 61202, 61212, 61213, 61259, 61266, 62551, 64966, 64967, 65298, 66869) y 10 MCG del 2026-11-23 cuya copia en la NAS es la de ApiER (mismos datos, otros bytes); se sirven igual.
+- La carpeta `attachments` del 0.3 se queda como respaldo de lectura. Retirarla (y la lectura doble del resolver) es parte de la fase 5.
+- `tools/add_origen_importacion_facturarecibidas.php` filtra rutas `C:\...`: ya no encuentra filas, no volver a correrlo.
+
 ### Fase 1 — Descarga en modo sombra (por proveedor, sin tocar la BD)
 - `ciclo_facturas --sombra`: lee Gmail, filtra, escribe en `combustible\_sombra\<prov>\` y **no** importa ni archiva.
 - Comparación contra lo que ya bajó Python en el mismo rango: nº de correos, de archivos y **UUIDs** idénticos.
