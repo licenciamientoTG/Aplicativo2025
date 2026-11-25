@@ -34,6 +34,35 @@ class PaymentRequestsModel extends Model
             $documents = [];
         }
 
+        // Notas de cargo independientes: se releen por id (el cliente no decide
+        // uuid, estación ni empresa) y de ellas sale la empresa si no hay facturas.
+        $notasModel = new InvoiceCreditDebitNotesModel();
+        $notas_releidas = [];
+        foreach ($pending_notes as $note) {
+            if (($note['note_type'] ?? '') !== 'DEBIT') continue;
+            if (($note['invoice_temp_key'] ?? null) !== null) continue;
+
+            $nota = $notasModel->getNoteById($note['credit_note_id'] ?? 0);
+            if (!$nota || (int)$nota['status'] !== 1 || ($nota['note_type'] ?? '') !== 'DEBIT') {
+                return [
+                    'success' => false,
+                    'message' => 'La nota de cargo ' . ($note['note_number'] ?? ('#' . ($note['credit_note_id'] ?? '?'))) . ' no existe o no está activa'
+                ];
+            }
+            $notas_releidas[] = ['nota' => $nota, 'applied_amount' => $note['applied_amount'] ?? 0];
+        }
+
+        if (empty($documents)) {
+            try {
+                $empresa_cod = $empresa_cod ?: NotasPago::empresaUnica(array_column($notas_releidas, 'nota'));
+            } catch (InvalidArgumentException $e) {
+                return ['success' => false, 'message' => $e->getMessage()];
+            }
+            if (empty($empresa_cod)) {
+                return ['success' => false, 'message' => 'Elige la empresa del pago'];
+            }
+        }
+
         $this->sql->beginTransaction();
 
         try {
@@ -95,16 +124,20 @@ class PaymentRequestsModel extends Model
             }
 
             // 2b. Insertar notas de cargo independientes (DEBIT sin invoice_temp_key) como filas de pago
-            foreach ($pending_notes as $note) {
-                if (($note['note_type'] ?? '') !== 'DEBIT') continue;
-                if (($note['invoice_temp_key'] ?? null) !== null) continue;
+            foreach ($notas_releidas as $nr) {
+                $nota        = $nr['nota'];
+                $note_number = $nota['note_number'] ?: ('ND-' . $nota['id']);
+                $amount      = (float)$nr['applied_amount'];
+                $nota_uuid   = !empty($nota['uuid']) ? $nota['uuid'] : null;
+                $nota_codgas = $nota['codgas'] ?? null;
 
-                $note_number = $note['note_number'] ?? ('ND-' . $note['credit_note_id']);
-                $amount      = (float)($note['applied_amount'] ?? 0);
+                if ($nota_uuid && $invModel->get_active_invoice_by_uuid($nota_uuid)) {
+                    throw new Exception("La nota $note_number ya está incluida en otra orden de pago");
+                }
 
                 if (!$this->sql->insert($query2, [
-                    $payment_id, $note_number, $note_number, null,
-                    $amount, self::STATUS_PENDING, null, null, 1
+                    $payment_id, $note_number, $note_number, $nota_codgas,
+                    $amount, self::STATUS_PENDING, null, $nota_uuid, 1
                 ])) {
                     throw new Exception('Error al insertar nota de cargo como factura');
                 }

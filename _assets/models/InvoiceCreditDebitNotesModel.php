@@ -132,8 +132,8 @@ class InvoiceCreditDebitNotesModel extends Model
                     WHERE pri.is_debit_note = 1
                       AND pri.is_deleted = 0
                       AND pr.is_deleted = 0
-                      AND pri.folio = t1.note_number
-                      AND pr.provider_cod = t1.provider_id
+                      AND ((t1.uuid IS NOT NULL AND pri.uuid COLLATE DATABASE_DEFAULT = t1.uuid COLLATE DATABASE_DEFAULT)
+                           OR (pri.folio = t1.note_number AND pr.provider_cod = t1.provider_id))
                 )
             ORDER BY t1.note_date ASC";
         return $this->sql->select($query, $params);
@@ -448,8 +448,8 @@ class InvoiceCreditDebitNotesModel extends Model
                     WHERE pri.is_debit_note = 1
                       AND pri.is_deleted = 0
                       AND pr.is_deleted = 0
-                      AND pri.folio = n.note_number
-                      AND pr.provider_cod = n.provider_id
+                      AND ((n.uuid IS NOT NULL AND pri.uuid COLLATE DATABASE_DEFAULT = n.uuid COLLATE DATABASE_DEFAULT)
+                           OR (pri.folio = n.note_number AND pr.provider_cod = n.provider_id))
                 ) THEN 0
                 ELSE n.amount - ISNULL((
                     SELECT SUM(a.applied_amount)

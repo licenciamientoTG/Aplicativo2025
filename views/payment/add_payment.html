@@ -1291,6 +1291,7 @@
         } else {
             proveedorCodigo = currentDebitProvider;
             proveedorNombre = currentProvider;
+            // Solo se manda la empresa si el usuario la eligió; si no, el servidor la toma de las notas
             const empVal = parseInt($('#company').val());
             codigoEmpresa = (empVal && empVal > 0) ? empVal : null;
         }
