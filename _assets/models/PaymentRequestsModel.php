@@ -35,32 +35,48 @@ class PaymentRequestsModel extends Model
         }
 
         // Notas de cargo independientes: se releen por id (el cliente no decide
-        // uuid, estación ni empresa) y de ellas sale la empresa si no hay facturas.
+        // uuid, estación, empresa, proveedor ni monto).
         $notasModel = new InvoiceCreditDebitNotesModel();
         $notas_releidas = [];
+        $ids_notas = [];
         foreach ($pending_notes as $note) {
             if (($note['note_type'] ?? '') !== 'DEBIT') continue;
             if (($note['invoice_temp_key'] ?? null) !== null) continue;
-
-            $nota = $notasModel->getNoteById($note['credit_note_id'] ?? 0);
+            $ids_notas[] = (int)($note['credit_note_id'] ?? 0);
+        }
+        $repetida = NotasPago::idRepetido($ids_notas);
+        foreach ($ids_notas as $id_nota) {
+            $nota = $notasModel->getNoteById($id_nota);
             if (!$nota || (int)$nota['status'] !== 1 || ($nota['note_type'] ?? '') !== 'DEBIT') {
-                return [
-                    'success' => false,
-                    'message' => 'La nota de cargo ' . ($note['note_number'] ?? ('#' . ($note['credit_note_id'] ?? '?'))) . ' no existe o no está activa'
-                ];
+                return ['success' => false, 'message' => 'La nota de cargo #' . $id_nota . ' no existe o no está activa'];
             }
-            $notas_releidas[] = ['nota' => $nota, 'applied_amount' => $note['applied_amount'] ?? 0];
+            $num = $nota['note_number'] ?: ('#' . (int)$nota['id']);
+            if ($repetida === $id_nota) {
+                return ['success' => false, 'message' => "La nota $num viene repetida"];
+            }
+            if ((string)$nota['provider_id'] !== (string)$provider_cod) {
+                return ['success' => false, 'message' => "La nota $num es de otro proveedor"];
+            }
+            $notas_releidas[] = $nota;
         }
 
-        if (empty($documents)) {
-            try {
-                $empresa_cod = $empresa_cod ?: NotasPago::empresaUnica(array_column($notas_releidas, 'nota'));
-            } catch (InvalidArgumentException $e) {
-                return ['success' => false, 'message' => $e->getMessage()];
-            }
-            if (empty($empresa_cod)) {
-                return ['success' => false, 'message' => 'Elige la empresa del pago'];
-            }
+        // Empresa: con facturas manda la del pago; sin facturas, la de las notas
+        try {
+            $emp_notas = NotasPago::empresaUnica($notas_releidas);
+        } catch (InvalidArgumentException $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+        $emp_pago = $empresa_cod ? (int)$empresa_cod : null;
+        if (NotasPago::empresaEnConflicto($emp_pago, $emp_notas)) {
+            $den = function ($cod) {
+                $r = $this->sql->select('SELECT den FROM SG12.dbo.Empresas WHERE cod = ?', [$cod]);
+                return !empty($r[0]['den']) ? $r[0]['den'] : (string)$cod;
+            };
+            return ['success' => false, 'message' => 'Las notas de cargo son de la empresa ' . $den($emp_notas) . ' y el pago es de ' . $den($emp_pago) . ': crea un pago por empresa'];
+        }
+        $empresa_cod = NotasPago::empresaFinal(!empty($documents), $emp_pago, $emp_notas);
+        if (empty($empresa_cod)) {
+            return ['success' => false, 'message' => 'Elige la empresa del pago'];
         }
 
         $this->sql->beginTransaction();
@@ -124,15 +140,18 @@ class PaymentRequestsModel extends Model
             }
 
             // 2b. Insertar notas de cargo independientes (DEBIT sin invoice_temp_key) como filas de pago
-            foreach ($notas_releidas as $nr) {
-                $nota        = $nr['nota'];
-                $note_number = $nota['note_number'] ?: ('ND-' . $nota['id']);
-                $amount      = (float)$nr['applied_amount'];
+            foreach ($notas_releidas as $nota) {
+                $note_number = $nota['note_number'] ?: ('#' . (int)$nota['id']);
+                // Una nota de cargo independiente se cobra siempre completa (monto de la BD)
+                $amount      = (float)$nota['amount'];
                 $nota_uuid   = !empty($nota['uuid']) ? $nota['uuid'] : null;
                 $nota_codgas = $nota['codgas'] ?? null;
 
                 if ($nota_uuid && $invModel->get_active_invoice_by_uuid($nota_uuid)) {
                     throw new Exception("La nota $note_number ya está incluida en otra orden de pago");
+                }
+                if (!NotasPago::saldoCubreNota($notasModel->getAvailableBalance($nota['id']), $amount)) {
+                    throw new Exception("La nota $note_number ya fue cobrada o aplicada");
                 }
 
                 if (!$this->sql->insert($query2, [
@@ -226,7 +245,7 @@ class PaymentRequestsModel extends Model
                 'total_documents' => count($documents),
                 'message' => 'Pago programado creado exitosamente'
             ];
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $this->sql->rollback();
 
             return [
