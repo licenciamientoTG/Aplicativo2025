@@ -225,7 +225,7 @@ function buscarClientesContado() {
     busquedaXhr = $.ajax({
         url: '/operations/clientes_contado_search',
         method: 'POST',
-        data: { codgas: codgas, termino: termino },
+        data: { codgas: codgas, termino: termino, estatus: $('#contado_estatus').val() },
         success: function (response) {
             clientes_contado_table.clear();
             setMensajeTablaVacia(EMPTY_SIN_RESULTADOS);
@@ -257,6 +257,14 @@ function buscarClientesContado() {
 }
 
 $btnBuscar.on('click', buscarClientesContado);
+
+// Cambiar el estatus vuelve a consultar si ya había una búsqueda en pantalla
+// (el filtro va en el servidor: el límite de filas aplica después de filtrar)
+$('#contado_estatus').on('change', function () {
+    if ($estacion.val() && clientes_contado_table.settings()[0].oLanguage.sEmptyTable === EMPTY_SIN_RESULTADOS) {
+        buscarClientesContado();
+    }
+});
 
 $termino.on('keydown', function (e) {
     if (e.key === 'Enter') {

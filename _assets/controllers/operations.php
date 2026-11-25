@@ -3429,7 +3429,8 @@ class Operations{
 
     function clientes_contado() : void {
         $stations = $this->estacionesModel->get_select_stations() ?: [];
-        echo $this->twig->render($this->route . 'clientes_contado.html', compact('stations'));
+        $estatus = ClientesModel::CONTADO_ESTATUS;
+        echo $this->twig->render($this->route . 'clientes_contado.html', compact('stations', 'estatus'));
     }
 
     /**
@@ -3444,6 +3445,10 @@ class Operations{
     function clientes_contado_search() : void {
         $codgas  = (int)($_POST['codgas'] ?? 0);
         $termino = trim($_POST['termino'] ?? '');
+        // '' = todos; cualquier valor fuera de la lista también se toma como todos
+        $estatusPost = $_POST['estatus'] ?? '';
+        $estatus = (is_numeric($estatusPost) && array_key_exists((int)$estatusPost, ClientesModel::CONTADO_ESTATUS))
+            ? (int)$estatusPost : null;
 
         if (!$codgas) {
             json_output(['data' => [], 'error' => 'Selecciona una estación.']);
@@ -3460,7 +3465,7 @@ class Operations{
             return;
         }
 
-        $rows = $this->clientesModel->search_contado_por_estacion($est['Servidor'], $est['BaseDatos'], $termino);
+        $rows = $this->clientesModel->search_contado_por_estacion($est['Servidor'], $est['BaseDatos'], $termino, $estatus);
         if ($rows === false) {
             json_output(['data' => [], 'error' => 'No se pudo consultar la estación (¿está disponible el enlace?).']);
             return;
