@@ -133,9 +133,13 @@ class InventarioUrovoModel extends Model {
         $where="t.ubicacion_tipo='estacion' AND t.estacion_codigo IS NOT NULL"; $params=[];
         if ($stationId!==null) { $where.=' AND t.estacion_codigo=?'; $params[]=$stationId; }
         return $this->sql->select("SELECT t.id,s.Codigo AS station_id,s.Nombre AS station_name,t.tipo_terminal,
-                t.numero_serie,t.condicion,
-                CASE WHEN EXISTS (
-                    SELECT 1 FROM [TG].[dbo].[inv_ter_incidencias] i
+                t.numero_serie,t.condicion,openIncident.ticket_mojo_id AS open_ticket_mojo_id,
+                CASE WHEN openIncident.ticket_mojo_id IS NOT NULL THEN 1 ELSE 0 END AS tiene_tickets_abiertos
+            FROM [TG].[dbo].[inv_urovo_terminales] t
+            INNER JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=t.estacion_codigo
+            OUTER APPLY (
+                    SELECT TOP (1) i.ticket_mojo_id
+                    FROM [TG].[dbo].[inv_ter_incidencias] i
                     WHERE i.estacion_id=t.estacion_codigo AND i.tipo_terminal=t.tipo_terminal
                         AND i.estado_local IN ('Abierta','Solved','Reabierta')
                         AND (
@@ -143,9 +147,9 @@ class InventarioUrovoModel extends Model {
                                 AND UPPER(LTRIM(RTRIM(i.serial_urovo)))=t.numero_serie_normalizado)
                             OR (t.mojo_ticket_number IS NOT NULL AND i.ticket_mojo_id=TRY_CONVERT(bigint,t.mojo_ticket_number))
                         )
-                ) THEN 1 ELSE 0 END AS tiene_tickets_abiertos
-            FROM [TG].[dbo].[inv_urovo_terminales] t
-            INNER JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=t.estacion_codigo
+                    ORDER BY CASE WHEN t.mojo_ticket_number IS NOT NULL AND i.ticket_mojo_id=TRY_CONVERT(bigint,t.mojo_ticket_number) THEN 0 ELSE 1 END,
+                        i.fecha_apertura_mojo DESC,i.id DESC
+            ) openIncident
             WHERE $where
             ORDER BY s.Nombre,t.tipo_terminal,t.numero_serie,t.id",$params);
     }
