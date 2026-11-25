@@ -48,6 +48,41 @@ class inventario_urovo {
         } catch (Throwable $e) { $this->error($e); }
     }
 
+    public function station_report(): void {
+        try {
+            $this->authorize(); $this->requireMethod('GET');
+            $station=isset($_GET['station_id']) && $_GET['station_id']!=='' ? filter_var($_GET['station_id'],FILTER_VALIDATE_INT) : null;
+            if ($station===false || ($station!==null && !$this->model->activeStation((int)$station))) throw new InvalidArgumentException('Estación inválida.');
+            $this->respond(['success'=>true,'rows'=>$this->model->stationReport($station===null?null:(int)$station)]);
+        } catch (Throwable $e) { $this->error($e); }
+    }
+
+    public function export_station_report(): void {
+        try {
+            $this->authorize(); $this->requireMethod('GET');
+            $station=isset($_GET['station_id']) && $_GET['station_id']!=='' ? filter_var($_GET['station_id'],FILTER_VALIDATE_INT) : null;
+            if ($station===false || ($station!==null && !$this->model->activeStation((int)$station))) throw new InvalidArgumentException('Estación inválida.');
+            $rows=$this->model->stationReport($station===null?null:(int)$station);
+            $spreadsheet=new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet=$spreadsheet->getActiveSheet(); $sheet->setTitle('Reporte por estación');
+            $sheet->fromArray(['Estación','Tipo de terminal','Número de serie','Condición','Tickets abiertos'],null,'A1');
+            $line=2;
+            $conditionLabels=['operativa'=>'Operativa','dañada'=>'Dañada','desconocida'=>'Desconocida','extraviada'=>'Extraviada'];
+            foreach ($rows as $row) $sheet->fromArray([
+                (string)$row['station_name'],(string)$row['tipo_terminal'],trim((string)($row['numero_serie']??''))!==''?(string)$row['numero_serie']:'Desconocido',
+                $conditionLabels[(string)($row['condicion']??'desconocida')]??'Desconocida',(int)$row['tiene_tickets_abiertos']===1?'Sí':'No'
+            ],null,'A'.$line++);
+            $sheet->getStyle('A1:E1')->getFont()->setBold(true);
+            foreach (['A','B','C','D','E'] as $column) $sheet->getColumnDimension($column)->setAutoSize(true);
+            $filename='reporte_terminales_por_estacion_'.date('Y-m-d').'.xlsx';
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename="'.$filename.'"');
+            header('Cache-Control: max-age=0');
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save('php://output');
+            exit;
+        } catch (Throwable $e) { $this->error($e); }
+    }
+
     public function export_dashboard(): void {
         try {
             $this->authorize(); $this->requireMethod('GET');
