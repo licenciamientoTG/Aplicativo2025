@@ -424,6 +424,34 @@ class FuelReceptionInvoiceModel extends Model {
         ];
     }
 
+    /**
+     * Guarda UN solo archivo (PDF en procesadas/, XML en procesadasXml/) con el nombre
+     * derivado del UUID. Para completar un CFDI al que le falta uno de los dos archivos.
+     * @param string $ext 'pdf' | 'xml'
+     * @return array{ruta:string,nombre:string}
+     */
+    public function guardarArchivo(string $carpeta, string $uuid, string $tmpPath, string $ext): array {
+        if ($ext !== 'pdf' && $ext !== 'xml') {
+            throw new Exception('Extensión no soportada: ' . $ext);
+        }
+        $dir = $ext === 'pdf' ? AttachmentsPath::procesadasDir($carpeta) : AttachmentsPath::procesadasXmlDir($carpeta);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+        $nombre = AttachmentsPath::nombreDesdeUuid($uuid, $ext);
+        $ruta = $dir . '\\' . $nombre;
+        AttachmentsPath::guardarSubido($tmpPath, $ruta);
+        return ['ruta' => AttachmentsPath::rutaParaBd($ruta), 'nombre' => $nombre];
+    }
+
+    /** Actualiza solo las columnas del archivo indicado ('pdf' o 'xml'). */
+    public function actualizarArchivo(int $invoiceId, string $ext, array $archivo): void {
+        $query = $ext === 'pdf'
+            ? "UPDATE TG.dbo.FacturasRecibidas SET RutaArchivo = ?, NombreArchivo = ? WHERE Id = ?"
+            : "UPDATE TG.dbo.FacturasRecibidas SET RutaXml = ?, NombreXml = ? WHERE Id = ?";
+        $this->sql->update($query, [$archivo['ruta'], $archivo['nombre'], $invoiceId]);
+    }
+
     public function actualizarArchivos(int $invoiceId, array $rutas): void {
         $query = "
             UPDATE TG.dbo.FacturasRecibidas
