@@ -43,10 +43,46 @@ class InvoiceCreditDebitNotesModel extends Model
                 ), 0) as available_balance,
                 (SELECT COUNT(*)
                     FROM [tg].[dbo].invoice_credit_debit_notes_doc
-                    WHERE credit_note_id = t1.id) as documents_count
+                    WHERE credit_note_id = t1.id) as documents_count,
+                emp.den AS emp_den,
+                CASE WHEN ISNULL(fr.RutaArchivo, '') <> '' THEN 1 ELSE 0 END AS tiene_pdf_fr,
+                CASE WHEN ISNULL(fr.RutaXml, '') <> '' THEN 1 ELSE 0 END AS tiene_xml_fr,
+                pg.pago_id, pg.pago_status,
+                COALESCE(ptx.payment_date, pg.pago_fecha_comment) AS pago_fecha,
+                COALESCE(NULLIF(ptx.payment_reference, ''), pg.pago_ref_comment) AS pago_ref,
+                CASE
+                    WHEN t1.note_type <> 'DEBIT' THEN NULL
+                    WHEN pg.pago_id IS NULL THEN 'DISPONIBLE'
+                    WHEN pg.pago_status = 2 OR pg.pri_status = 2 THEN 'PAGADA'
+                    WHEN pg.pago_status = 1 THEN 'AUTORIZADA'
+                    ELSE 'EN_PAGO'
+                END AS estado_pago
             FROM [tg].[dbo].invoice_credit_debit_notes t1
             LEFT JOIN [TG].[dbo].[Usuario] t2 ON t1.created_by = t2.Id
             LEFT JOIN SG12.dbo.Proveedores t3 on t3.cod = t1.provider_id
+            LEFT JOIN TG.dbo.FacturasRecibidas fr ON fr.Id = t1.factura_recibida_id
+            LEFT JOIN SG12.dbo.Empresas emp ON emp.cod = t1.emp_cod
+            OUTER APPLY (
+                SELECT TOP 1 pr.id AS pago_id, pr.status AS pago_status, pri.status AS pri_status,
+                       pr.comment AS pago_comment,
+                       TRY_CONVERT(DATETIME, SUBSTRING(pr.comment, NULLIF(PATINDEX('%Pago registrado el [0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]%', pr.comment), 0) + 18, 10), 103) AS pago_fecha_comment,
+                       CASE WHEN CHARINDEX('Ref: ', pr.comment) > 0
+                            THEN LTRIM(RTRIM(SUBSTRING(pr.comment, CHARINDEX('Ref: ', pr.comment) + 5, 100))) END AS pago_ref_comment
+                FROM TG.dbo.payment_request_invoices pri
+                JOIN TG.dbo.payment_requests pr ON pr.id = pri.payment_request_id
+                WHERE t1.note_type = 'DEBIT'
+                  AND pri.is_debit_note = 1 AND pri.is_deleted = 0 AND pr.is_deleted = 0
+                  AND ((t1.uuid IS NOT NULL AND pri.uuid COLLATE DATABASE_DEFAULT = t1.uuid COLLATE DATABASE_DEFAULT)
+                       OR (pri.folio COLLATE DATABASE_DEFAULT = t1.note_number COLLATE DATABASE_DEFAULT
+                           AND pr.provider_cod = t1.provider_id))
+                ORDER BY CASE WHEN pr.status = 2 OR pri.status = 2 THEN 0 ELSE 1 END, pr.id DESC
+            ) pg
+            OUTER APPLY (
+                SELECT TOP 1 x.payment_date, x.payment_reference
+                FROM TG.dbo.payment_transactions x
+                WHERE x.payment_request_id = pg.pago_id AND x.status IN (1, 2)
+                ORDER BY x.payment_date DESC, x.id DESC
+            ) ptx
                 $where
             ORDER BY t1.created_at DESC";
         return $this->sql->select($query, $params);

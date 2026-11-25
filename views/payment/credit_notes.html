@@ -122,6 +122,7 @@
                         <th>Asignado a</th>
                         <th>Saldo Disponible</th>
                         <th>Descripción</th>
+                        <th>Pago</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
@@ -463,7 +464,8 @@ function initNotesTable() {
             { targets: [1, 4], className: 'text-center' },
             { targets: [5, 6, 8], className: 'text-end' },
             { targets: [7], orderable: false },
-            { targets: [10], orderable: false, searchable: false }
+            { targets: [10], className: 'text-center' },
+            { targets: [11], orderable: false, searchable: false }
         ],
         ajax: {
             url: '/payment/getAllProviderNotes',
@@ -520,11 +522,31 @@ function initNotesTable() {
                 return '<span class="' + cls + '">$' + b.toLocaleString('es-MX', {minimumFractionDigits:2}) + '</span>';
             }},
             { data: 'description', defaultContent: '' },
+            { data: 'estado_pago', defaultContent: '', render: function(d, type, row) {
+                if (!d) return '';
+                var etiquetas = { DISPONIBLE: 'Disponible', EN_PAGO: 'En pago', AUTORIZADA: 'Autorizada', PAGADA: 'Pagada' };
+                var colores = {
+                    DISPONIBLE: 'background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;',
+                    EN_PAGO: 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;',
+                    AUTORIZADA: 'background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;',
+                    PAGADA: 'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;'
+                };
+                var txt = (etiquetas[d] || d) + (row.pago_id ? ' #' + row.pago_id : '');
+                if (type !== 'display') return txt + (row.pago_ref ? ' ' + row.pago_ref : '');
+                var tip = [];
+                if (row.pago_fecha) tip.push('Fecha: ' + String(row.pago_fecha).substring(0, 10));
+                if (row.pago_ref) tip.push('Ref: ' + row.pago_ref);
+                var badge = '<span class="badge" style="' + (colores[d] || '') + '" title="' + escNota(tip.join(' | ')) + '">' + escNota(etiquetas[d] || d) + '</span>';
+                if (!row.pago_id) return badge;
+                return badge + ' <a href="/payment/payment_detail/' + parseInt(row.pago_id) + '" target="_blank" class="small text-primary text-decoration-none" title="' + escNota(tip.join(' | ')) + '">#' + parseInt(row.pago_id) + '</a>';
+            }},
             { data: null, render: function(d) {
                 var docCount = parseInt(d.documents_count) || 0;
                 var s = 'font-size:.8rem;padding:.3rem .5rem;border:none;border-radius:5px;';
                 // Ver PDFs — cualquiera puede usarlo
-                var docsBtn = docCount > 0
+                var docsBtn = (d.factura_recibida_id && parseInt(d.tiene_pdf_fr))
+                    ? '<a href="/payment/invoiceFile?FacturaId=' + parseInt(d.factura_recibida_id) + '" target="_blank" class="btn btn-sm" style="' + s + 'color:#0891b2;background:#ecfeff;" title="Ver PDF de la factura recibida"><i class="fas fa-file-pdf" style="font-size:.8rem;"></i></a>'
+                    : docCount > 0
                     ? '<button class="btn btn-sm view-note-docs-btn" data-note-id="' + d.id + '" style="' + s + 'color:#0891b2;background:#ecfeff;" title="Ver ' + docCount + ' documento(s)">'
                       + '<i class="fas fa-file-pdf" style="font-size:.8rem;"></i>'
                       + (docCount > 0 ? ' <span style="font-size:.72rem;">'+docCount+'</span>' : '')
