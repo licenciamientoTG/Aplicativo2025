@@ -121,9 +121,15 @@
 #urovoInventory .urovo-dashboard-table tbody th { color:#294756; font-weight:650; }
 #urovoInventory .urovo-dashboard-table tbody td, #urovoInventory .urovo-dashboard-table tfoot td { font-variant-numeric:tabular-nums; }
 #urovoInventory .urovo-dashboard-mojo-column { min-width:150px; }
+#urovoInventory .urovo-station-report-table { min-width:820px; }
+#urovoInventory .urovo-station-report-table thead th { text-align:center!important; }
+#urovoInventory .urovo-station-report-table tbody.urovo-station-report-group + tbody.urovo-station-report-group tr:first-child > * { border-top:3px solid #a9bfc1!important; }
+#urovoInventory .urovo-station-report-table tbody th.urovo-station-report-station { min-width:150px; border-right:1px solid var(--urovo-line); background:#f1f6f6; text-align:left!important; vertical-align:top!important; }
 #urovoInventory .urovo-open-ticket-flag { display:inline-block; min-width:2.5rem; padding:.2rem .5rem; border-radius:999px; font-weight:700; text-align:center; }
 #urovoInventory .urovo-open-ticket-flag.is-open { background:#fff0d7; color:#83530b; }
 #urovoInventory .urovo-open-ticket-flag.is-clear { background:#e5f4e9; color:#28643d; }
+#urovoInventory .urovo-open-ticket-link { display:inline-block; text-decoration:none; }
+#urovoInventory .urovo-open-ticket-link:focus-visible { border-radius:999px; outline:2px solid #2675a5; outline-offset:2px; }
 #urovoInventory .urovo-dashboard-table .is-low { background:#fdeceb; color:#982f2a; font-weight:750; }
 #urovoInventory .urovo-dashboard-risk { display:block; margin-top:.12rem; color:#8b302b; font-size:.72rem; font-weight:650; white-space:nowrap; }
 #urovoInventory .urovo-dashboard-table .is-short { color:#9a4039; font-weight:750; }

@@ -68,10 +68,16 @@ class inventario_urovo {
             $sheet->fromArray(['Estación','Tipo de terminal','Número de serie','Condición','Tickets abiertos'],null,'A1');
             $line=2;
             $conditionLabels=['operativa'=>'Operativa','dañada'=>'Dañada','desconocida'=>'Desconocida','extraviada'=>'Extraviada'];
-            foreach ($rows as $row) $sheet->fromArray([
-                (string)$row['station_name'],(string)$row['tipo_terminal'],trim((string)($row['numero_serie']??''))!==''?(string)$row['numero_serie']:'Desconocido',
-                $conditionLabels[(string)($row['condicion']??'desconocida')]??'Desconocida',(int)$row['tiene_tickets_abiertos']===1?'Sí':'No'
-            ],null,'A'.$line++);
+            foreach ($rows as $row) {
+                $serial=trim((string)($row['numero_serie']??''));
+                $sheet->fromArray([
+                    (string)$row['station_name'],(string)$row['tipo_terminal'],null,
+                    $conditionLabels[(string)($row['condicion']??'desconocida')]??'Desconocida',(int)$row['tiene_tickets_abiertos']===1?'Sí':'No'
+                ],null,'A'.$line);
+                $sheet->setCellValueExplicit('C'.$line,$serial!==''?$serial:'Desconocido',\PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $line++;
+            }
+            $sheet->getStyle('C2:C'.max(2,$line-1))->getNumberFormat()->setFormatCode('@');
             $sheet->getStyle('A1:E1')->getFont()->setBold(true);
             foreach (['A','B','C','D','E'] as $column) $sheet->getColumnDimension($column)->setAutoSize(true);
             $filename='reporte_terminales_por_estacion_'.date('Y-m-d').'.xlsx';
