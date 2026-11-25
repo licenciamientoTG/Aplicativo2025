@@ -267,6 +267,50 @@ class InvoiceCreditDebitNotesModel extends Model
     }
 
     /**
+     * Rechazos que no dependen de que el CFDI ya esté en FacturasRecibidas: ya está en una
+     * solicitud de pago, proveedor desconocido o nota capturada a mano (mismo proveedor,
+     * folio numérico y monto). Devuelve el mensaje de rechazo o null si se puede crear.
+     */
+    public function rechazoPrevio(string $uuid, string $emisorRfc, string $folio, float $total) : ?string {
+        $enPago = $this->sql->select("
+            SELECT TOP 1 id FROM TG.dbo.payment_request_invoices
+            WHERE is_deleted = 0
+              AND uuid COLLATE DATABASE_DEFAULT = ? COLLATE DATABASE_DEFAULT", [$uuid]);
+        if (!empty($enPago)) {
+            return 'El CFDI ya está en una solicitud de pago';
+        }
+
+        $prov = $this->getProviderByRfc($emisorRfc);
+        if (!$prov) {
+            return 'Proveedor no encontrado para RFC ' . $emisorRfc;
+        }
+
+        // Nota capturada a mano (sin uuid): mismo proveedor, folio numérico y monto
+        $legacy = $this->sql->select("
+            SELECT TOP 1 n.id, n.note_number
+            FROM TG.dbo.invoice_credit_debit_notes n
+            WHERE n.status = 1 AND n.uuid IS NULL AND n.provider_id = ?
+              AND TRY_CAST(SUBSTRING(n.note_number, PATINDEX('%[0-9]%', n.note_number), 50) AS BIGINT) = TRY_CAST(? AS BIGINT)
+              AND ABS(n.amount - ?) < 0.01
+            ORDER BY n.id", [(int)$prov['cod'], $folio, $total]);
+        if (!empty($legacy)) {
+            return 'Ya existe una nota capturada para este CFDI (#' . $legacy[0]['id'] . ' ' . $legacy[0]['note_number'] . ')';
+        }
+        return null;
+    }
+
+    /** Descripciones y claves de los conceptos de una factura recibida (arreglos paralelos). */
+    public function conceptosFactura(int $frId) : array {
+        $cs = $this->sql->select("
+            SELECT Descripcion, ClaveProdServ FROM TG.dbo.FacturasRecibidasConceptos
+            WHERE FacturaId = ? ORDER BY Id", [$frId]) ?: [];
+        return [
+            array_map(fn($c) => (string)$c['Descripcion'], $cs),
+            array_map(fn($c) => (string)$c['ClaveProdServ'], $cs),
+        ];
+    }
+
+    /**
      * Crea una nota en el catálogo a partir de un CFDI de FacturasRecibidas.
      * Relee el CFDI de la BD (no confía en el cliente).
      * @return array{success:bool, note_id:?int, message:string}
@@ -304,30 +348,11 @@ class InvoiceCreditDebitNotesModel extends Model
             return $fail('Ya existe una nota con ese UUID');
         }
 
-        $enPago = $this->sql->select("
-            SELECT TOP 1 id FROM TG.dbo.payment_request_invoices
-            WHERE is_deleted = 0
-              AND uuid COLLATE DATABASE_DEFAULT = ? COLLATE DATABASE_DEFAULT", [$fr['UUID']]);
-        if (!empty($enPago)) {
-            return $fail('El CFDI ya está en una solicitud de pago');
+        $rechazo = $this->rechazoPrevio((string)$fr['UUID'], (string)$fr['EmisorRfc'], (string)$fr['Folio'], (float)$fr['Total']);
+        if ($rechazo !== null) {
+            return $fail($rechazo);
         }
-
         $prov = $this->getProviderByRfc($fr['EmisorRfc']);
-        if (!$prov) {
-            return $fail('Proveedor no encontrado para RFC ' . $fr['EmisorRfc']);
-        }
-
-        // Nota capturada a mano (sin uuid): mismo proveedor, folio numérico y monto
-        $legacy = $this->sql->select("
-            SELECT TOP 1 n.id, n.note_number
-            FROM TG.dbo.invoice_credit_debit_notes n
-            WHERE n.status = 1 AND n.uuid IS NULL AND n.provider_id = ?
-              AND TRY_CAST(SUBSTRING(n.note_number, PATINDEX('%[0-9]%', n.note_number), 50) AS BIGINT) = TRY_CAST(? AS BIGINT)
-              AND ABS(n.amount - ?) < 0.01
-            ORDER BY n.id", [(int)$prov['cod'], (string)$fr['Folio'], (float)$fr['Total']]);
-        if (!empty($legacy)) {
-            return $fail('Ya existe una nota capturada para este CFDI (#' . $legacy[0]['id'] . ' ' . $legacy[0]['note_number'] . ')');
-        }
         $emp = $this->sql->select("SELECT TOP 1 cod FROM SG12.dbo.Empresas WHERE rfc = ? ORDER BY cod", [$fr['ReceptorRfc']]);
         $empCod = !empty($emp) ? (int)$emp[0]['cod'] : null;
         $codgas = is_numeric($fr['EstacionCodgas']) ? (int)$fr['EstacionCodgas'] : null;

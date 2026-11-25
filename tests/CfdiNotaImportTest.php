@@ -55,4 +55,16 @@ $g2 = CfdiNotaImport::emparejarArchivos([
 ]);
 check('sin distinguir mayúsculas y con error ignorado', count($g2) === 1 && $g2[0]['xml'] === '/t/1' && $g2[0]['pdf'] === '/t/2');
 
+require __DIR__ . '/../_assets/classes/NotaCfdi.class.php';
+check('pdf flete: servicio asociado', CfdiNotaImport::pdfCoincideConClase("Descripción
+SERVICIO
+Asociado   a flete", 'FALSO_FLETE'));
+check('pdf flete: clave 80141629', CfdiNotaImport::pdfCoincideConClase('80141629 Cargo', 'FALSO_FLETE'));
+check('pdf flete con combustible -> no', !CfdiNotaImport::pdfCoincideConClase('Servicio asociado PEMEX Magna 15101514', 'FALSO_FLETE'));
+check('pdf flete con diesel -> no', !CfdiNotaImport::pdfCoincideConClase('80141629 diesel', 'FALSO_FLETE'));
+check('pdf flete sin nada -> no', !CfdiNotaImport::pdfCoincideConClase('Gasolina regular 15101515', 'FALSO_FLETE'));
+check('pdf moratorios ok', CfdiNotaImport::pdfCoincideConClase('Intereses  Moratorios 2705', 'MORATORIOS'));
+check('pdf moratorios no', !CfdiNotaImport::pdfCoincideConClase('Servicio asociado', 'MORATORIOS'));
+check('pdf clase inválida -> no', !CfdiNotaImport::pdfCoincideConClase('Servicio asociado', 'NOTA_CREDITO'));
+
 finish();

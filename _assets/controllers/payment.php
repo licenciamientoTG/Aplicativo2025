@@ -5754,6 +5754,11 @@ class Payment
                     // 1) Leer el CFDI: XML si viene, si no el PDF
                     $conceptos = [];
                     $soloPdf = $g['xml'] === null;
+                    $d = null;
+                    $textoPdf = null;
+                    if ($g['pdf'] !== null) {
+                        $d = NotaCreditoPdfParser::parse($g['pdf'], $g['pdf_name']);
+                    }
                     if (!$soloPdf) {
                         try {
                             $parseado = $frModel->parseCfdiXml($g['xml']);
@@ -5764,8 +5769,11 @@ class Payment
                         }
                         $factura = $parseado['factura'];
                         $conceptos = $parseado['conceptos'];
+                        if ($d !== null && !empty($d['raw_ok']) && strtoupper((string)$d['uuid']) !== strtoupper((string)$factura['UUID'])) {
+                            $falla('El PDF y el XML no son el mismo CFDI');
+                            continue;
+                        }
                     } else {
-                        $d = NotaCreditoPdfParser::parse($g['pdf'], $g['pdf_name']);
                         $factura = CfdiNotaImport::filaDesdePdf($d);
                         if ($factura === null || strtoupper((string)$factura['EmisorRfc']) !== NotaCfdi::RFC_MCG) {
                             $falla('Sube el XML de esta nota' . (($d['error'] ?? '') !== '' && $factura === null ? ' (' . $d['error'] . ')' : ''));
@@ -5781,52 +5789,57 @@ class Payment
                         continue;
                     }
 
-                    // 2) Validaciones antes de tocar FacturasRecibidas
-                    if ($this->InvoiceCreditDebitNotesModel->existsUuid($uuid)) {
-                        $falla('Ya existe una nota con ese UUID');
-                        continue;
-                    }
-                    if (!$this->InvoiceCreditDebitNotesModel->getProviderByRfc((string)$factura['EmisorRfc'])) {
-                        $falla('Proveedor no encontrado para RFC ' . $factura['EmisorRfc']);
-                        continue;
-                    }
                     $existente = $frModel->buscarPorUuid($uuid);
+                    $tipo = strtoupper(trim((string)($existente['TipoDeComprobante'] ?? $factura['TipoDeComprobante'])));
 
-                    // Clase: con conceptos (XML) se clasifica solo; con solo PDF el tipo E es
-                    // nota de crédito y el tipo I usa la clase que eligió el usuario.
+                    // 2) Clasificar ANTES de insertar o adjuntar nada. Conceptos: los del XML o,
+                    // si el CFDI ya existe, los de la BD.
+                    $desc = array_map(fn($c) => (string)$c['Descripcion'], $conceptos);
+                    $claves = array_map(fn($c) => (string)$c['ClaveProdServ'], $conceptos);
+                    if ($existente && count($desc) === 0) {
+                        [$desc, $claves] = $this->InvoiceCreditDebitNotesModel->conceptosFactura((int)$existente['Id']);
+                    }
                     $claseForzada = null;
-                    if (!$existente) {
-                        $tipo = strtoupper(trim((string)$factura['TipoDeComprobante']));
-                        if ($soloPdf && $tipo === 'I') {
-                            if ($claseElegida === null) {
-                                $falla('Elige qué es el PDF (falso flete o moratorios)');
-                                continue;
-                            }
-                            $claseForzada = $claseElegida;
-                        } elseif (NotaCfdi::clasificar(
-                            $tipo,
-                            array_map(fn($c) => (string)$c['Descripcion'], $conceptos),
-                            array_map(fn($c) => (string)$c['ClaveProdServ'], $conceptos)
-                        ) === null) {
-                            $falla('Este CFDI no es nota de crédito ni de cargo');
+                    $clase = NotaCfdi::clasificar($tipo, $desc, $claves);
+                    if ($clase === null && $soloPdf && $tipo === 'I' && count($desc) === 0) {
+                        // Solo PDF de cargo, sin conceptos: la clase la elige el usuario, pero el
+                        // texto del PDF debe coincidir (el parser lee cualquier CFDI de MGC).
+                        if ($claseElegida === null) {
+                            $falla('Elige qué es el PDF (falso flete o moratorios)');
+                            continue;
+                        }
+                        $textoPdf = NotaCreditoPdfParser::texto($g['pdf']);
+                        if ($textoPdf === null || !CfdiNotaImport::pdfCoincideConClase($textoPdf, $claseElegida)) {
+                            $falla('Sube el XML de esta nota');
+                            continue;
+                        }
+                        $claseForzada = $clase = $claseElegida;
+                    }
+                    if ($clase === null) {
+                        $falla('Este CFDI no es nota de crédito ni de cargo');
+                        continue;
+                    }
+
+                    // 3) Rechazos previos (pago, proveedor, nota legacy) antes de insertar
+                    $yaHayNota = $this->InvoiceCreditDebitNotesModel->existsUuid($uuid);
+                    if (!$yaHayNota) {
+                        $rechazo = $this->InvoiceCreditDebitNotesModel->rechazoPrevio(
+                            $uuid, (string)$factura['EmisorRfc'], (string)$factura['Folio'], (float)$factura['Total']
+                        );
+                        if ($rechazo !== null) {
+                            $falla($rechazo);
                             continue;
                         }
                     }
 
-                    // 3) Alta del CFDI o archivos faltantes
+                    // 4) Alta del CFDI y/o archivos faltantes (solo columnas vacías; nunca se pisa una ruta)
                     $carpeta = NotaCfdi::carpetaPorRfc((string)$factura['EmisorRfc']);
                     try {
-                        if ($existente) {
-                            $frId = (int)$existente['Id'];
-                        } else {
-                            $frId = $frModel->insertarFactura($factura, $conceptos);
-                        }
-                        $faltaPdf = !$existente || !$existente['RutaArchivo'] || AttachmentsPath::resolver((string)$existente['RutaArchivo']) === null;
-                        $faltaXml = !$existente || empty($existente['RutaXml']) || AttachmentsPath::resolver((string)$existente['RutaXml']) === null;
-                        if ($g['pdf'] !== null && $faltaPdf) {
+                        $frId = $existente ? (int)$existente['Id'] : $frModel->insertarFactura($factura, $conceptos);
+                        if ($g['pdf'] !== null && (!$existente || empty($existente['RutaArchivo']))) {
                             $frModel->actualizarArchivo($frId, 'pdf', $frModel->guardarArchivo($carpeta, $uuid, $g['pdf'], 'pdf'));
                         }
-                        if ($g['xml'] !== null && $faltaXml) {
+                        if ($g['xml'] !== null && (!$existente || empty($existente['RutaXml']))) {
                             $frModel->actualizarArchivo($frId, 'xml', $frModel->guardarArchivo($carpeta, $uuid, $g['xml'], 'xml'));
                         }
                     } catch (Exception $e) {
@@ -5835,7 +5848,12 @@ class Payment
                         continue;
                     }
 
-                    // 4) Nota del catálogo
+                    if ($yaHayNota) {
+                        $falla('Ya existe una nota con ese UUID');
+                        continue;
+                    }
+
+                    // 5) Nota del catálogo
                     $r = $this->InvoiceCreditDebitNotesModel->crearDesdeFactura($frId, $userId, 'importada', $claseForzada);
                     if (!empty($r['success'])) {
                         $creadas++;

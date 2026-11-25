@@ -73,4 +73,25 @@ class CfdiNotaImport
         }
         return array_values($grupos);
     }
+
+    /**
+     * Un PDF sin XML (tipo I) solo se acepta si su texto es coherente con la clase elegida:
+     * FALSO_FLETE = "servicio asociado" o clave 80141629 y sin combustible;
+     * MORATORIOS = "intereses moratorios".
+     */
+    public static function pdfCoincideConClase(string $texto, string $clase): bool
+    {
+        $t = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $texto) ?? $texto), 'UTF-8');
+        $t = strtr($t, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n']);
+        if ($clase === NotaCfdi::MORATORIOS) {
+            return strpos($t, 'intereses moratorios') !== false;
+        }
+        if ($clase === NotaCfdi::FALSO_FLETE) {
+            if (strpos($t, 'servicio asociado') === false && strpos($t, NotaCfdi::CLAVE_SERVICIO_ASOCIADO) === false) {
+                return false;
+            }
+            return !preg_match('/\b(pemex|magna|premium|diesel)\b/', $t);
+        }
+        return false;
+    }
 }

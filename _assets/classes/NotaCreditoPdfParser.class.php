@@ -102,6 +102,12 @@ class NotaCreditoPdfParser
         return $base;
     }
 
+    /** Texto plano del PDF (pdftotext) o null si no se pudo leer. */
+    public static function texto(string $rutaPdf): ?string
+    {
+        return self::extraerTexto($rutaPdf);
+    }
+
     /**
      * Ejecuta el pdftotext empaquetado por ruta absoluta. Devuelve el texto o null.
      */
