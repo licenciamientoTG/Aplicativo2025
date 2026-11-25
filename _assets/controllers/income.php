@@ -2755,10 +2755,21 @@ function invoice_client_desp(){
             echo $this->twig->render($this->route . 'invoice_unstamped.html', compact('stations'));
         }
     }
+    /** Días máximos que se pueden consultar con "Todas las estaciones" (la consulta no pagina). */
+    const INVOICED_DISPATCHED_MAX_DAYS_ALL = 31;
+
     function invoiced_dispatched(){
         $stations = $this->gasolinerasModel->get_active_stations();
         if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'invoiced_dispatched.html', compact('stations'));
+            // Filtros opcionales por query string (?from=&until=&codgas=&uuid=) para
+            // que el enlace de una búsqueda se pueda compartir o recargar.
+            $isDate = fn($v) => is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) && strtotime($v) !== false;
+            $from   = $isDate($_GET['from'] ?? null) ? $_GET['from'] : false;
+            $until  = $isDate($_GET['until'] ?? null) ? $_GET['until'] : false;
+            $codgas = isset($_GET['codgas']) && ctype_digit((string) $_GET['codgas']) ? (int) $_GET['codgas'] : false;
+            $uuid   = in_array($_GET['uuid'] ?? '', ['0', '1', '2'], true) ? (int) $_GET['uuid'] : 0;
+            $max_days_all = self::INVOICED_DISPATCHED_MAX_DAYS_ALL;
+            echo $this->twig->render($this->route . 'invoiced_dispatched.html', compact('stations', 'from', 'until', 'codgas', 'uuid', 'max_days_all'));
         }
     }
     function overall_invoice(){
@@ -4089,14 +4100,38 @@ public function anomalies_client_tickets()
     }
 
 
+    /**
+     * Datos de views/income/invoiced_dispatched.html. Siempre filtra a despachos
+     * facturados (billed = 2); uuid: 0 = todos, 1 = sin timbrar, 2 = timbrados.
+     */
     function datatables_dispatches_invoiced() : void {
         $data = [];
-        $codgas = $_POST['codgas'];
-        $billed = $_POST['billed'];
-        $tipo_cliente=0;
+        $from   = (string) ($_POST['from'] ?? '');
+        $until  = (string) ($_POST['until'] ?? '');
+        $codgas = (int) ($_POST['codgas'] ?? 0);
+        $uuid   = in_array((string) ($_POST['uuid'] ?? '0'), ['0', '1', '2'], true) ? (int) $_POST['uuid'] : 0;
+        $billed = 2;
+        $tipo_cliente = 0;
 
+        $isDate = fn($v) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) && strtotime($v) !== false;
+        if (!$isDate($from) || !$isDate($until)) {
+            http_response_code(400);
+            json_output(['error' => 'Las fechas no son válidas.']);
+            return;
+        }
+        if ($from > $until) {
+            http_response_code(400);
+            json_output(['error' => 'La fecha de inicio no puede ser posterior a la fecha final.']);
+            return;
+        }
+        $days = (int) (new DateTime($from))->diff(new DateTime($until))->days + 1;
+        if ($codgas === 0 && $days > self::INVOICED_DISPATCHED_MAX_DAYS_ALL) {
+            http_response_code(400);
+            json_output(['error' => 'Con todas las estaciones el rango máximo es de ' . self::INVOICED_DISPATCHED_MAX_DAYS_ALL . ' días. Elija una estación o acorte el rango.']);
+            return;
+        }
 
-        if ($dispatches = $this->despachosModel->control_dispatches_invoiced(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
+        if ($dispatches = $this->despachosModel->control_dispatches_invoiced(dateToInt($from), dateToInt($until), $codgas, $uuid, $tipo_cliente, $billed)) {
 
             foreach ($dispatches as $dispatch) {
                 $data[] = array(
@@ -4115,7 +4150,7 @@ public function anomalies_client_tickets()
                     'UUID_sat'                => $dispatch['UUID_sat'],
                     'FechaTimbrado'           => $dispatch['FechaTimbrado'],
                     'factura'                 => $dispatch['factura']??$dispatch['factura_desp'],
-                    'UUID'                    => $dispatch['UUID']??".",
+                    'UUID'                    => $dispatch['UUID'] ?? '',
                     'rut'                     => $dispatch['rut'],
                     'txtref'                  => $dispatch['txtref'],
                     'denominacion'            => $dispatch['denominacion'],

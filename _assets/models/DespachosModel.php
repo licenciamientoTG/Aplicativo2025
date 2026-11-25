@@ -1246,7 +1246,8 @@ class DespachosModel extends Model
                         ) t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas
                         LEFT JOIN [SG12].[dbo].Valores t13 ON t12.codbco = t13.cod
                         LEFT JOIN [SG12].[dbo].[EfectosC] t14 ON t3.tip = t14.tipope AND t3.subope = t14.subope
-                        LEFT JOIN TGV2.dbo.Facturas t15 ON t1.satuid = t15.UUID
+                        -- El timbre puede estar en el despacho o en la factura (DocumentosC).
+                        LEFT JOIN TGV2.dbo.Facturas t15 ON t15.UUID = COALESCE(t1.satuid, t3.satuid)
                     WHERE
                         t1.mto != 0 AND
                         t1.tiptrn NOT IN (65, 74) AND
