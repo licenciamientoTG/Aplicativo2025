@@ -3,7 +3,7 @@
   $(function () {
     var $root = $('#urovoInventory');
     if (!$root.length) return;
-    var stations = [], rows = [], currentTerminal = null, searchTimer, currentPage = 1, pageSize = 10, returnToSummary = false, dashboardLoading=false, modalReturnFocus=null, supportsPopover='popover' in HTMLElement.prototype;
+    var stations = [], rows = [], currentTerminal = null, searchTimer, currentPage = 1, pageSize = 10, returnToSummary = false, dashboardLoading=false, modalReturnFocus=null, supportsPopover='popover' in HTMLElement.prototype, dashboardSort={type:'urovo',key:'station_name',direction:1};
     var labels = { estacion: 'En estación', almacen: 'Stock', reparacion: 'Reparación', perdida: 'Extraviado', baja_definitiva: 'Baja definitiva' };
     var conditionLabels = { operativa: 'Operativa', dañada: 'Dañada', desconocida: 'Desconocida', extraviada: 'Extraviada' };
     var damageTypes = [['pantalla_quebrada','Pantalla quebrada'],['pantalla_negra','Pantalla Negra'],['carcasa_exterior','Carcasa Exterior'],['puerto_carga_punta','Puerto de Carga (Punta)'],['usb_danado','USB dañado'],['falta_bateria','Falta batería'],['touch','Touch'],['modo_seguro','Modo Seguro'],['impresora','Impresora'],['tapa_impresora','Tapa de impresora'],['boton_encendido','Botón de encendido'],['tapa_bateria','Tapa de batería'],['lector_tarjetas','Lector de Tarjetas'],['otro','Otro']];
@@ -156,6 +156,7 @@
     $('#urovoSummaryOpen').on('click', function () { showModal('urovoSummaryModal'); loadSummary(); });
     $('#dashboardTab').on('shown.bs.tab',function(){ $('#inventoryPanel').prop('hidden',true).attr('tabindex','-1'); $('#dashboardPanel').prop('hidden',false).attr('tabindex','0'); loadDashboard(); });
     $('#inventoryTab').on('shown.bs.tab',function(){ $('#dashboardPanel').prop('hidden',true).attr('tabindex','-1'); $('#inventoryPanel').prop('hidden',false).attr('tabindex','0'); });
+    $('#urovoDashboardRows').closest('table').on('click keydown','.js-dashboard-sort',function(event){if(event.type==='keydown'&&event.key!=='Enter'&&event.key!==' ')return;if(event.type==='keydown')event.preventDefault();var header=$(this),type=header.data('type'),key=header.data('key');dashboardSort.direction=dashboardSort.type===type&&dashboardSort.key===key?-dashboardSort.direction:1;dashboardSort.type=type;dashboardSort.key=key;header.closest('tr').find('.js-dashboard-sort').attr('aria-sort','none');header.attr('aria-sort',dashboardSort.direction===1?'ascending':'descending');if(window.urovoDashboardData)renderDashboard(window.urovoDashboardData);});
     $('#urovoDashboardRefresh').on('click',loadDashboard); $('#urovoDashboardType').on('change',applyDashboardTypeFilter); $('#urovoDashboardExport').on('click',function(){window.location.href='/inventario-urovo/dashboard/export/?'+$.param({terminal_type:$('#urovoDashboardType').val()||'all'});}); applyDashboardTypeFilter();
     $('#urovoSummaryRows').on('click', '.urovo-summary-toggle', function () {
       var $button = $(this), $detail = $('#' + $button.attr('aria-controls'));
@@ -175,7 +176,8 @@
       request('/inventario-urovo/data/?' + params, 'GET').done(function (data) { if (!data || data.success !== true) { message('No fue posible cargar el inventario.', 'error'); return; } stations = data.stations || []; rows = data.rows || []; fillStations(); $('#urovoStation').val(stationId); renderRows(); $('#urovoResultCount').text(rows.length + (rows.length === 1 ? ' terminal' : ' terminales')); }).fail(function () { $('#urovoRows').html('<tr><td colspan="6" class="urovo-empty">No se pudo cargar el inventario. Actualiza para intentar de nuevo.</td></tr>'); message('Error al consultar el inventario.', 'error'); });
     }
     function renderDashboard(data) {
-      var entries=data.rows||[];
+      window.urovoDashboardData=data;
+      var entries=(data.rows||[]).slice().sort(function(a,b){var left,right;if(dashboardSort.key==='station_name'){left=String(a.station_name||'');right=String(b.station_name||'');return dashboardSort.direction*left.localeCompare(right,'es');}left=Number((a[dashboardSort.type]||{})[dashboardSort.key])||0;right=Number((b[dashboardSort.type]||{})[dashboardSort.key])||0;return dashboardSort.direction*(left-right)||String(a.station_name||'').localeCompare(String(b.station_name||''),'es');});
       var totals=data.totals||{}, urovo=totals.urovo||{}, verifone=totals.verifone||{};
       function cells(type,row){var item=row[type]||{},objective=Number(item.objetivo)||0,functioning=Number(item.funcionando)||0,difference=Number(item.diferencia)||0,low=objective>0&&functioning*2<=objective;return '<td class="text-right '+type+'-column">'+esc(objective)+'</td><td class="text-right '+type+'-column'+(low?' is-low':'')+'"><span>'+esc(functioning)+'</span>'+(low?'<small class="urovo-dashboard-risk"><i class="fas fa-exclamation-circle" aria-hidden="true"></i> Bajo el mínimo</small>':'')+'</td><td class="text-right '+type+'-column '+(difference<0?'is-short':(difference>0?'is-surplus':''))+'">'+(difference>0?'+':'')+esc(difference)+'</td>';}
       $('#urovoDashboardRows').html(entries.length?entries.map(function(row){return '<tr><th scope="row">'+esc(row.station_name)+'</th>'+cells('urovo',row)+cells('verifone',row)+'</tr>';}).join(''):'<tr><td colspan="7" class="urovo-empty">No hay objetivos para mostrar.</td></tr>');
