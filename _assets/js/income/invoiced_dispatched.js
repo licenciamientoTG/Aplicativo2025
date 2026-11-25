@@ -22,6 +22,24 @@
     var fmtMoney = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
 
     var text = $.fn.dataTable.render.text();
+    var moneyFmt = $.fn.dataTable.render.number(',', '.', 2, '$');
+
+    // Sin partida de factura no hay impuestos: celda vacía, no $0.00.
+    function money(d, type, row, meta) {
+        if (d === null || d === undefined || d === '') { return type === 'display' ? '' : null; }
+        // Ordenar y filtrar con el número crudo; solo la vista lleva formato.
+        return type === 'display' ? moneyFmt.display(d) : parseFloat(d);
+    }
+
+    // El IVA muestra la tasa aplicada como ayuda (8% frontera / 16%).
+    function iva(d, type, row, meta) {
+        var out = money(d, type, row, meta);
+        if (type === 'display' && out && row.tasa_iva !== null && row.tasa_iva !== undefined) {
+            var pct = Math.round(parseFloat(row.tasa_iva) * 100);
+            return '<span title="Tasa ' + pct + '%">' + out + '</span>';
+        }
+        return out;
+    }
 
     function params() {
         return {
@@ -77,15 +95,19 @@
     function updateSummary(api) {
         if (!loaded) { return; }
         var rows = api.rows({ search: 'applied' }).data().toArray();
-        var qty = 0, amount = 0, unstamped = 0;
+        var sums = { cantidad: 0, subtotal: 0, ieps: 0, iva: 0, importe: 0 };
+        var unstamped = 0;
         rows.forEach(function (r) {
-            qty += parseFloat(r.cantidad) || 0;
-            amount += parseFloat(r.importe) || 0;
-            if (!r.UUID_sat) { unstamped++; }
+            Object.keys(sums).forEach(function (k) { sums[k] += parseFloat(r[k]) || 0; });
+            if (!r.UUID) { unstamped++; }  // sin UUID = no timbrado
         });
+        var qty = sums.cantidad, amount = sums.importe;
 
-        $('#idp_total_cantidad').text(fmtQty.format(qty));
-        $('#idp_total_importe').text(fmtMoney.format(amount));
+        // Pie de la tabla: cada celda con data-sum muestra el total de su campo.
+        $table.find('tfoot th[data-sum]').each(function () {
+            var key = $(this).data('sum');
+            $(this).text(key === 'cantidad' ? fmtQty.format(sums[key]) : fmtMoney.format(sums[key]));
+        });
 
         var p = lastParams;
         var html =
@@ -93,7 +115,7 @@
             '<span><strong>' + fmtInt.format(rows.length) + '</strong> despachos</span>' +
             '<span><strong>' + fmtQty.format(qty) + '</strong> L</span>' +
             '<span><strong>' + fmtMoney.format(amount) + '</strong></span>' +
-            (unstamped ? '<span class="idp-warn"><strong>' + fmtInt.format(unstamped) + '</strong> sin timbre SAT</span>' : '');
+            (unstamped ? '<span class="idp-warn"><strong>' + fmtInt.format(unstamped) + '</strong> sin timbrar</span>' : '');
         $('#idp_summary').html(html).prop('hidden', false);
         $('#idp_legend').prop('hidden', unstamped === 0);
     }
@@ -153,11 +175,16 @@
                 { data: 'estacion', render: text },
                 { data: 'empresa', render: text },
                 { data: 'cliente_fac', render: text },
+                { data: 'rfc_cfdi', className: 'idp-uuid', render: text },
                 { data: 'cantidad', className: 'idp-num', render: $.fn.dataTable.render.number(',', '.', 3, '') },
-                { data: 'importe', className: 'idp-num', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
-                { data: 'precio', className: 'idp-num', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                { data: 'subtotal', className: 'idp-num', render: money },
+                { data: 'ieps', className: 'idp-num', render: money },
+                { data: 'iva', className: 'idp-num', render: iva },
+                { data: 'importe', className: 'idp-num', render: money },
+                { data: 'precio', className: 'idp-num', render: money },
                 { data: 'tipo_pago', render: text },
                 { data: 'factura', render: text },
+                { data: 'serie_folio', render: text },
                 { data: 'UUID', className: 'idp-uuid', render: text },
                 { data: 'UUID_sat', className: 'idp-uuid', render: text },
                 { data: 'FechaTimbrado', render: text },
@@ -169,8 +196,8 @@
             ],
             columnDefs: [{ targets: '_all', defaultContent: '' }],
             createdRow: function (row, data) {
-                if (!data.UUID_sat) {
-                    $(row).addClass('table-warning').attr('title', 'Sin registro de timbre en el SAT');
+                if (!data.UUID) {  // TGV2 (UUID SAT) no está al día: el criterio es el UUID del despacho o la factura
+                    $(row).addClass('table-warning').attr('title', 'Sin timbrar (no tiene UUID)');
                 }
             },
             drawCallback: function () {

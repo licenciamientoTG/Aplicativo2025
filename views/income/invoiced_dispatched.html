@@ -82,7 +82,7 @@
             <div id="idp_summary" class="idp-summary" aria-live="polite" hidden></div>
         </div>
         <span class="idp-legend" id="idp_legend" hidden>
-            <span class="idp-legend-swatch" aria-hidden="true"></span> Sin registro de timbre en el SAT
+            <span class="idp-legend-swatch" aria-hidden="true"></span> Sin timbrar (no tiene UUID)
         </span>
     </div>
     <div class="card-body control_dispaches_table">
@@ -97,45 +97,45 @@
         </div>
 
         <div id="element_hidden" class="table-responsive" hidden>
+            {# Una sola lista de columnas: encabezado, filtros y pie salen de aquí y
+               deben seguir el mismo orden que `columns` en invoiced_dispatched.js.
+               sum = id de la celda del pie donde va el total. #}
+            {% set cols = [
+                {label: 'Fecha'}, {label: 'Hora'}, {label: 'Turno'}, {label: 'Despacho'},
+                {label: 'Producto'}, {label: 'Estación'}, {label: 'Empresa'}, {label: 'Cliente'},
+                {label: 'RFC CFDI'},
+                {label: 'Cantidad', num: true, sum: 'cantidad'},
+                {label: 'Subtotal', num: true, sum: 'subtotal', title: 'Importe sin IVA (incluye IEPS)'},
+                {label: 'IEPS', num: true, sum: 'ieps', title: 'Cuota por litro de la factura × litros del despacho'},
+                {label: 'IVA', num: true, sum: 'iva', title: 'Prorrateado con la tasa de la factura (8% o 16%)'},
+                {label: 'Importe', num: true, sum: 'importe'},
+                {label: 'Precio', num: true},
+                {label: 'Pago'}, {label: 'Factura'},
+                {label: 'Serie-Folio', title: 'Serie y folio del CFDI (portal TGV2)'},
+                {label: 'UUID'}, {label: 'UUID SAT'}, {label: 'Fecha timbrado'},
+                {label: 'Notas'}, {label: 'RUT'}, {label: 'Denominación'}, {label: 'Código'}, {label: 'Tipo'}
+            ] %}
             <table class="table table-hover table-striped table-sm w-100" id="datatables_dispatches">
                 <thead>
                     <tr>
-                        <th>Fecha</th>
-                        <th>Hora</th>
-                        <th>Turno</th>
-                        <th>Despacho</th>
-                        <th>Producto</th>
-                        <th>Estación</th>
-                        <th>Empresa</th>
-                        <th>Cliente</th>
-                        <th class="idp-num">Cantidad</th>
-                        <th class="idp-num">Importe</th>
-                        <th class="idp-num">Precio</th>
-                        <th>Pago</th>
-                        <th>Factura</th>
-                        <th>UUID</th>
-                        <th>UUID SAT</th>
-                        <th>Fecha timbrado</th>
-                        <th>Notas</th>
-                        <th>RUT</th>
-                        <th>Denominación</th>
-                        <th>Código</th>
-                        <th>Tipo</th>
+                        {% for c in cols %}
+                        <th{% if c.num is defined %} class="idp-num"{% endif %}{% if c.title is defined %} title="{{ c.title }}"{% endif %}>{{ c.label }}</th>
+                        {% endfor %}
                     </tr>
                     <tr class="idp-col-filters">
-                        {% for label in ['Fecha','Hora','Turno','Despacho','Producto','Estación','Empresa','Cliente','Cantidad','Importe','Precio','Pago','Factura','UUID','UUID SAT','Fecha timbrado','Notas','RUT','Denominación','Código','Tipo'] %}
-                        <th><input type="search" class="form-control form-control-sm" placeholder="Filtrar" aria-label="Filtrar por {{ label }}"></th>
+                        {% for c in cols %}
+                        <th><input type="search" class="form-control form-control-sm" placeholder="Filtrar" aria-label="Filtrar por {{ c.label }}"></th>
                         {% endfor %}
                     </tr>
                 </thead>
                 <tbody></tbody>
                 <tfoot>
                     <tr>
-                        <th>Total</th>
-                        {% for i in 1..7 %}<th></th>{% endfor %}
-                        <th class="idp-num" id="idp_total_cantidad"></th>
-                        <th class="idp-num" id="idp_total_importe"></th>
-                        {% for i in 1..11 %}<th></th>{% endfor %}
+                        {% for c in cols %}
+                        {% if loop.first %}<th>Total</th>
+                        {% elseif c.sum is defined %}<th class="idp-num" data-sum="{{ c.sum }}"></th>
+                        {% else %}<th></th>{% endif %}
+                        {% endfor %}
                     </tr>
                 </tfoot>
             </table>
