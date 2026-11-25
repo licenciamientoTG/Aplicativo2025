@@ -65,7 +65,7 @@ class InvoiceCreditDebitNotesModel extends Model
             OUTER APPLY (
                 SELECT TOP 1 pr.id AS pago_id, pr.status AS pago_status, pri.status AS pri_status,
                        pr.comment AS pago_comment,
-                       TRY_CONVERT(DATETIME, SUBSTRING(pr.comment, NULLIF(PATINDEX('%Pago registrado el [0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]%', pr.comment), 0) + 18, 10), 103) AS pago_fecha_comment,
+                       TRY_CONVERT(DATETIME, SUBSTRING(pr.comment, NULLIF(PATINDEX('%Pago registrado el [0-9][0-9]/[0-9][0-9]/[0-9][0-9][0-9][0-9]%', pr.comment), 0) + 19, 10), 103) AS pago_fecha_comment,
                        CASE WHEN CHARINDEX('Ref: ', pr.comment) > 0
                             THEN LTRIM(RTRIM(SUBSTRING(pr.comment, CHARINDEX('Ref: ', pr.comment) + 5, 100))) END AS pago_ref_comment
                 FROM TG.dbo.payment_request_invoices pri
