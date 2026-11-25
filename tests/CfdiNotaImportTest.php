@@ -67,4 +67,7 @@ check('pdf moratorios ok', CfdiNotaImport::pdfCoincideConClase('Intereses  Morat
 check('pdf moratorios no', !CfdiNotaImport::pdfCoincideConClase('Servicio asociado', 'MORATORIOS'));
 check('pdf clase inválida -> no', !CfdiNotaImport::pdfCoincideConClase('Servicio asociado', 'NOTA_CREDITO'));
 
+check('pdf moratorios: factura de combustible con leyenda de pagare -> no', !CfdiNotaImport::pdfCoincideConClase('PEMEX MAGNA 15101514 ... causará intereses moratorios al tipo de 3% mensual', 'MORATORIOS'));
+check('pdf moratorios real -> si', CfdiNotaImport::pdfCoincideConClase('Intereses Moratorios 2705035811 04-Agosto- 2026', 'MORATORIOS'));
+
 finish();
