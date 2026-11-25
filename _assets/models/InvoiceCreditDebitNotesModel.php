@@ -133,12 +133,7 @@ class InvoiceCreditDebitNotesModel extends Model
      * Agregar nota de crédito o cargo (sin ligar a pago ni factura)
      */
     public function addCreditDebitNote($data) : int|false {
-        $query = "
-            INSERT INTO [tg].[dbo].invoice_credit_debit_notes
-                (provider_id, note_type, note_number,
-                note_date, amount, description, reason_code, created_by, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)";
-
+        $columns = ['provider_id', 'note_type', 'note_number', 'note_date', 'amount', 'description', 'reason_code', 'created_by'];
         $params = [
             $data['provider_id'],
             $data['note_type'],
@@ -150,7 +145,153 @@ class InvoiceCreditDebitNotesModel extends Model
             $data['created_by']
         ];
 
+        // Columnas de notas ligadas a FacturasRecibidas (solo si vienen en $data)
+        foreach (['factura_recibida_id', 'uuid', 'emp_cod', 'codgas', 'origen'] as $extra) {
+            if (array_key_exists($extra, $data)) {
+                $columns[] = $extra;
+                $params[] = $data[$extra];
+            }
+        }
+
+        $query = "
+            INSERT INTO [tg].[dbo].invoice_credit_debit_notes
+                (" . implode(', ', $columns) . ", status)
+            VALUES (" . implode(', ', array_fill(0, count($columns), '?')) . ", 1)";
+
         return $this->sql->insert($query, $params);
+    }
+
+    /**
+     * Verifica si ya existe una nota activa con ese UUID de CFDI.
+     */
+    public function existsUuid(string $uuid) : bool {
+        $query = "
+            SELECT TOP 1 id
+            FROM [tg].[dbo].invoice_credit_debit_notes
+            WHERE status = 1
+              AND uuid COLLATE DATABASE_DEFAULT = ? COLLATE DATABASE_DEFAULT";
+        $result = $this->sql->select($query, [$uuid]);
+        return !empty($result);
+    }
+
+    /**
+     * Facturas recibidas del proveedor (por RFC emisor) en el rango que aún no son
+     * nota activa ni fila activa de pago. La clase se calcula aquí con NotaCfdi y
+     * se descartan las que no son nota de crédito / falso flete / moratorios.
+     */
+    public function getCandidatosFR(int $providerId, string $desde, string $hasta) : array {
+        $query = "
+            SELECT fr.Id AS fr_id, fr.UUID AS uuid, fr.Serie AS serie, fr.Folio AS folio, fr.Fecha AS fecha,
+                   fr.TipoDeComprobante AS tipo, fr.Total AS total,
+                   fr.ReceptorNombre AS receptor_nombre, fr.ReceptorRfc AS receptor_rfc,
+                   emp.cod AS emp_cod, emp.den AS emp_den,
+                   TRY_CAST(fr.EstacionCodgas AS INT) AS codgas, g.den AS estacion,
+                   CASE WHEN ISNULL(fr.RutaArchivo, '') <> '' THEN 1 ELSE 0 END AS tiene_pdf,
+                   cc.conceptos, cc.claves
+            FROM TG.dbo.FacturasRecibidas fr
+            INNER JOIN SG12.dbo.Proveedores p ON p.cod = ? AND p.rfc = fr.EmisorRfc
+            OUTER APPLY (SELECT TOP 1 e.cod, e.den FROM SG12.dbo.Empresas e WHERE e.rfc = fr.ReceptorRfc ORDER BY e.cod) emp
+            LEFT JOIN SG12.dbo.Gasolineras g ON g.cod = TRY_CAST(fr.EstacionCodgas AS INT)
+            OUTER APPLY (
+                SELECT STRING_AGG(CAST(ISNULL(c.Descripcion, '') AS NVARCHAR(MAX)), '|') WITHIN GROUP (ORDER BY c.Id) AS conceptos,
+                       STRING_AGG(CAST(ISNULL(c.ClaveProdServ, '') AS NVARCHAR(MAX)), '|') WITHIN GROUP (ORDER BY c.Id) AS claves
+                FROM TG.dbo.FacturasRecibidasConceptos c
+                WHERE c.FacturaId = fr.Id
+            ) cc
+            WHERE fr.Fecha >= ? AND fr.Fecha < DATEADD(DAY, 1, CAST(? AS DATE))
+              AND fr.UUID IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM TG.dbo.invoice_credit_debit_notes n
+                              WHERE n.status = 1
+                                AND n.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT)
+              AND NOT EXISTS (SELECT 1 FROM TG.dbo.payment_request_invoices pri
+                              WHERE pri.is_deleted = 0
+                                AND pri.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT)
+            ORDER BY fr.Fecha DESC, fr.Id DESC";
+        $rows = $this->sql->select($query, [$providerId, $desde, $hasta]) ?: [];
+
+        $out = [];
+        foreach ($rows as $r) {
+            $desc = ($r['conceptos'] ?? '') === '' ? [] : explode('|', (string)$r['conceptos']);
+            $claves = ($r['claves'] ?? '') === '' ? [] : explode('|', (string)$r['claves']);
+            $clase = NotaCfdi::clasificar((string)$r['tipo'], $desc, $claves);
+            if ($clase === null) {
+                continue;
+            }
+            $r['clase'] = $clase;
+            $r['note_type'] = NotaCfdi::noteType($clase);
+            $r['numero'] = NotaCfdi::numeroNota($r['serie'] ?? null, (string)$r['folio']);
+            $out[] = $r;
+        }
+        return $out;
+    }
+
+    /**
+     * Crea una nota en el catálogo a partir de un CFDI de FacturasRecibidas.
+     * Relee el CFDI de la BD (no confía en el cliente).
+     * @return array{success:bool, note_id:?int, message:string}
+     */
+    public function crearDesdeFactura(int $frId, int $userId, string $origen = 'ligada', ?string $claseForzada = null) : array {
+        $fail = fn(string $m) => ['success' => false, 'note_id' => null, 'message' => $m];
+
+        $rows = $this->sql->select("
+            SELECT Id, UUID, Serie, Folio, Fecha, Total, TipoDeComprobante, EmisorRfc, ReceptorRfc, EstacionCodgas
+            FROM TG.dbo.FacturasRecibidas WHERE Id = ?", [$frId]);
+        if (empty($rows)) {
+            return $fail('Factura recibida no encontrada');
+        }
+        $fr = $rows[0];
+        if (empty($fr['UUID'])) {
+            return $fail('El CFDI no tiene UUID');
+        }
+
+        if ($claseForzada !== null) {
+            $clase = $claseForzada;
+        } else {
+            $cs = $this->sql->select("
+                SELECT Descripcion, ClaveProdServ FROM TG.dbo.FacturasRecibidasConceptos
+                WHERE FacturaId = ? ORDER BY Id", [$frId]) ?: [];
+            $clase = NotaCfdi::clasificar(
+                (string)$fr['TipoDeComprobante'],
+                array_map(fn($c) => (string)$c['Descripcion'], $cs),
+                array_map(fn($c) => (string)$c['ClaveProdServ'], $cs)
+            );
+        }
+        if ($clase === null || !in_array($clase, [NotaCfdi::NOTA_CREDITO, NotaCfdi::FALSO_FLETE, NotaCfdi::MORATORIOS], true)) {
+            return $fail('Este CFDI no es nota de crédito ni de cargo');
+        }
+        if ($this->existsUuid((string)$fr['UUID'])) {
+            return $fail('Ya existe una nota con ese UUID');
+        }
+
+        $prov = $this->getProviderByRfc($fr['EmisorRfc']);
+        if (!$prov) {
+            return $fail('Proveedor no encontrado para RFC ' . $fr['EmisorRfc']);
+        }
+        $emp = $this->sql->select("SELECT TOP 1 cod FROM SG12.dbo.Empresas WHERE rfc = ? ORDER BY cod", [$fr['ReceptorRfc']]);
+        $empCod = !empty($emp) ? (int)$emp[0]['cod'] : null;
+        $codgas = is_numeric($fr['EstacionCodgas']) ? (int)$fr['EstacionCodgas'] : null;
+
+        $fecha = $fr['Fecha'] instanceof DateTimeInterface ? $fr['Fecha']->format('Y-m-d') : substr((string)$fr['Fecha'], 0, 10);
+
+        $noteId = $this->addCreditDebitNote([
+            'provider_id'         => (int)$prov['cod'],
+            'note_type'           => NotaCfdi::noteType($clase),
+            'note_number'         => NotaCfdi::numeroNota($fr['Serie'] ?? null, (string)$fr['Folio']),
+            'note_date'           => $fecha,
+            'amount'              => (float)$fr['Total'],
+            'description'         => NotaCfdi::descripcion($clase),
+            'reason_code'         => 'CFDI',
+            'created_by'          => $userId,
+            'factura_recibida_id' => $frId,
+            'uuid'                => $fr['UUID'],
+            'emp_cod'             => $empCod,
+            'codgas'              => $codgas,
+            'origen'              => $origen,
+        ]);
+        if (!$noteId) {
+            return $fail('No se pudo guardar la nota');
+        }
+        return ['success' => true, 'note_id' => (int)$noteId, 'message' => 'Nota ' . NotaCfdi::numeroNota($fr['Serie'] ?? null, (string)$fr['Folio']) . ' creada'];
     }
 
     /**

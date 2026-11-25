@@ -1,0 +1,59 @@
+{# Modal: Buscar en facturas recibidas y ligar como notas del catálogo #}
+<div class="modal-header" style="background:#0891b2;color:#fff;">
+    <h5 class="modal-title"><i class="fas fa-search-dollar"></i> Buscar en facturas recibidas</h5>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+</div>
+<div class="modal-body">
+    <div class="d-flex align-items-end gap-2 flex-wrap mb-3">
+        <div style="min-width:260px;">
+            <label class="form-label fw-bold mb-1" style="font-size:.8rem;">Proveedor</label>
+            <select id="nfrProveedor" class="form-select form-select-sm">
+                {% for p in proveedores %}
+                    <option value="{{ p.cod }}" {% if p.cod == proveedor_def %}selected{% endif %}>{{ p.den }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label fw-bold mb-1" style="font-size:.8rem;">Desde</label>
+            <input type="date" id="nfrDesde" class="form-control form-control-sm" value="{{ desde_default }}">
+        </div>
+        <div>
+            <label class="form-label fw-bold mb-1" style="font-size:.8rem;">Hasta</label>
+            <input type="date" id="nfrHasta" class="form-control form-control-sm" value="{{ hasta_default }}">
+        </div>
+        <button type="button" class="btn btn-sm text-white" style="background:#0891b2;" onclick="nfrBuscar()">
+            <i class="fas fa-search"></i> Buscar
+        </button>
+    </div>
+
+    <div id="nfrLoading" class="text-center py-4" style="display:none;">
+        <i class="fas fa-spinner fa-spin" style="font-size:1.5rem;color:#0891b2;"></i>
+        <p class="text-muted mt-2 mb-0">Buscando…</p>
+    </div>
+    <div id="nfrVacio" class="text-muted small" style="display:none;">No hay facturas pendientes de ligar en ese rango.</div>
+
+    <div class="table-responsive" id="nfrTablaWrap" style="display:none;">
+        <table class="table table-sm table-hover align-middle" id="nfrTabla">
+            <thead style="background:#f8fafc;">
+                <tr style="font-size:.72rem;text-transform:uppercase;color:#475569;">
+                    <th class="text-center" style="width:34px;"><input type="checkbox" id="nfrSelectAll" title="Seleccionar todas"></th>
+                    <th>Folio</th>
+                    <th>Fecha</th>
+                    <th>Clase</th>
+                    <th>Empresa</th>
+                    <th>Estación</th>
+                    <th class="text-end">Total</th>
+                    <th class="text-center">PDF</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+<div class="modal-footer">
+    <span class="me-auto small text-muted" id="nfrSeleccionInfo">0 seleccionadas · $0.00</span>
+    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+    <button type="button" class="btn btn-sm" style="background:#16a34a;color:#fff;" id="nfrBtnCrear" onclick="nfrCrear()" disabled>
+        <i class="fas fa-save"></i> Crear 0 notas
+    </button>
+</div>

@@ -5609,6 +5609,88 @@ class Payment
 
 
     /**
+     * HTML del modal "Buscar en facturas recibidas" (vista parcial sin layout).
+     */
+    public function notas_buscar_fr_modal()
+    {
+        if (!authorized(66)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+        $proveedores = $this->proveedores->get_actives();
+        echo $this->twig->render($this->route . 'modals/notas_buscar_fr.html', [
+            'proveedores'    => $proveedores,
+            'proveedor_def'  => 72, // MGC
+            'desde_default'  => date('Y-m-d', strtotime('-90 days')),
+            'hasta_default'  => date('Y-m-d'),
+        ]);
+    }
+
+    /**
+     * Candidatos de FacturasRecibidas (notas de crédito, falsos fletes, moratorios).
+     */
+    public function notas_candidatos_fr()
+    {
+        header('Content-Type: application/json');
+        try {
+            if (!authorized(66)) {
+                json_output(['success' => false, 'message' => 'Sin permiso']);
+                return;
+            }
+            $providerId = (int)($_POST['provider_id'] ?? 0);
+            $desde = $_POST['desde'] ?? '';
+            $hasta = $_POST['hasta'] ?? '';
+            $okFecha = fn($f) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $f) && strtotime($f) !== false;
+            if ($providerId <= 0 || !$okFecha($desde) || !$okFecha($hasta)) {
+                json_output(['success' => false, 'message' => 'Proveedor o fechas inválidos']);
+                return;
+            }
+            $candidatos = $this->InvoiceCreditDebitNotesModel->getCandidatosFR($providerId, $desde, $hasta);
+            json_output(['success' => true, 'candidatos' => $candidatos]);
+        } catch (Exception $e) {
+            error_log('Error en notas_candidatos_fr: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al buscar: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Crea notas del catálogo a partir de facturas recibidas. Tolerante a fallo parcial.
+     */
+    public function notas_ligar_fr()
+    {
+        header('Content-Type: application/json');
+        try {
+            if (!authorized(66)) {
+                json_output(['success' => false, 'message' => 'Sin permiso']);
+                return;
+            }
+            $ids = $_POST['factura_ids'] ?? [];
+            if (!is_array($ids) || empty($ids)) {
+                json_output(['success' => false, 'message' => 'No se recibieron facturas']);
+                return;
+            }
+            $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
+            $resultados = [];
+            $creadas = 0;
+            foreach (array_unique(array_map('intval', $ids)) as $frId) {
+                try {
+                    $r = $this->InvoiceCreditDebitNotesModel->crearDesdeFactura($frId, $userId, 'ligada');
+                } catch (Exception $e) {
+                    $r = ['success' => false, 'message' => $e->getMessage()];
+                }
+                if (!empty($r['success'])) {
+                    $creadas++;
+                }
+                $resultados[] = ['fr_id' => $frId, 'success' => !empty($r['success']), 'message' => $r['message']];
+            }
+            json_output(['success' => $creadas > 0, 'creadas' => $creadas, 'resultados' => $resultados]);
+        } catch (Exception $e) {
+            error_log('Error en notas_ligar_fr: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al ligar: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
      * Pantalla independiente de gestión de notas de crédito/cargo
      */
     public function credit_notes()
