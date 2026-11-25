@@ -35,6 +35,12 @@ class InventarioUrovoModel extends Model {
             GROUP BY tipo_terminal,estacion_codigo",['urovo','verifone','estacion','operativa']);
         $byStation=['urovo'=>[],'verifone'=>[]];
         foreach ($counts as $row) $byStation[(string)$row['tipo_terminal']][(int)$row['station_id']]=(int)$row['funcionando'];
+        $openIncidents=$this->sql->select("SELECT estacion_id AS station_id,tipo_terminal,COUNT(*) AS open_count
+            FROM [TG].[dbo].[inv_ter_incidencias]
+            WHERE estado_local IN ('Abierta','Solved','Reabierta') AND tipo_terminal IN (?,?)
+            GROUP BY estacion_id,tipo_terminal",['urovo','verifone']);
+        $openByStation=['urovo'=>[],'verifone'=>[]];
+        foreach ($openIncidents as $row) $openByStation[(string)$row['tipo_terminal']][(int)$row['station_id']]=(int)$row['open_count'];
         $totals=[
             'urovo'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_reparacion'=>0,'total_danadas_estacion'=>0],
             'verifone'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_reparacion'=>0,'total_danadas_estacion'=>0],
@@ -45,7 +51,8 @@ class InventarioUrovoModel extends Model {
             $verifoneFunctioning=$byStation['verifone'][$stationId]??0;
             $rows[]=['station_id'=>$stationId,'station_name'=>$name,
                 'urovo'=>['objetivo'=>$objective,'funcionando'=>$urovoFunctioning,'diferencia'=>$urovoFunctioning-$objective],
-                'verifone'=>['objetivo'=>0,'funcionando'=>$verifoneFunctioning,'diferencia'=>$verifoneFunctioning]];
+                'verifone'=>['objetivo'=>0,'funcionando'=>$verifoneFunctioning,'diferencia'=>$verifoneFunctioning],
+                'mojo_abierto'=>['urovo'=>$openByStation['urovo'][$stationId]??0,'verifone'=>$openByStation['verifone'][$stationId]??0]];
             $totals['urovo']['total_objetivo']+=$objective;
             $totals['urovo']['total_funcionando']+=$urovoFunctioning;
             $totals['verifone']['total_funcionando']+=$verifoneFunctioning;
