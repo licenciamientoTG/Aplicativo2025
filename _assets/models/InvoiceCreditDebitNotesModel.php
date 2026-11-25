@@ -206,6 +206,11 @@ class InvoiceCreditDebitNotesModel extends Model
               AND NOT EXISTS (SELECT 1 FROM TG.dbo.payment_request_invoices pri
                               WHERE pri.is_deleted = 0
                                 AND pri.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT)
+              -- Notas capturadas a mano (sin uuid): mismo proveedor, mismo folio numérico y mismo monto
+              AND NOT EXISTS (SELECT 1 FROM TG.dbo.invoice_credit_debit_notes n
+                              WHERE n.status = 1 AND n.uuid IS NULL AND n.provider_id = p.cod
+                                AND TRY_CAST(SUBSTRING(n.note_number, PATINDEX('%[0-9]%', n.note_number), 50) AS BIGINT) = TRY_CAST(fr.Folio AS BIGINT)
+                                AND ABS(n.amount - fr.Total) < 0.01)
             ORDER BY fr.Fecha DESC, fr.Id DESC";
         $rows = $this->sql->select($query, [$providerId, $desde, $hasta]) ?: [];
 
@@ -263,9 +268,29 @@ class InvoiceCreditDebitNotesModel extends Model
             return $fail('Ya existe una nota con ese UUID');
         }
 
+        $enPago = $this->sql->select("
+            SELECT TOP 1 id FROM TG.dbo.payment_request_invoices
+            WHERE is_deleted = 0
+              AND uuid COLLATE DATABASE_DEFAULT = ? COLLATE DATABASE_DEFAULT", [$fr['UUID']]);
+        if (!empty($enPago)) {
+            return $fail('El CFDI ya está en una solicitud de pago');
+        }
+
         $prov = $this->getProviderByRfc($fr['EmisorRfc']);
         if (!$prov) {
             return $fail('Proveedor no encontrado para RFC ' . $fr['EmisorRfc']);
+        }
+
+        // Nota capturada a mano (sin uuid): mismo proveedor, folio numérico y monto
+        $legacy = $this->sql->select("
+            SELECT TOP 1 n.id, n.note_number
+            FROM TG.dbo.invoice_credit_debit_notes n
+            WHERE n.status = 1 AND n.uuid IS NULL AND n.provider_id = ?
+              AND TRY_CAST(SUBSTRING(n.note_number, PATINDEX('%[0-9]%', n.note_number), 50) AS BIGINT) = TRY_CAST(? AS BIGINT)
+              AND ABS(n.amount - ?) < 0.01
+            ORDER BY n.id", [(int)$prov['cod'], (string)$fr['Folio'], (float)$fr['Total']]);
+        if (!empty($legacy)) {
+            return $fail('Ya existe una nota capturada para este CFDI (#' . $legacy[0]['id'] . ' ' . $legacy[0]['note_number'] . ')');
         }
         $emp = $this->sql->select("SELECT TOP 1 cod FROM SG12.dbo.Empresas WHERE rfc = ? ORDER BY cod", [$fr['ReceptorRfc']]);
         $empCod = !empty($emp) ? (int)$emp[0]['cod'] : null;
@@ -273,6 +298,7 @@ class InvoiceCreditDebitNotesModel extends Model
 
         $fecha = $fr['Fecha'] instanceof DateTimeInterface ? $fr['Fecha']->format('Y-m-d') : substr((string)$fr['Fecha'], 0, 10);
 
+        try {
         $noteId = $this->addCreditDebitNote([
             'provider_id'         => (int)$prov['cod'],
             'note_type'           => NotaCfdi::noteType($clase),
@@ -288,6 +314,13 @@ class InvoiceCreditDebitNotesModel extends Model
             'codgas'              => $codgas,
             'origen'              => $origen,
         ]);
+        } catch (Exception $e) {
+            // Carrera con el índice único de uuid: otra sesión creó la nota primero
+            if ($this->existsUuid((string)$fr['UUID'])) {
+                return $fail('Ya existe una nota con ese UUID');
+            }
+            return $fail('No se pudo guardar la nota');
+        }
         if (!$noteId) {
             return $fail('No se pudo guardar la nota');
         }
@@ -321,7 +354,7 @@ class InvoiceCreditDebitNotesModel extends Model
      * Busca el proveedor (cod) por RFC en el catálogo de SG12.
      */
     public function getProviderByRfc($rfc) : array|false {
-        $query = "SELECT cod, den, rfc FROM SG12.dbo.Proveedores WHERE rfc = ?";
+        $query = "SELECT cod, den, rfc FROM SG12.dbo.Proveedores WHERE rfc = ? ORDER BY cod";
         $result = $this->sql->select($query, [$rfc]);
         return $result ? $result[0] : false;
     }
