@@ -121,8 +121,6 @@
 #urovoInventory .urovo-dashboard-table tbody th { color:#294756; font-weight:650; }
 #urovoInventory .urovo-dashboard-table tbody td, #urovoInventory .urovo-dashboard-table tfoot td { font-variant-numeric:tabular-nums; }
 #urovoInventory .urovo-dashboard-mojo-column { min-width:150px; }
-#urovoInventory .urovo-mojo-type-link { display:block; white-space:nowrap; }
-#urovoInventory .urovo-mojo-type-link + .urovo-mojo-type-link { margin-top:.2rem; }
 #urovoInventory .urovo-dashboard-table .is-low { background:#fdeceb; color:#982f2a; font-weight:750; }
 #urovoInventory .urovo-dashboard-risk { display:block; margin-top:.12rem; color:#8b302b; font-size:.72rem; font-weight:650; white-space:nowrap; }
 #urovoInventory .urovo-dashboard-table .is-short { color:#9a4039; font-weight:750; }
