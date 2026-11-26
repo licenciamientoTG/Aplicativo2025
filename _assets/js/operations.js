@@ -1413,72 +1413,9 @@ $('#islandInfoModal').on('show.bs.modal', function (e) {
     });
 });
 
-var responsables_table = $('#responsables_table').DataTable({
-    colReorder: true,
-    order: [0, "desc"],
-    dom: '<"top"Bf>rt<"bottom"lip>',
-    pageLength: 100,
-    responsive: true,
-    buttons: [
-        {
-            extend: 'excel',
-            className: 'd-none responsables_table',
-            filename: 'Reporte de responsables'
-        }
-    ],
-    ajax: {
-        method: 'post',
-        url: '/operations/responsables',
-        error: function() {
-            $('#responsables_table').waitMe('hide');
-            alertify.myAlert(
-                `<div class="container text-center text-danger">
-                    <h4 class="mt-2 text-danger">¡Error!</h4>
-                </div>
-                <div class="text-dark">
-                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                </div>`
-            );
-        },
-        beforeSend: function() {
-            $('.table-responsive').addClass('loading');
-        }
-    },
-    deferRender: true,
-    columns: [
-
-        {'data': 'Codigo'},
-        {'data': 'Nombre'},
-        {'data': 'NoReloj'},
-        {'data': 'Status'},
-        {'data': 'Puesto'},
-        {'data': 'Estacion'},
-        {'data': 'Alta'},
-        {'data': 'Responsable'},
-        {'data': 'Acciones'}
-    ],
-    createdRow: function (row, data, dataIndex) {
-
-    },
-    initComplete: function () {
-        $('.dt-buttons').addClass('d-none');
-        $('.table-responsive').removeClass('loading');
-    },
-    footerCallback: function (row, data, start, end, display) {
-
-    }
-});
-
-// Agregar un evento clic de refresh
-$('.refresh_responsables_table').on('click', function () {
-    responsables_table.clear().draw();
-    responsables_table.ajax.reload();
-    $('#responsables_table').waitMe('hide');
-});
-
 $('#exportExcel').on('click', function (e) {
     e.preventDefault();
-    // Ventas y responsables comparten este id en vistas distintas.
+    // Exporta la pestaña activa de ventas (otras vistas usan su propio handler).
     if ($('#sales_table').length) {
         const $activeSalesTable = $('.tab-pane.active table[id^="sales_"]');
         if ($activeSalesTable.length) {
@@ -1486,103 +1423,7 @@ $('#exportExcel').on('click', function (e) {
         }
         return;
     }
-
-    // Disparar el evento clic del botón de exportación de Excel de responsables.
-    $('.responsables_table').trigger('click');
 });
-
-$('#responsableModal').on('show.bs.modal', function (e) {
-    // En el disparador del modal hay un atributo llamado data-id, el cual vamos a obtener
-    let cod = $(e.relatedTarget).data('id');
-    let codgas = $(e.relatedTarget).data('codgas');
-    // Vamos a verificar que cod no este indefinido y si lo esta le vamos a asignar el valor cero
-    if (cod === undefined) {
-        cod = 0;
-    }
-
-    let modal = $(this);
-    // Acciones que deseas realizar antes de que el modal se muestre
-    $.ajax({
-        url: '/operations/responsableModal/' + cod + '/' + codgas,
-        method: 'GET',
-        dataType: 'json',
-        success: function(data) {
-            modal.find('.modal-dialog').addClass(data.size + ' ' + data.position);
-            modal.find('#responsableModalLabel').text(data.title);
-            modal.find('.content').html(data.content);
-            // Aqui vamos a recopilar los ids de los despachos seleccionados
-            $.each($("input[name='dispatches[]']:checked"), function(){
-                // Ingresamos un input:hidden con el id del despacho en el formulario
-                $('#markDispatchesForm .modal-body').append(`<input type="hidden" name="dispatches[]" value="${$(this).val()}">`);
-            });
-            $('.selectpicker').selectpicker();
-        },
-        error: function(xhr, textStatus, errorThrown) {
-            console.error('AJAX error:', errorThrown);
-        }
-    });
-});
-
-
-function deactivate_responsable(cod, hab) {
-    // VVamos a activar la clase .loading a la tabla de responsables
-    $('.table-responsive').addClass('loading');
-    // Vamos a enviar una paticion ajax por metodo post a la ruta /operations/deactivate_responsable
-    $.ajax({
-        url: '/operations/deactivate_responsable/' + cod + '/' + hab,
-        method: 'POST',
-        dataType: 'json',
-        success: function(data) {
-            if (data.status == 'success') {
-                toastr.success(data.message, '¡Éxito!', { timeOut: 1000 });
-                // Ahora recargamos la tabla de responsables
-                responsables_table.clear().draw();
-                responsables_table.ajax.reload();
-                $('.table-responsive').removeClass('loading');
-            } else {
-                toastr.error(data.message, '¡Error!', { timeOut: 1000 });
-                $('.table-responsive').removeClass('loading');
-            }
-        },
-        error: function(xhr, textStatus, errorThrown) {
-            console.error('AJAX error:', errorThrown);
-            $('.table-responsive').removeClass('loading');
-        }
-    });
-}
-
-function delete_responsable(cod) {
-    // Vamos a pedir confirmación antes de eliminar al responsable
-    alertify.confirm('Eliminar responsable', '¿Está seguro de que desea eliminar este responsable?',
-        function() {
-            // Vamos a agregar la clase .loading a la tabla de responsables
-            $('.table-responsive').addClass('loading');
-
-            // Vamos a enviar una paticion ajax por metodo post a la ruta /operations/delete_responsable
-            $.ajax({
-                url: '/operations/delete_responsable/' + cod,
-                method: 'POST',
-                dataType: 'json',
-                success: function(data) {
-                    if (data.status == 'success') {
-                        toastr.success(data.message, '¡Éxito!', { timeOut: 1000 });
-                        // Ahora recargamos la tabla de responsables
-                        responsables_table.clear().draw();
-                        responsables_table.ajax.reload();
-                        $('.table-responsive').removeClass('loading');
-                    } else {
-                        toastr.error(data.message, '¡Error!', { timeOut: 1000 });
-                        $('.table-responsive').removeClass('loading');
-                    }
-                },
-                error: function(xhr, textStatus, errorThrown) {
-                    console.error('AJAX error:', errorThrown);
-                    $('.table-responsive').removeClass('loading');
-                }
-            });
-        }, function() {}
-    );
-}
 
 var monitor_table = $('#monitor_table').DataTable({
     colReorder: true,

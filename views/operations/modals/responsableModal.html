@@ -1,69 +1,68 @@
-<form method="post" action="/operations/responsableModal" id="responsableModal">
-<div class="modal-body px-0">
-    <div class="card">
-        <div class="card-body">
-            <div class="mb-3 row">
-                <label class="col-form-label col-sm-3 text-sm-end">Nombre(s):</label>
-                <div class="col-sm-9">
-                    <input type="text" class="form-control" placeholder="Nombre(s)" id="name" name="name" value="{{ responsable ? responsable.Nombre : '' }}">
-                </div>
-            </div>
-            <div class="mb-3 row">
-                <label class="col-form-label col-sm-3 text-sm-end">No de reloj:</label>
-                <div class="col-sm-9">
-                    <input type="number" min="1" step="1" class="form-control" id="clock" name="clock" value="{{ responsable ? responsable.Codigo : '' }}">
-                </div>
-            </div>
-            <div class="mb-3 row">
-                <label class="col-form-label col-sm-3 text-sm-end">Código externo:</label>
-                <div class="col-sm-9">
-                    <input type="text" class="form-control" placeholder="Código externo" id="codext" name="codext" value="{{ responsable ? responsable.codext : '' }}">
-                </div>
-            </div>
-            <div class="mb-3 row">
-                <label class="col-form-label col-sm-3 text-sm-end">Puesto de trabajo</label>
-                <div class="col-sm-9">
-                    <select class="selectpicker w-100" data-live-search="true" name="pto" id="pto">
-                        <option value="GERENTE" {{ responsable ? (responsable.Puesto == 'GERENTE' ? 'selected' : ''  ) : '' }}>Gerente</option>
-                        <option value="Subgerente" {{ responsable ? (responsable.Puesto == 'Subgerente' ? 'selected' : ''  ) : '' }}>Subgerente</option>
-                        <option value="Supervisor" {{ responsable ? (responsable.Puesto == 'Supervisor' ? 'selected' : ''  ) : '' }}>Supervisor</option>
-                        <option value="Despachador"  {{ responsable ? (responsable.Puesto == 'Despachador' ? 'selected' : ''  ) : 'selected' }}>Despachador</option>
-                    </select>
-                </div>
-            </div>
-            <div class="mb-3 row">
-                <label class="col-form-label col-sm-3 text-sm-end">Status</label>
-                <div class="col-sm-9">
-                    <select class="selectpicker w-100" data-live-search="true" name="status" id="status" placeholder="Status">
-                        <option value="1" {{ responsable ? (responsable.Status == 1 ? 'selected' : ''  ) : 'selected' }}>Activo</option>
-                        <option value="0" {{ responsable ? (responsable.Status == 0 ? 'selected' : ''  ) : '' }}>Inactivo</option>
-                    </select>
-                </div>
-            </div>
-            <div class="mb-3 row">
-                <label class="col-form-label col-sm-3 text-sm-end">Estación</label>
-                <div class="col-sm-9">
-                    <select class="selectpicker w-100" data-live-search="true" name="IdEstacion" id="IdEstacion" placeholder="Estación">
-                        {% for station in stations %}
-                        <option value="{{ station.cod }}" {{ responsable ? (responsable.codgas == station.cod ? 'selected' : ''  ) : '' }}>{{ station.abr }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            </div>
+{# Alta / edición de responsable. Lo carga y lo envía _assets/js/operations/responsables.js
+   (por AJAX); lo guarda Operations::responsableModal(). #}
+<form method="post" action="/operations/responsableModal" id="responsableForm" novalidate>
+<div class="modal-body">
+    <div class="alert alert-danger py-2" id="resp_form_error" role="alert" hidden></div>
+
+    <div class="row g-3">
+        <div class="col-12 col-md-8">
+            <label for="resp_name" class="form-label">Nombre</label>
+            <input type="text" class="form-control" id="resp_name" name="name" required maxlength="40" autocomplete="off"
+                   placeholder="Nombre(s) y apellidos" value="{{ responsable ? responsable.NombreSinReloj : '' }}">
+            <div class="form-text" id="resp_name_preview" aria-live="polite">Se guarda con mayúscula inicial en cada palabra.</div>
+            <div class="invalid-feedback">Escriba el nombre.</div>
+        </div>
+        <div class="col-12 col-md-4">
+            <label for="resp_clock" class="form-label">No. de reloj</label>
+            <input type="number" min="1" step="1" class="form-control" id="resp_clock" name="clock" required inputmode="numeric"
+                   value="{{ responsable ? responsable.codext : '' }}">
+            <div class="invalid-feedback">Escriba el número de reloj.</div>
+        </div>
+
+        <div class="col-12" id="resp_clock_info_col" hidden>
+            <div class="alert py-2 mb-0 small" id="resp_clock_info" role="status" aria-live="polite"></div>
+        </div>
+
+        <div class="col-12 col-md-6">
+            <label for="resp_station" class="form-label">Estación</label>
+            <select class="selectpicker form-control" data-live-search="true" data-size="8" name="IdEstacion" id="resp_station" required title="Seleccione una estación">
+                {% for station in stations %}
+                <option value="{{ station.cod }}" {{ responsable and responsable.codgas == station.cod ? 'selected' }}>{{ station.abr }}</option>
+                {% endfor %}
+            </select>
+            <div class="invalid-feedback" id="resp_station_error">Seleccione una estación.</div>
+        </div>
+        <div class="col-12 col-md-6">
+            <label for="resp_pto" class="form-label">Puesto</label>
+            <select class="form-select" name="pto" id="resp_pto" required>
+                {% set actual = responsable ? responsable.Puesto : 'Despachador' %}
+                {% for p in puestos %}
+                <option value="{{ p }}" {{ p == actual ? 'selected' }}>{{ p }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-12 col-md-6">
+            <label for="resp_status" class="form-label">Estatus</label>
+            <select class="form-select" name="status" id="resp_status">
+                <option value="1" {{ not responsable or responsable.Status == 1 ? 'selected' }}>Activo</option>
+                <option value="0" {{ responsable and responsable.Status == 0 ? 'selected' }}>Inactivo</option>
+            </select>
+        </div>
+        <div class="col-12 col-md-6">
+            <span class="form-label d-block">Código interno</span>
+            {% if responsable %}
+            <div class="form-control-plaintext fw-semibold">{{ responsable.Codigo }}</div>
+            {% else %}
+            <div class="form-control-plaintext text-muted small" id="resp_code_info" aria-live="polite">Se asigna al guardar: el número de reloj si está libre, si no el siguiente disponible.</div>
+            {% endif %}
         </div>
     </div>
 </div>
 <div class="modal-footer">
     <input type="hidden" name="action" value="{{ responsable ? 'editar' : 'guardar' }}">
-    <input type="hidden" name="codoriginal" value="{{ responsable ? responsable.Codigo : 0 }}">
-    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
-    <button type="submit" class="btn btn-primary">Guardar</button>
+    <input type="hidden" name="cod" value="{{ responsable ? responsable.Codigo : 0 }}">
+    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+    <button type="submit" class="btn btn-primary" id="resp_submit">{{ responsable ? 'Guardar cambios' : 'Dar de alta' }}</button>
 </div>
 </form>
-
-<script>
-    $('#responsableModal').submit(function(event) {
-        // Vamos a agregar la case .loading al body para mostrar el spinner
-        $('#responsableModal').addClass('loading');
-    });
-</script>

@@ -40,6 +40,15 @@
                            aria-describedby="contado_termino_feedback">
                     <div class="invalid-feedback" id="contado_termino_feedback"></div>
                 </div>
+                <div class="col-12 col-md-2">
+                    <label class="col-form-label-sm" for="contado_estatus">Estatus</label>
+                    <select class="form-control form-control-sm" id="contado_estatus">
+                        <option value="" selected>Todos</option>
+                        {% for codigo, nombre in estatus %}
+                        <option value="{{ codigo }}">{{ nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
                 <div class="col-auto d-flex flex-column justify-content-end">
                     <button type="button" class="btn btn-sm btn-success" id="btn_buscar_contado" disabled>
                         <i data-feather="search"></i> Buscar

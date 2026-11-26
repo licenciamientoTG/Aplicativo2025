@@ -1,78 +1,144 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Operaciones{% endblock %}
-{% block mycss %}{% endblock %}
+{% block title %}Responsables{% endblock %}
+{% block mycss %}
+<style>
+    .rsp-toolbar { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; }
+    .rsp-toolbar .form-label { font-size: .75rem; font-weight: 600; margin-bottom: .25rem; color: var(--bs-secondary-color, #6c757d); }
+    .rsp-toolbar .rsp-field { min-width: 180px; flex: 1 1 180px; max-width: 260px; }
+    .rsp-toolbar .rsp-search { flex: 2 1 240px; max-width: none; }
+
+    .rsp-tabs .btn { display: inline-flex; align-items: center; gap: .4rem; }
+    .rsp-tabs .rsp-count { font-variant-numeric: tabular-nums; font-size: .75rem; font-weight: 600;
+        padding: .05rem .45rem; border-radius: 999px; background: rgba(0,0,0,.07); }
+    .rsp-tabs .btn-check:checked + .btn .rsp-count { background: rgba(255,255,255,.25); }
+
+    .rsp-tabs .rsp-review { color: #7a5c00; border-color: #d4a72c; }
+    .rsp-tabs .btn-check:checked + .rsp-review { color: #3d2e00; background: #ffe08a; border-color: #d4a72c; }
+    .rsp-tabs .btn-check:checked + .rsp-review .rsp-count { background: rgba(0,0,0,.1); }
+
+    .rsp-hint { font-size: .8125rem; }
+    #responsables_table { min-width: 960px; }
+
+    #responsables_table { font-variant-numeric: tabular-nums; }
+    #responsables_table td { vertical-align: middle; }
+    #responsables_table .rsp-name { font-weight: 600; }
+    #responsables_table .rsp-issue { color: #997404; display: inline-flex; align-items: center; gap: .25rem; font-size: .75rem; margin-top: .1rem; }
+    #responsables_table .rsp-issue svg { width: 14px; height: 14px; flex: none; }
+    #responsables_table .rsp-muted { color: var(--bs-secondary-color, #6c757d); }
+    #responsables_table .rsp-actions { white-space: nowrap; text-align: right; }
+    #responsables_table .rsp-actions .btn { padding: .2rem .4rem; line-height: 1; }
+    #responsables_table .rsp-actions svg { width: 16px; height: 16px; }
+    #responsables_table tr.rsp-inactive td:not(.rsp-actions) { color: var(--bs-secondary-color, #6c757d); }
+
+    .rsp-empty { text-align: center; padding: 2.5rem 1rem; color: var(--bs-secondary-color, #6c757d); }
+</style>
+{% endblock %}
 {% block menutitle %}Responsables{% endblock %}
 {% block content %}
-<div class="row">
-    <div class="col-12">
-        <div class="card table-responsive">
-            <div class="card-header pb-0">
-                <div class="card-actions float-end">
-                    <div class="dropdown position-relative">
-                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
-                                <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
-                            </svg>
-                        </a>
-                        <div class="dropdown-menu dropdown-menu-end">
-                            <a class="dropdown-item" href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#responsableModal"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus align-middle"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Agregar responsable</a>
-                            <a class="dropdown-item" href="javascript:void(0);" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
-                            <a class="dropdown-item refresh_responsables_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
-                        </div>
-                    </div>
-                </div>
-                <h5 class="card-title mb-0">Listado de personal responsable por estación</h5>
+<div class="card">
+    <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+            <h5 class="card-title mb-1">Personal responsable por estación</h5>
+            <div class="text-muted small">Despachadores, gerentes y demás personal que opera en ControlGas. Los cambios llegan a la estación en unos minutos.</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="rsp_refresh" title="Volver a cargar la lista">
+                <i data-feather="refresh-ccw"></i> Actualizar
+            </button>
+            <button type="button" class="btn btn-outline-success btn-sm" id="rsp_excel">
+                <i data-feather="download"></i> Excel
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#responsableModal">
+                <i data-feather="user-plus"></i> Agregar responsable
+            </button>
+        </div>
+    </div>
+
+    <div class="card-body">
+        <div class="rsp-tabs btn-group flex-wrap mb-3" role="group" aria-label="Filtrar por estatus">
+            <input type="radio" class="btn-check" name="rsp_view" id="rsp_view_activos" value="activos" checked>
+            <label class="btn btn-outline-primary btn-sm" for="rsp_view_activos">Activos <span class="rsp-count" data-count="activos">–</span></label>
+            <input type="radio" class="btn-check" name="rsp_view" id="rsp_view_inactivos" value="inactivos">
+            <label class="btn btn-outline-primary btn-sm" for="rsp_view_inactivos">Inactivos <span class="rsp-count" data-count="inactivos">–</span></label>
+            <input type="radio" class="btn-check" name="rsp_view" id="rsp_view_todos" value="todos">
+            <label class="btn btn-outline-primary btn-sm" for="rsp_view_todos">Todos <span class="rsp-count" data-count="todos">–</span></label>
+            <input type="radio" class="btn-check" name="rsp_view" id="rsp_view_revisar" value="revisar">
+            <label class="btn btn-outline-secondary btn-sm rsp-review" for="rsp_view_revisar">Por revisar <span class="rsp-count" data-count="revisar">–</span></label>
+        </div>
+
+        <div class="rsp-toolbar mb-3">
+            <div class="rsp-field rsp-search">
+                <label class="form-label" for="rsp_search">Buscar</label>
+                <input type="search" class="form-control form-control-sm" id="rsp_search" placeholder="Nombre, reloj o código" autocomplete="off">
             </div>
-            <div class="card-body">
-                <table class="table table-striped table-sm w-100" style="font-size: small;" id="responsables_table">
-                    <thead>
+            <div class="rsp-field">
+                <label class="form-label" for="rsp_station">Estación</label>
+                <select class="selectpicker form-control form-control-sm" data-live-search="true" data-size="10" id="rsp_station">
+                    <option value="">Todas las estaciones</option>
+                    {% for station in stations %}
+                    <option value="{{ station.abr }}">{{ station.abr }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="rsp-field">
+                <label class="form-label" for="rsp_puesto">Puesto</label>
+                <select class="form-select form-select-sm" id="rsp_puesto">
+                    <option value="">Todos los puestos</option>
+                    {% for p in puestos %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <button type="button" class="btn btn-link btn-sm px-0" id="rsp_clear" hidden>Quitar filtros</button>
+            </div>
+        </div>
+
+        <div class="alert alert-warning rsp-hint" id="rsp_review_hint" role="note" hidden>
+            <div class="alert-message">
+                <strong>Registros con datos inconsistentes.</strong>
+                Debajo de cada nombre se indica qué revisar. Para la mayoría basta con abrir el registro (<i data-feather="edit-2" style="width:14px;height:14px"></i>) y guardar:
+                el nombre y el puesto se corrigen solos.
+            </div>
+        </div>
+
+        <div class="alert alert-danger" id="rsp_error" role="alert" hidden>
+            <div class="alert-message"><strong>No se pudo cargar la lista.</strong> <span id="rsp_error_text"></span>
+                <button type="button" class="btn btn-sm btn-outline-danger ms-2" id="rsp_retry">Reintentar</button></div>
+        </div>
+
+        <div class="table-responsive rsp-wrap">
+            <table class="table table-hover table-sm w-100" id="responsables_table">
+                <thead>
                     <tr>
-                        <th>Código</th>
+                        <th>Reloj</th>
                         <th>Nombre</th>
-                        <th>No de Reloj</th>
-                        <th>Estatus</th>
                         <th>Puesto</th>
                         <th>Estación</th>
-                        <th>Alta</th>
-                        <th>Responsable</th>
-                        <th class="w-10">Acciones</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    </tbody>
-                    <tfoot>
-                    <tr>
-                        <th>Código</th>
-                        <th>Nombre</th>
-                        <th>No de Reloj</th>
                         <th>Estatus</th>
-                        <th>Puesto</th>
-                        <th>Estación</th>
                         <th>Alta</th>
-                        <th>Responsable</th>
-                        <th>Acciones</th>
+                        <th title="Código interno en ControlGas">Código</th>
+                        <th class="text-end"><span class="visually-hidden">Acciones</span></th>
                     </tr>
-                    </tfoot>
-                </table>
-            </div>
+                </thead>
+                <tbody></tbody>
+            </table>
         </div>
     </div>
 </div>
 
-<!-- Modal -->
+<!-- Modal: el contenido lo trae /operations/responsableModal -->
 <div class="modal fade" id="responsableModal" tabindex="-1" aria-labelledby="responsableModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h1 class="modal-title fs-5" id="responsableModalLabel"></h1>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
-            <div class="content pb-0 pt-0">
-            </div>
+            <div class="content"></div>
         </div>
     </div>
 </div>
 {% endblock %}
 {% block myjs %}
 <script src="{{ js_v('operations.js') }}"></script>
+<script src="{{ js_v('operations/responsables.js') }}"></script>
 {% endblock %}

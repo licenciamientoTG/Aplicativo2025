@@ -1960,37 +1960,94 @@ class Operations{
         }
     }
 
+    /**
+     * GET: pantalla. POST: datos de la tabla (views/operations/responsables.html).
+     *
+     * Cada fila trae el nombre ya separado del reloj, el puesto normalizado y
+     * la lista de inconsistencias ("Por revisar"): se corrigen abriendo el
+     * registro y guardando, porque responsableModal() rearma den y pto.
+     */
     function responsables() : void {
-        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
-            echo $this->twig->render($this->route . 'responsables.html');
-        } else {
-            $data = [];
-            if($responsables = $this->responsablesModel->get_all()) {
-                // Hacemos un arraymap
-                $data = array_map(function($responsable) {
-                    $actions = "<a href=\"javascript:void(0);\" class=\"mx-1 text-primary\" data-bs-toggle=\"modal\" data-bs-target=\"#responsableModal\" data-id=\"{$responsable['cod']}\" data-codgas=\"{$responsable['codgas']}\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"feather feather-edit-2 align-middle\"><path d=\"M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z\"></path></svg></a>";
-                    if ($responsable['hab'] == 1) {
-                        $actions .= "<a href=\"javascript:void(0);\" class=\"mx-1 text-danger\" title=\"Desactivar\" onclick=\"deactivate_responsable({$responsable['cod']}, {$responsable['hab']})\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"feather feather-x-circle align-middle me-2\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"15\" y1=\"9\" x2=\"9\" y2=\"15\"></line><line x1=\"9\" y1=\"9\" x2=\"15\" y2=\"15\"></line></svg></a>";
-                    } else {
-                        $actions .= "<a href=\"javascript:void(0);\" class=\"mx-1 text-success\" title=\"Activar\" onclick=\"deactivate_responsable({$responsable['cod']}, {$responsable['hab']})\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"feather feather-check-circle align-middle me-2\"><path d=\"M22 11.08V12a10 10 0 1 1-5.93-9.14\"></path><polyline points=\"22 4 12 14.01 9 11.01\"></polyline></svg></a>";
-                    }
-                    $actions .= "<a href=\"javascript:void(0);\" class=\"text-danger\" onclick=\"delete_responsable({$responsable['cod']})\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"feather feather-trash-2 align-middle me-2\"><polyline points=\"3 6 5 6 21 6\"></polyline><path d=\"M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2\"></path><line x1=\"10\" y1=\"11\" x2=\"10\" y2=\"17\"></line><line x1=\"14\" y1=\"11\" x2=\"14\" y2=\"17\"></line></svg></a>";
-                    return [
-                        'Nombre' => $responsable['den'],
-                        'Codigo' => $responsable['cod'],
-                        'NoReloj' => $responsable['codext'],
-                        'Status' => $responsable['Status'],
-                        'Puesto' => $responsable['pto'],
-                        'Estacion' => $responsable['Estacion'] . ' (' . $responsable['cveest'] . ')',
-                        'Alta' => $responsable['logfch'],
-                        'Responsable' => $responsable['rsp'],
-                        'Acciones' => $actions,
-                    ];
-                }, $responsables);
-            }
-            json_output(array("data" => $data));
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            $stations = $this->gasolinerasModel->get_active_stations();
+            $puestos  = ResponsablesModel::PUESTOS;
+            echo $this->twig->render($this->route . 'responsables.html', compact('stations', 'puestos'));
+            return;
         }
 
+        $rows = $this->responsablesModel->get_all() ?: [];
+
+        // Relojes activos repetidos dentro de la misma estación (posible duplicado).
+        $activosPorReloj = [];
+        foreach ($rows as $r) {
+            if ((int) $r['hab'] === 1) {
+                $k = (int) $r['codgas'] . '|' . (int) $r['codext'];
+                $activosPorReloj[$k] = ($activosPorReloj[$k] ?? 0) + 1;
+            }
+        }
+
+        $data = array_map(function ($r) use ($activosPorReloj) {
+            $den    = trim((string) $r['den']);
+            $reloj  = (int) $r['codext'];
+            $puesto = ResponsablesModel::normalizar_puesto($r['pto']);
+            $issues = [];
+
+            if (preg_match('/^(\d+)\s+\1(\s|$)/', $den)) {
+                $issues[] = 'El número de reloj está repetido en el nombre';
+            } elseif (preg_match('/^(\d+)\s/', $den, $m) && (int) $m[1] !== $reloj) {
+                $issues[] = "El número del nombre ({$m[1]}) no coincide con el reloj ({$reloj})";
+            } elseif (!preg_match('/^\d+\s/', $den)) {
+                $issues[] = 'El nombre no lleva el número de reloj';
+            }
+            if ($puesto === '' || !in_array($puesto, ResponsablesModel::PUESTOS, true)) {
+                $issues[] = $puesto === '' ? 'Sin puesto' : "Puesto fuera del catálogo: {$puesto}";
+            }
+            if ($r['Estacion'] === null) {
+                $issues[] = "La estación {$r['codgas']} no existe";
+            }
+            if ((int) $r['hab'] === 1 && ($activosPorReloj[(int) $r['codgas'] . '|' . $reloj] ?? 0) > 1) {
+                $issues[] = 'Hay otro responsable activo con el mismo reloj en esta estación';
+            }
+
+            return [
+                'cod'      => (int) $r['cod'],
+                'reloj'    => $reloj,
+                'nombre'   => ResponsablesModel::formatear_nombre(ResponsablesModel::nombre_sin_reloj($den)),
+                'puesto'   => $puesto,
+                'codgas'   => (int) $r['codgas'],
+                'estacion' => $r['Estacion'] !== null ? trim($r['Estacion']) : null,
+                'activo'   => (int) $r['hab'] === 1,
+                'alta'     => $r['logfch'] ? substr((string) $r['logfch'], 0, 10) : null,
+                'issues'   => $issues,
+            ];
+        }, $rows);
+
+        json_output(['data' => $data]);
+    }
+
+    /**
+     * Ayuda del modal mientras se captura el reloj: otros registros con el
+     * mismo reloj y, en un alta, el código que se asignaría.
+     * GET /operations/responsable_reloj/<reloj>/<codgas>/<cod que se edita>
+     */
+    function responsable_reloj($reloj = 0, $codgas = 0, $cod = 0) : void {
+        $reloj  = ctype_digit((string) $reloj) ? (int) $reloj : 0;
+        $codgas = ctype_digit((string) $codgas) ? (int) $codgas : -1;
+        $cod    = ctype_digit((string) $cod) ? (int) $cod : 0;
+        if ($reloj <= 0) {
+            json_output(['matches' => [], 'codigo' => null]);
+            return;
+        }
+        $matches = array_map(fn($m) => [
+            'cod'      => (int) $m['cod'],
+            'nombre'   => ResponsablesModel::formatear_nombre(ResponsablesModel::nombre_sin_reloj($m['den'])),
+            'estacion' => $m['Estacion'] !== null ? trim($m['Estacion']) : "Estación {$m['codgas']}",
+            'codgas'   => (int) $m['codgas'],
+            'activo'   => (int) $m['hab'] === 1,
+        ], array_filter($this->responsablesModel->get_by_reloj($reloj), fn($m) => (int) $m['cod'] !== $cod));
+
+        $codigo = ($cod === 0 && $codgas >= 0) ? $this->responsablesModel->siguiente_codigo($reloj, $codgas) : null;
+        json_output(['matches' => array_values($matches), 'codigo' => $codigo]);
     }
 
     function islands() : void {
@@ -2384,36 +2441,92 @@ class Operations{
     //     json_output($exchange);
     // }
 
-    function responsableModal($cod = 0, $codgas = 0) : void {
-        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
+    /**
+     * GET: contenido del modal de alta/edición (JSON). POST: guarda.
+     *
+     * Responsables.cod es el código interno (llave) y codext el número de
+     * reloj; den se guarda como "<reloj> <Nombre>". En el alta el código lo
+     * asigna el sistema (ver ResponsablesModel::siguiente_codigo()).
+     */
+    function responsableModal($cod = 0) : void {
+        $cod = ctype_digit((string) $cod) ? (int) $cod : 0;
+
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
             $stations = $this->gasolinerasModel->get_active_stations();
-            $responsable = ($cod == 0 ? false : $this->responsablesModel->get_responsable($cod));
-            $modal = [
-                "title"    => "Alta de responsable",
-                "size"     => "modal-xl",
-                "position" => "modal-dialog-centered",
-                "content"  => $this->twig->render($this->route . 'modals/responsableModal.html', compact( 'stations', 'responsable'))
-            ];
-            json_output($modal);
-        } else {
-            // Vamos a recopilar la información:
-            $data = [
-                'Nombre' => strtolower($_POST['clock'] . ' ' . trim($_POST['name'])), 'Codigo' => $_POST['codext'], 'NoReloj' => $_POST['clock'], 'Puesto' => $_POST['pto'], 'Estacion' => $_POST['IdEstacion'], 'Status' => $_POST['status']
-            ];
-            if ($_POST['action'] == 'editar') {
-                if ($this->responsablesModel->update($data, intval($codgas))) {
-                    setFlashMessage('success','Se ha actualizado al responsable correctamente');
-                } else {
-                    setFlashMessage('error','No se pudo actualizar al responsable');
-                }
-            } else {
-                if ($this->responsablesModel->insert($data)) {
-                    setFlashMessage('success','Se ha registrado al responsable correctamente');
-                } else {
-                    setFlashMessage('error','No se pudo registrar al responsable');
+            $responsable = $cod > 0 ? $this->responsablesModel->get_responsable($cod) : false;
+            if ($cod > 0 && !$responsable) {
+                http_response_code(404);
+                json_output(['error' => 'No se encontró al responsable con código ' . $cod . '.']);
+                return;
+            }
+            $puestos = ResponsablesModel::PUESTOS;
+            if ($responsable) {
+                $responsable['NombreSinReloj'] = ResponsablesModel::nombre_sin_reloj($responsable['Nombre']);
+                $responsable['Puesto'] = ResponsablesModel::normalizar_puesto($responsable['Puesto']);
+                // Un puesto que no se reconoce se ofrece tal cual para no perderlo.
+                if ($responsable['Puesto'] !== '' && !in_array($responsable['Puesto'], $puestos, true)) {
+                    $puestos[] = $responsable['Puesto'];
                 }
             }
-            redirect();
+            json_output([
+                "title"    => $responsable ? "Editar responsable" : "Alta de responsable",
+                "size"     => "modal-lg",
+                "position" => "modal-dialog-centered",
+                "content"  => $this->twig->render($this->route . 'modals/responsableModal.html', compact('stations', 'responsable', 'puestos')),
+            ]);
+            return;
+        }
+
+        $editar = ($_POST['action'] ?? '') === 'editar';
+        $cod    = $editar ? (int) ($_POST['cod'] ?? 0) : 0;
+        $nombre = ResponsablesModel::formatear_nombre((string) ($_POST['name'] ?? ''));
+        $reloj  = (int) ($_POST['clock'] ?? 0);
+        $codgas = (int) ($_POST['IdEstacion'] ?? -1);
+        $status = ($_POST['status'] ?? '1') === '0' ? 0 : 1;
+        $puesto = ResponsablesModel::normalizar_puesto((string) ($_POST['pto'] ?? ''));
+        $den    = $reloj . ' ' . $nombre;
+
+        $estaciones = array_map('intval', array_column($this->gasolinerasModel->get_active_stations() ?: [], 'cod'));
+        $error = match (true) {
+            $nombre === ''                       => 'Escriba el nombre del responsable.',
+            $reloj <= 0                          => 'Escriba un número de reloj válido.',
+            mb_strlen($den) > 50                 => 'El nombre es demasiado largo: junto con el reloj caben 50 caracteres.',
+            !in_array($codgas, $estaciones, true) => 'Seleccione una estación.',
+            $puesto === ''                       => 'Seleccione el puesto.',
+            $editar && $cod <= 0                 => 'No se recibió el código del responsable a editar.',
+            default                              => null,
+        };
+        // El modal guarda por AJAX y recibe JSON; un POST normal sigue con flash + redirect.
+        $ajax = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest';
+        $responder = function (bool $ok, string $message, array $extra = []) use ($ajax) {
+            if ($ajax) {
+                if (!$ok) { http_response_code(422); }
+                json_output(['status' => $ok ? 'success' : 'error', 'message' => $message] + $extra);
+            } else {
+                setFlashMessage($ok ? 'success' : 'error', $message);
+                redirect();
+            }
+        };
+
+        if ($error) {
+            $responder(false, $error);
+            return;
+        }
+
+        $data = ['Nombre' => $den, 'NoReloj' => $reloj, 'Puesto' => $puesto, 'Estacion' => $codgas, 'Status' => $status];
+        try {
+            if ($editar) {
+                $this->responsablesModel->update($cod, $data);
+                $responder(true, "Se actualizó a {$den} (código {$cod}).", ['cod' => $cod]);
+            } else {
+                $data['Codigo'] = $this->responsablesModel->siguiente_codigo($reloj, $codgas);
+                $this->responsablesModel->insert($data);
+                $responder(true, "Se registró a {$den} con el código {$data['Codigo']}.", ['cod' => $data['Codigo']]);
+            }
+        } catch (Exception $e) {
+            $responder(false, $editar
+                ? 'No se pudo actualizar al responsable. Intente de nuevo; si persiste, avise a sistemas.'
+                : 'No se pudo registrar al responsable (el código pudo ocuparse al mismo tiempo). Intente de nuevo.');
         }
     }
 
@@ -2421,27 +2534,30 @@ class Operations{
      * @param $cod
      * @return void
      */
+    /** Alterna activo/inactivo. $hab es el estado ACTUAL; la estación se actualiza en segundo plano. */
     function deactivate_responsable($cod, $hab) : void {
-        // Si la variable $hab es 1 lo pasamos a cero, si es cero lo pasamos a uno
-        $hab = ($hab == 1 ? 0 : 1);
-        if ($this->responsablesModel->deactivate($cod, $hab)) {
-            json_output(['status' => 'success', 'message' => 'Se ha desactivado al responsable correctamente']);
+        $cod = (int) $cod;
+        $nuevo = ((int) $hab === 1) ? 0 : 1;
+        $accion = $nuevo ? 'activó' : 'desactivó';
+        if ($cod > 0 && $this->responsablesModel->deactivate($cod, $nuevo)) {
+            json_output(['status' => 'success', 'activo' => (bool) $nuevo,
+                'message' => "Se {$accion} al responsable. La estación recibe el cambio en unos minutos."]);
         } else {
-            json_output(['status' => 'error', 'message' => 'No se pudo desactivar al responsable']);
+            json_output(['status' => 'error', 'message' => 'No se pudo ' . ($nuevo ? 'activar' : 'desactivar') . ' al responsable. Intente de nuevo.']);
         }
     }
 
-    /**
-     * @param $cod
-     * @return void
-     */
+    /** Elimina el registro en SG12 y en todas las estaciones (sp_eliminar_responsable). */
     function delete_responsable($cod) : void {
-
-        if ($this->responsablesModel->delete($cod)) {
-            json_output(['status' => 'success', 'message' => 'Se ha eliminado el registro del responsable correctamente']);
-        } else {
-            json_output(['status' => 'error', 'message' => 'No se pudo eliminar el registro del responsable']);
+        $cod = (int) $cod;
+        try {
+            $ok = $cod > 0 && $this->responsablesModel->delete($cod);
+        } catch (Exception $e) {
+            $ok = false;
         }
+        json_output($ok
+            ? ['status' => 'success', 'message' => 'Se eliminó el registro del responsable.']
+            : ['status' => 'error', 'message' => 'No se pudo eliminar el registro. Intente de nuevo o desactívelo en su lugar.']);
     }
 
     /**
@@ -3429,7 +3545,8 @@ class Operations{
 
     function clientes_contado() : void {
         $stations = $this->estacionesModel->get_select_stations() ?: [];
-        echo $this->twig->render($this->route . 'clientes_contado.html', compact('stations'));
+        $estatus = ClientesModel::CONTADO_ESTATUS;
+        echo $this->twig->render($this->route . 'clientes_contado.html', compact('stations', 'estatus'));
     }
 
     /**
@@ -3444,6 +3561,10 @@ class Operations{
     function clientes_contado_search() : void {
         $codgas  = (int)($_POST['codgas'] ?? 0);
         $termino = trim($_POST['termino'] ?? '');
+        // '' = todos; cualquier valor fuera de la lista también se toma como todos
+        $estatusPost = $_POST['estatus'] ?? '';
+        $estatus = (is_numeric($estatusPost) && array_key_exists((int)$estatusPost, ClientesModel::CONTADO_ESTATUS))
+            ? (int)$estatusPost : null;
 
         if (!$codgas) {
             json_output(['data' => [], 'error' => 'Selecciona una estación.']);
@@ -3460,7 +3581,7 @@ class Operations{
             return;
         }
 
-        $rows = $this->clientesModel->search_contado_por_estacion($est['Servidor'], $est['BaseDatos'], $termino);
+        $rows = $this->clientesModel->search_contado_por_estacion($est['Servidor'], $est['BaseDatos'], $termino, $estatus);
         if ($rows === false) {
             json_output(['data' => [], 'error' => 'No se pudo consultar la estación (¿está disponible el enlace?).']);
             return;

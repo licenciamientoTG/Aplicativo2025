@@ -35,6 +35,12 @@ class InventarioUrovoModel extends Model {
             GROUP BY tipo_terminal,estacion_codigo",['urovo','verifone','estacion','operativa']);
         $byStation=['urovo'=>[],'verifone'=>[]];
         foreach ($counts as $row) $byStation[(string)$row['tipo_terminal']][(int)$row['station_id']]=(int)$row['funcionando'];
+        $openIncidents=$this->sql->select("SELECT estacion_id AS station_id,tipo_terminal,COUNT(*) AS open_count
+            FROM [TG].[dbo].[inv_ter_incidencias]
+            WHERE estado_local IN ('Abierta','Solved','Reabierta') AND tipo_terminal IN (?,?)
+            GROUP BY estacion_id,tipo_terminal",['urovo','verifone']);
+        $openByStation=['urovo'=>[],'verifone'=>[]];
+        foreach ($openIncidents as $row) $openByStation[(string)$row['tipo_terminal']][(int)$row['station_id']]=(int)$row['open_count'];
         $totals=[
             'urovo'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_reparacion'=>0,'total_danadas_estacion'=>0],
             'verifone'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_reparacion'=>0,'total_danadas_estacion'=>0],
@@ -45,7 +51,8 @@ class InventarioUrovoModel extends Model {
             $verifoneFunctioning=$byStation['verifone'][$stationId]??0;
             $rows[]=['station_id'=>$stationId,'station_name'=>$name,
                 'urovo'=>['objetivo'=>$objective,'funcionando'=>$urovoFunctioning,'diferencia'=>$urovoFunctioning-$objective],
-                'verifone'=>['objetivo'=>0,'funcionando'=>$verifoneFunctioning,'diferencia'=>$verifoneFunctioning]];
+                'verifone'=>['objetivo'=>0,'funcionando'=>$verifoneFunctioning,'diferencia'=>$verifoneFunctioning],
+                'mojo_abierto'=>['urovo'=>$openByStation['urovo'][$stationId]??0,'verifone'=>$openByStation['verifone'][$stationId]??0]];
             $totals['urovo']['total_objetivo']+=$objective;
             $totals['urovo']['total_funcionando']+=$urovoFunctioning;
             $totals['verifone']['total_funcionando']+=$verifoneFunctioning;
@@ -119,6 +126,32 @@ class InventarioUrovoModel extends Model {
                 ],
             ];
         },$rows);
+    }
+
+    /** Terminales ubicadas actualmente en estación y sus incidencias abiertas. */
+    public function stationReport(?int $stationId=null): array {
+        $where="t.ubicacion_tipo='estacion' AND t.estacion_codigo IS NOT NULL"; $params=[];
+        if ($stationId!==null) { $where.=' AND t.estacion_codigo=?'; $params[]=$stationId; }
+        return $this->sql->select("SELECT t.id,s.Codigo AS station_id,s.Nombre AS station_name,t.tipo_terminal,
+                t.numero_serie,t.condicion,openIncident.ticket_mojo_id AS open_ticket_mojo_id,
+                CASE WHEN openIncident.ticket_mojo_id IS NOT NULL THEN 1 ELSE 0 END AS tiene_tickets_abiertos
+            FROM [TG].[dbo].[inv_urovo_terminales] t
+            INNER JOIN [TG].[dbo].[Estaciones] s ON s.Codigo=t.estacion_codigo
+            OUTER APPLY (
+                    SELECT TOP (1) i.ticket_mojo_id
+                    FROM [TG].[dbo].[inv_ter_incidencias] i
+                    WHERE i.estacion_id=t.estacion_codigo AND i.tipo_terminal=t.tipo_terminal
+                        AND i.estado_local IN ('Abierta','Solved','Reabierta')
+                        AND (
+                            (t.numero_serie_normalizado IS NOT NULL AND NULLIF(LTRIM(RTRIM(i.serial_urovo)),'') IS NOT NULL
+                                AND UPPER(LTRIM(RTRIM(i.serial_urovo)))=t.numero_serie_normalizado)
+                            OR (t.mojo_ticket_number IS NOT NULL AND i.ticket_mojo_id=TRY_CONVERT(bigint,t.mojo_ticket_number))
+                        )
+                    ORDER BY CASE WHEN t.mojo_ticket_number IS NOT NULL AND i.ticket_mojo_id=TRY_CONVERT(bigint,t.mojo_ticket_number) THEN 0 ELSE 1 END,
+                        i.fecha_apertura_mojo DESC,i.id DESC
+            ) openIncident
+            WHERE $where
+            ORDER BY s.Nombre,t.tipo_terminal,t.numero_serie,t.id",$params);
     }
 
     /** Detalle bajo demanda para una estación activa. */

@@ -484,21 +484,38 @@ class ClientesModel extends Model{
     public const CONTADO_MAX_ROWS = 5000;
 
     /**
+     * Estatus (Clientes.codest) que existen en las estaciones para clientes de
+     * contado. Revisado 2026-11-23 en las estaciones 2, 3, 5 y en SG12: solo
+     * aparecen 0, 1 y -1 (-1 = dado de baja, ~125k de ~234k filas).
+     */
+    public const CONTADO_ESTATUS = [
+        0  => 'Activo',
+        1  => 'Suspendido',
+        -1 => 'Deshabilitado',
+    ];
+
+    /**
      * Busca clientes con tipval distinto de 3 (Crédito) y 4 (Débito) en UNA
      * estación, por nombre/RFC/código. El filtro y el TOP van en la consulta
      * remota, no en PHP, porque la tabla jamás se debe traer completa (ver
      * CONTADO_MAX_ROWS). Con $termino vacío, regresa los últimos registrados
-     * (por logfch) hasta el límite.
+     * (por logfch) hasta el límite. $estatus (clave de CONTADO_ESTATUS) filtra
+     * en la consulta remota para que el TOP aplique después del filtro;
+     * null = todos.
      *
      * @return array|false false = error de conexión/consulta en la estación
      */
-    public function search_contado_por_estacion(string $servidor, string $baseDatos, string $termino) : array|false {
+    public function search_contado_por_estacion(string $servidor, string $baseDatos, string $termino, ?int $estatus = null) : array|false {
         $top     = self::CONTADO_MAX_ROWS;
         $columnas = "cod, den, dom, rfc, codpos, tel, correo, tipval, logfch,
-                    CASE WHEN codest = 1 THEN 'Suspendido' WHEN codest = 0 THEN 'Activo' ELSE 'NA' END AS estatus";
+                    CASE WHEN codest = 1 THEN 'Suspendido' WHEN codest = 0 THEN 'Activo'
+                         WHEN codest = -1 THEN 'Deshabilitado' ELSE 'NA' END AS estatus";
         $select = "SELECT TOP {$top} {$columnas}
                   FROM [{$baseDatos}].dbo.Clientes
                   WHERE tipval NOT IN (3,4)";
+        if ($estatus !== null && array_key_exists($estatus, self::CONTADO_ESTATUS)) {
+            $select .= " AND codest = {$estatus}"; // int validado contra la lista
+        }
 
         if ($termino === '') {
             $inner = $select . " ORDER BY logfch DESC";

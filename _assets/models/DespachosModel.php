@@ -1190,8 +1190,34 @@ class DespachosModel extends Model
         $tipoAplicativo = DespachosSql::tipoCliente(false, true);
         $pagoFactura    = DespachosSql::pagoFactura();
         $pagoDespacho   = DespachosSql::pagoDespacho();
+        $gasFiltro      = $codgas !== 0 ? "AND t1.codgas = $codgas" : '';
 
-        $query = "WITH CTE AS (
+        // Impuestos de las partidas de cada factura, una vez por factura y producto
+        // (importes en centavos). Las partidas no apuntan al despacho, así que en
+        // una factura global se prorratea por litros. Se calcula sobre las
+        // facturas distintas del rango, no despacho por despacho: con todas las
+        // estaciones la búsqueda por fila costaba ~30 s. El hint evita que el
+        // optimizador recorra IX_TipoProducto (Documentos tiene >100M filas).
+        $query = "WITH facs AS (
+                    SELECT DISTINCT t3.nro, t3.codgas, t3.tip, t1.codprd
+                    FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
+                    JOIN [SG12].[dbo].DocumentosC t3 WITH (NOLOCK) ON t1.nrofac = t3.nro AND t1.gasfac = t3.codgas
+                    WHERE t1.fchtrn BETWEEN ? AND ? AND t1.nrofac != 0 AND t1.mto != 0 $gasFiltro
+                ),
+                partidas AS (
+                    SELECT
+                        f.nro, f.codgas, f.tip, f.codprd,
+                        ABS(SUM(d.can))             AS can,
+                        ABS(SUM(d.mtoori)) / 100.0  AS ori,
+                        ABS(SUM(d.mtoiva)) / 100.0  AS iva,
+                        ABS(SUM(d.mtoiie)) / 100.0  AS ieps
+                    FROM facs f
+                    JOIN [SG12].[dbo].[Documentos] d WITH (NOLOCK, INDEX(PK_Documentos))
+                      ON d.nro = f.nro AND d.tip = f.tip AND d.codgas = f.codgas
+                     AND d.codprd = f.codprd AND d.nroitm > 0
+                    GROUP BY f.nro, f.codgas, f.tip, f.codprd
+                ),
+                CTE AS (
                     SELECT
                         $fecha AS fecha,
                         $hora AS hora_formateada,
@@ -1229,10 +1255,25 @@ class DespachosModel extends Model
                         t1.tiptrn,
                         t6.cvecli,
                         t15.FechaTimbrado,
+                        CASE WHEN t15.UUID IS NOT NULL THEN CONCAT(t15.Serie, '-', t15.Folio) END AS serie_folio,
+                        COALESCE(NULLIF(t15.ReceptorRfc, ''), NULLIF(t1.satrfc, '')) AS rfc_cfdi,
+                        tx.ieps,
+                        ROUND((t1.mto - tx.ieps) * tx.tasa_iva / (1 + tx.tasa_iva), 2) AS iva,
+                        t1.mto - ROUND((t1.mto - tx.ieps) * tx.tasa_iva / (1 + tx.tasa_iva), 2) AS subtotal,
+                        tx.tasa_iva,
                         ROW_NUMBER() OVER(PARTITION BY t1.nrotrn, t1.codgas ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
                         FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
                         LEFT JOIN [SG12].[dbo].Clientes t2 ON t1.codcli = t2.cod
-                        LEFT JOIN [SG12].[dbo].DocumentosC t3 ON t1.nrofac = t3.nro AND t1.codgas = t3.codgas
+                        -- La factura vive en la estación gasfac (0 = corporativo, p. ej. clientes débito).
+                        -- nrofac = 0 es sin factura: en el corporativo existe un documento 0.
+                        -- APPLY + TOP 1 busca por llave primaria; un JOIN por gasfac hacía que el
+                        -- optimizador cambiara de plan (de ~17 s a ~57 s con 31 días de una estación).
+                        OUTER APPLY (
+                            SELECT TOP 1 c.*
+                            FROM [SG12].[dbo].DocumentosC c WITH (NOLOCK)
+                            WHERE c.nro = t1.nrofac AND c.codgas = t1.gasfac AND t1.nrofac != 0
+                            ORDER BY c.tip
+                        ) t3
                         LEFT JOIN [SG12].[dbo].Clientes t5 ON t3.codopr = t5.cod
                         LEFT JOIN [SG12].[dbo].Gasolineras t6 ON t1.codgas = t6.cod
                         LEFT JOIN [SG12].[dbo].[Empresas] t7 ON t6.codemp = t7.cod
@@ -1246,7 +1287,17 @@ class DespachosModel extends Model
                         ) t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas
                         LEFT JOIN [SG12].[dbo].Valores t13 ON t12.codbco = t13.cod
                         LEFT JOIN [SG12].[dbo].[EfectosC] t14 ON t3.tip = t14.tipope AND t3.subope = t14.subope
-                        LEFT JOIN TGV2.dbo.Facturas t15 ON t1.satuid = t15.UUID
+                        -- El timbre puede estar en el despacho o en la factura (DocumentosC).
+                        LEFT JOIN TGV2.dbo.Facturas t15 ON t15.UUID = COALESCE(t1.satuid, t3.satuid)
+                        LEFT JOIN partidas pt ON pt.nro = t3.nro AND pt.codgas = t3.codgas
+                                             AND pt.tip = t3.tip AND pt.codprd = t1.codprd
+                        -- IEPS = cuota por litro de la factura × litros del despacho;
+                        -- tasa de IVA redondeada a 2 decimales (0.08 frontera / 0.16).
+                        OUTER APPLY (
+                            SELECT
+                                ROUND(t1.can * pt.ieps / NULLIF(pt.can, 0), 2)  AS ieps,
+                                ROUND(pt.iva / NULLIF(pt.ori - pt.ieps, 0), 2)  AS tasa_iva
+                        ) tx
                     WHERE
                         t1.mto != 0 AND
                         t1.tiptrn NOT IN (65, 74) AND
@@ -1257,7 +1308,7 @@ class DespachosModel extends Model
             WHERE rn = 1
             ORDER BY fecha, hora_formateada;";
 
-        return $this->fetchAll($query, [$from, $until]);
+        return $this->fetchAll($query, [$from, $until, $from, $until]);
     }
 
     /**
