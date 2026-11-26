@@ -2652,6 +2652,15 @@ class MovimientosBancariosModel extends Model
      * movimientos del TXT del mismo día, no antes ni después del bloque
      * completo. Intercalar por hora real (no por bloque) resuelve ambos
      * casos sin regresión, verificado contra BD real.
+     *
+     * Segundo paso (2026-11-26): cuando el día mezcla archivos y el orden por
+     * hora deja roturas, se prueba también el orden que dicta la propia
+     * cadena de saldos (ajusta_orden_dia_santander_por_cadena) y se queda el
+     * que tenga menos roturas. Caso real: el 3/11/2026 (2/11 inhábil) el
+     * banco asentó fin de semana y lunes con fecha 3/11; los CSV bajados el
+     * 2/11 traían horas de sábado/domingo/lunes y al intercalarlos por hora
+     * con el TXT del día se rompió la cadena en 7 cuentas sin faltar
+     * ningún movimiento.
      */
     private static function recalcula_orden_dia_santander($db, string $cuenta, string $fecha): void
     {
@@ -2685,6 +2694,131 @@ class MovimientosBancariosModel extends Model
              JOIN ordenado d ON d.id = m.id;",
             [$cuenta, $fecha]
         );
+
+        self::ajusta_orden_dia_santander_por_cadena($db, $cuenta, $fecha);
+    }
+
+    /**
+     * Segundo paso de recalcula_orden_dia_santander(): solo para días que
+     * mezclan más de un archivo_origen (TXT + CSV) y cuyo orden por hora
+     * dejó roturas en la cadena de saldos. Calcula el orden que dicta la
+     * cadena (orden_por_cadena_saldos) y lo aplica únicamente si deja
+     * MENOS roturas que el orden actual; si no mejora (p.ej. falta un
+     * movimiento de verdad) deja el orden por hora como estaba. Los días de
+     * un solo archivo no se tocan: ahí el id ya es el orden real.
+     */
+    private static function ajusta_orden_dia_santander_por_cadena($db, string $cuenta, string $fecha): void
+    {
+        $filas = $db->select(
+            "SELECT id, archivo_origen, cargo, abono, saldo
+             FROM [TG].[dbo].[movimientos_bancarios]
+             WHERE banco = 'SANTANDER' AND cuenta = ? AND fecha = ?
+             ORDER BY orden_dia, id;",
+            [$cuenta, $fecha]
+        ) ?: [];
+        if (count($filas) < 2) return;
+        if (count(array_unique(array_column($filas, 'archivo_origen'))) < 2) return;
+
+        foreach ($filas as &$f) {
+            $f['cargo'] = $f['cargo'] !== null ? (float)$f['cargo'] : null;
+            $f['abono'] = $f['abono'] !== null ? (float)$f['abono'] : null;
+            $f['saldo'] = (float)$f['saldo'];
+        }
+        unset($f);
+
+        // Cierre del día anterior (último movimiento por orden de aplicación):
+        // es el saldo desde el que arranca la cadena de este día.
+        $previo = $db->select(
+            "SELECT TOP 1 saldo FROM [TG].[dbo].[movimientos_bancarios]
+             WHERE banco = 'SANTANDER' AND cuenta = ? AND fecha < ?
+             ORDER BY fecha DESC, ISNULL(orden_dia, id) DESC, id DESC;",
+            [$cuenta, $fecha]
+        );
+        $saldoPrevio = $previo ? (float)$previo[0]['saldo'] : null;
+
+        $actual = self::roturas_orden_con_previo($filas, $saldoPrevio);
+        if ($actual === 0) return;
+
+        $cadena = self::orden_por_cadena_saldos($filas, $saldoPrevio);
+        if (self::roturas_orden_con_previo($cadena, $saldoPrevio) >= $actual) return;
+
+        foreach ($cadena as $i => $f) {
+            if ($f['id'] === $filas[$i]['id']) continue;   // ya estaba en esa posición
+            $db->update(
+                'UPDATE [TG].[dbo].[movimientos_bancarios] SET orden_dia = ? WHERE id = ?;',
+                [$i + 1, $f['id']]
+            );
+        }
+    }
+
+    /** Roturas de la cadena de saldos de $filas (en ese orden), contando el arranque desde $saldoPrevio. */
+    private static function roturas_orden_con_previo(array $filas, ?float $saldoPrevio): int
+    {
+        if ($saldoPrevio !== null) {
+            array_unshift($filas, ['saldo' => $saldoPrevio, 'cargo' => null, 'abono' => null]);
+        }
+        return count(self::roturas_cadena_saldos($filas));
+    }
+
+    /**
+     * Ordena los movimientos de UN día según la cadena de saldos: el
+     * siguiente es el que, restando su efecto a su saldo, da el saldo del
+     * anterior (saldo_previo = saldo - abono + cargo). Arranca en $saldoPrevio
+     * (cierre del día anterior). Si la cadena se corta (movimiento faltante),
+     * continúa con la fila cuyo saldo previo no es saldo de ninguna otra
+     * restante —el arranque del siguiente tramo— para no perder filas. En
+     * empates respeta el orden en que llegaron ($filas).
+     *
+     * @param array[] $filas cada una con id, cargo, abono, saldo (float|null)
+     * @return array[] las mismas filas, reordenadas
+     */
+    public static function orden_por_cadena_saldos(array $filas, ?float $saldoPrevio): array
+    {
+        $cent = fn($v) => (int)round($v * 100);
+        $previoDe = fn(array $f) => $cent($f['saldo'] - ($f['abono'] ?? 0) + ($f['cargo'] ?? 0));
+
+        $porPrevio = [];      // saldo previo (centavos) => índices en orden de llegada
+        $conSaldo  = [];      // saldo (centavos) => cuántas filas restantes lo tienen
+        foreach ($filas as $k => $f) {
+            $porPrevio[$previoDe($f)][] = $k;
+            $c = $cent($f['saldo']);
+            $conSaldo[$c] = ($conSaldo[$c] ?? 0) + 1;
+        }
+
+        $usada = [];
+        $res   = [];
+        $saldo = $saldoPrevio !== null ? $cent($saldoPrevio) : null;
+        $n     = count($filas);
+
+        while (count($res) < $n) {
+            $k = null;
+            if ($saldo !== null && !empty($porPrevio[$saldo])) {
+                while ($porPrevio[$saldo]) {
+                    $cand = array_shift($porPrevio[$saldo]);
+                    if (!isset($usada[$cand])) { $k = $cand; break; }
+                }
+            }
+            if ($k === null) {
+                // Arranque o hueco: fila restante cuyo saldo previo no es el saldo de otra restante.
+                foreach ($filas as $i => $f) {
+                    if (isset($usada[$i])) continue;
+                    $p     = $previoDe($f);
+                    $otros = ($conSaldo[$p] ?? 0) - ($cent($f['saldo']) === $p ? 1 : 0);
+                    if ($otros <= 0) { $k = $i; break; }
+                }
+                if ($k === null) {
+                    foreach ($filas as $i => $f) {
+                        if (!isset($usada[$i])) { $k = $i; break; }
+                    }
+                }
+            }
+            $usada[$k] = true;
+            $res[]     = $filas[$k];
+            $c         = $cent($filas[$k]['saldo']);
+            $conSaldo[$c]--;
+            $saldo     = $c;
+        }
+        return $res;
     }
 
     /**
