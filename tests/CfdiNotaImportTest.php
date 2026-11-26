@@ -113,6 +113,17 @@ check('accion ya-ligada', $accion($notaB, $pdfB, null, true)['accion'] === 'ya-l
 $frB = ['Folio' => '034398', 'EmisorRfc' => 'MME141110IJ9', 'Total' => '1027.91'];
 check('accion ya-en-FR', $accion($notaB, $pdfB, $frB)['accion'] === 'ya-en-FR');
 check('accion uuid-otro-cfdi', $accion($notaB, $pdfB, array_merge($frB, ['Folio' => '999999']))['accion'] === 'uuid-otro-cfdi');
+// FR importada solo con PDF y Total 0 (dic-2025..abr-2026): se corrige el Total si folio, RFC y SubTotal cuadran
+$pdfSub = array_merge($pdfB, ['subtotal' => 951.77]);
+$frCero = ['Id' => 44099, 'Folio' => '034398', 'EmisorRfc' => 'MME141110IJ9', 'Total' => '.00', 'SubTotal' => '951.77'];
+$tc = $accion($notaB, $pdfSub, $frCero);
+check('accion ya-en-FR-total (FR con Total 0)', $tc['accion'] === 'ya-en-FR-total' && str_contains($tc['detalle'], '44099'));
+check('Total 0 con SubTotal distinto -> uuid-otro-cfdi', $accion($notaB, $pdfSub, array_merge($frCero, ['SubTotal' => '900.00']))['accion'] === 'uuid-otro-cfdi');
+check('Total 0 con folio distinto -> uuid-otro-cfdi', $accion($notaB, $pdfSub, array_merge($frCero, ['Folio' => '999999']))['accion'] === 'uuid-otro-cfdi');
+check('Total 0 con RFC distinto -> uuid-otro-cfdi', $accion($notaB, $pdfSub, array_merge($frCero, ['EmisorRfc' => 'AAA010101AAA']))['accion'] === 'uuid-otro-cfdi');
+check('Total 0 sin SubTotal en FR -> uuid-otro-cfdi', $accion($notaB, $pdfSub, array_merge($frCero, ['SubTotal' => '0']))['accion'] === 'uuid-otro-cfdi');
+check('FR con Total distinto de 0 no se corrige', $accion($notaB, $pdfSub, array_merge($frCero, ['Total' => '500.00']))['accion'] === 'uuid-otro-cfdi');
+check('Total 0 duplicada gana a corregir', CfdiNotaImport::accionBackfill($notaB, $pdfSub, $frCero, false, [5], [])['accion'] === 'duplicada');
 
 $dupUuid = CfdiNotaImport::accionBackfill($notaB, $pdfB, null, false, [7, 9], []);
 check('accion duplicada por grupo de uuid (lista los otros ids)', $dupUuid['accion'] === 'duplicada' && strpos($dupUuid['detalle'], '7,9') !== false);

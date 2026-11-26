@@ -16,7 +16,7 @@
  * El UUID de la descripción ("Carga masiva - UUID ...") es el de la factura RELACIONADA; el de la
  * nota es el del timbre que lee NotaCreditoPdfParser. Decisión por nota: CfdiNotaImport::accionBackfill.
  *
- * Acciones: importar, ya-en-FR, ya-ligada, uuid-otro-cfdi, duplicada (mismo CFDI en 2+ notas: no se liga ninguna),
+ * Acciones: importar, ya-en-FR, ya-en-FR-total (FR con Total 0: corrige el Total desde el PDF y liga), ya-ligada, uuid-otro-cfdi, duplicada (mismo CFDI en 2+ notas: no se liga ninguna),
  *           requiere-revision (notas de cargo), pdf-no-coincide, no-legible, pdf-no-encontrado, ruta-invalida,
  *           sin-pdf, otro-proveedor. Con --aplicar exige el respaldo del SQL de backfill (Task 8).
  * El PDF se COPIA (no se mueve); la nota y la FR nueva se escriben en una sola transacción por nota.
@@ -161,7 +161,7 @@ foreach ($notas as $n) {
         $accion = $d['accion'];
         $detalle = trim($d['detalle'] . ($d['aviso'] !== '' ? ' [AVISO ' . $d['aviso'] . ']' : ''));
 
-        if ($aplicar && in_array($accion, ['importar', 'ya-en-FR'], true)) {
+        if ($aplicar && in_array($accion, ['importar', 'ya-en-FR', 'ya-en-FR-total'], true)) {
             $res = aplicarNota($n, $parsed, $existente, $i['abs'], $accion, $frModel, $sql);
             $detalle = trim($detalle . ' ' . $res);
             if (str_starts_with($res, 'ERROR')) {
@@ -205,6 +205,15 @@ function aplicarNota(array $n, array $parsed, ?array $existente, string $pdfAbs,
     try {
         if ($existente) {
             $frId = (int)$existente['Id'];
+            if ($accion === 'ya-en-FR-total') {
+                // FR importada antes solo con PDF y Total 0: el Total sale del PDF (mismo UUID, folio, RFC y SubTotal)
+                $affT = $sql->updateSafe(
+                    "UPDATE TG.dbo.FacturasRecibidas SET Total = ? WHERE Id = ? AND ISNULL(Total, 0) = 0",
+                    [(float)$fila['Total'], $frId]);
+                if ($affT !== 1) {
+                    throw new Exception('El UPDATE del Total de la FR afectó ' . var_export($affT, true) . ' filas');
+                }
+            }
         } else {
             // Mismo INSERT que FuelReceptionInvoiceModel::insertarFactura (sin conceptos), pero sin su
             // transacción propia (no se puede anidar) y con OrigenImportacion = 'backfill'.

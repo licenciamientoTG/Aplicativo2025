@@ -118,6 +118,22 @@ class CfdiNotaImport
         return $folioOk && $rfcOk && $totalOk;
     }
 
+    /**
+     * FR ya existente con Total 0 (CFDI importados solo desde PDF dic-2025..abr-2026) que es el mismo CFDI del PDF:
+     * mismo folio y RFC emisor, SubTotal igual (±0.01) y el PDF trae Total > 0. Entonces se puede corregir el Total.
+     */
+    public static function frTotalCeroCorregible(array $fr, array $fila): bool
+    {
+        if ((float)($fr['Total'] ?? 0) > 0.005 || (float)($fila['Total'] ?? 0) <= 0) {
+            return false;
+        }
+        $subFr = (float)($fr['SubTotal'] ?? 0);
+        if ($subFr <= 0 || abs($subFr - (float)($fila['SubTotal'] ?? 0)) > 0.01) {
+            return false;
+        }
+        return self::facturaCoincideConPdf(['Total' => $fila['Total']] + $fr, $fila);
+    }
+
     /** Parte numérica del número de nota (desde el primer dígito; null si no es solo dígitos), como el SQL de backfill. */
     public static function folioNumericoNota(string $noteNumber): ?string
     {
@@ -198,9 +214,13 @@ class CfdiNotaImport
         if ($uuidEnOtraNota) {
             return $r('ya-ligada', 'el UUID del PDF ya esta en otra nota activa', $aviso);
         }
+        $corregirTotal = false;
         if ($frExistente !== null) {
             $fila = self::filaDesdePdf($pdf);
-            if ($fila === null || !self::facturaCoincideConPdf($frExistente, $fila)) {
+            if ($fila !== null && !self::facturaCoincideConPdf($frExistente, $fila)
+                && self::frTotalCeroCorregible($frExistente, $fila)) {
+                $corregirTotal = true;
+            } elseif ($fila === null || !self::facturaCoincideConPdf($frExistente, $fila)) {
                 return $r('uuid-otro-cfdi', 'el UUID existe en FacturasRecibidas con otro folio/rfc/total', $aviso);
             }
         }
@@ -211,6 +231,10 @@ class CfdiNotaImport
         }
         if (($nota['note_type'] ?? '') === 'DEBIT') {
             return $r('requiere-revision', 'nota de cargo: sus filas de pago las liga el SQL de backfill', $aviso);
+        }
+        if ($corregirTotal) {
+            return $r('ya-en-FR-total', 'ligar y corregir Total de la FR ' . ($frExistente['Id'] ?? '')
+                . ' (0 -> ' . ($pdf['total'] ?? 0) . ')', $aviso);
         }
         return $frExistente !== null ? $r('ya-en-FR', 'solo ligar', $aviso) : $r('importar', '', $aviso);
     }
