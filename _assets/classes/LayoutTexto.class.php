@@ -89,6 +89,85 @@ class LayoutTexto
         return ['lineas' => $lineas, 'totales' => $totales, 'no_leidas' => $noLeidas];
     }
 
+    /**
+     * Importes (en centavos) que aparecen escritos en el texto original,
+     * en el orden en que aparecen. Sirve de candado contra lo que invente la IA.
+     *
+     * @return int[]
+     */
+    public static function centavosEn(string $texto): array
+    {
+        preg_match_all('/(?<![\d,.])(' . self::MONTO . ')(?!\d)/', $texto, $m);
+        return array_map(fn($t) => (int)round(self::monto($t) * 100), $m[1]);
+    }
+
+    /**
+     * Valida lo que devolvió la IA contra el texto original y, si es válido,
+     * lo vuelve a escribir en el formato que lee parse(). Candados:
+     *  - cada línea con número, proveedor, empresa y un monto con formato válido;
+     *  - los importes devueltos (pagos + totales) son EXACTAMENTE los que están
+     *    escritos en el texto original: ni se pierde ni se inventa ninguno.
+     *
+     * @param array $pagos   [['numero','proveedor','monto','empresa','referencia'], ...]
+     * @param array $totales [['empresa','monto'], ...]
+     * @return array{ok: bool, texto: string, errores: string[]}
+     */
+    public static function textoDesdeIa(string $original, array $pagos, array $totales): array
+    {
+        $errores = [];
+        $limpia = fn($v) => trim((string)preg_replace('/\s+/u', ' ', (string)$v));
+        $aMonto = function ($v): ?float {
+            $t = trim(str_replace(['$', ' '], '', (string)$v));
+            if (is_numeric($t)) {
+                $t = number_format((float)$t, 2, '.', ',');
+            }
+            return preg_match('/^' . self::MONTO . '$/', $t) ? self::monto($t) : null;
+        };
+
+        $lineas = [];
+        $devueltos = [];
+        foreach ($pagos as $i => $p) {
+            $n = $i + 1;
+            $numero = strtoupper($limpia($p['numero'] ?? ''));
+            $prov = $limpia($p['proveedor'] ?? '');
+            $emp = $limpia($p['empresa'] ?? '');
+            $ref = preg_replace('/\D/', '', (string)($p['referencia'] ?? ''));
+            $monto = $aMonto($p['monto'] ?? '');
+            if (!preg_match('/^' . self::NUMERO . '$/', $numero) || $prov === '' || $emp === '' || $monto === null) {
+                $errores[] = "Pago {$n} de la IA incompleto o con formato inválido.";
+                continue;
+            }
+            $devueltos[] = (int)round($monto * 100);
+            $lineas[] = $numero . "\t" . $prov . "\t" . number_format($monto, 2, '.', ',') . "\t" . $emp
+                . ($ref !== '' && strlen($ref) >= 6 ? "\t" . $ref : '');
+        }
+        $filasTotales = [];
+        foreach ($totales as $i => $t) {
+            $emp = $limpia($t['empresa'] ?? '');
+            $monto = $aMonto($t['monto'] ?? '');
+            if ($emp === '' || $monto === null) {
+                $errores[] = 'Total ' . ($i + 1) . ' de la IA incompleto o con formato inválido.';
+                continue;
+            }
+            $devueltos[] = (int)round($monto * 100);
+            $filasTotales[] = $emp . "\t" . number_format($monto, 2, '.', ',');
+        }
+
+        $escritos = self::centavosEn($original);
+        sort($escritos);
+        sort($devueltos);
+        if ($escritos !== $devueltos) {
+            $errores[] = 'Los importes que devolvió la IA no coinciden con los del texto (texto: '
+                . count($escritos) . ', IA: ' . count($devueltos) . '). No se usó el resultado.';
+        }
+
+        return [
+            'ok'     => !$errores && $lineas,
+            'texto'  => implode("\n", $lineas) . ($filasTotales ? "\n\n" . implode("\n", $filasTotales) : ''),
+            'errores'=> $errores,
+        ];
+    }
+
     /** "13,856,423.32" -> 13856423.32 */
     public static function monto(string $txt): float
     {

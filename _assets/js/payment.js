@@ -7867,6 +7867,48 @@ function leerLayoutTexto() {
     });
 }
 
+/**
+ * "Con IA": acomoda un texto desordenado en el formato que lee el servidor. Solo
+ * reescribe el cuadro de texto (el usuario lo revisa) y luego lo lee como siempre.
+ * El servidor rechaza el resultado si los importes no coinciden con los pegados.
+ */
+function interpretarLayoutTextoIa() {
+  const texto = $("#layoutTextoInput").val();
+  if (!texto.trim()) {
+    alertify.warning("Pega el texto con los pagos");
+    $("#layoutTextoInput").focus();
+    return;
+  }
+
+  const $btn = $("#btnLayoutTextoIa");
+  const original = $btn.html();
+  $btn.prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Interpretando...');
+
+  $.ajax({
+    url: "/payment/layout_texto_ia",
+    type: "POST",
+    dataType: "json",
+    data: { texto: texto },
+  })
+    .done(function (res) {
+      if (!res.success) {
+        layoutTextoLeido = null;
+        ltEstadoVacio("exclamation-circle", "La IA no pudo acomodar el texto", ltEsc(res.message || ""));
+        return;
+      }
+      $("#layoutTextoInput").val(res.texto);
+      alertify.success("La IA acomodó " + res.pagos + " pago(s). Revisa el texto y los importes.");
+      leerLayoutTexto();
+    })
+    .fail(function () {
+      layoutTextoLeido = null;
+      ltEstadoVacio("exclamation-circle", "Error de comunicación", "No se pudo contactar al servidor. Intenta de nuevo.");
+    })
+    .always(function () {
+      $btn.prop("disabled", false).html(original);
+    });
+}
+
 function renderLayoutTexto(res) {
   const lineas = res.lineas || [];
   const noLeidas = res.no_leidas || [];

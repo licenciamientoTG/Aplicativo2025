@@ -10,9 +10,10 @@ class GeminiClient
     private const TIMEOUT  = 60;
 
     /**
+     * @param array $config generationConfig adicional (p. ej. temperature, responseMimeType)
      * @return array ['success' => bool, 'texto' => string, 'message' => string]
      */
-    public static function generar(string $instrucciones, string $prompt): array
+    public static function generar(string $instrucciones, string $prompt, array $config = []): array
     {
         if (!defined('GEMINI_API_KEY') || GEMINI_API_KEY === '') {
             return ['success' => false, 'texto' => '', 'message' => 'Falta configurar GEMINI_API_KEY en header.class.php'];
@@ -21,7 +22,7 @@ class GeminiClient
         $body = json_encode([
             'systemInstruction' => ['parts' => [['text' => $instrucciones]]],
             'contents'          => [['role' => 'user', 'parts' => [['text' => $prompt]]]],
-            'generationConfig'  => ['temperature' => 0.3],
+            'generationConfig'  => $config + ['temperature' => 0.3],
         ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
 
         $ch = curl_init(sprintf(self::ENDPOINT, GEMINI_MODEL));

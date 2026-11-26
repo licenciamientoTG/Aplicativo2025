@@ -120,4 +120,23 @@ $clave = function (string $n) use ($cat) {
 };
 check('totales: con clave por empresa resuelta cuadra', LayoutTexto::verificarTotales($ln, $tt, $clave) === []);
 
+// IA: el resultado solo vale si los importes son exactamente los del texto
+$orig = "[10/11/26, 9:15 a.m.] Tesoreria: pagar 2001 ALTOS a CUSTODIA 972,161.85 y 2006 MGC a DIAZ GAS 3,817,543.90 ref 97480000005\nCUSTODIA 972,161.85";
+$pagosIa = [
+    ['numero' => '2001', 'proveedor' => 'ALTOS', 'monto' => '972,161.85', 'empresa' => 'CUSTODIA', 'referencia' => ''],
+    ['numero' => '2006', 'proveedor' => 'MGC', 'monto' => '3817543.9', 'empresa' => 'DIAZ GAS', 'referencia' => '97480000005'],
+];
+$totIa = [['empresa' => 'CUSTODIA', 'monto' => '972,161.85']];
+$ia = LayoutTexto::textoDesdeIa($orig, $pagosIa, $totIa);
+check('ia: importes iguales -> ok', $ia['ok'] === true);
+$re = LayoutTexto::parse($ia['texto']);
+check('ia: el texto devuelto lo lee el parser', count($re['lineas']) === 2 && count($re['totales']) === 1 && $re['lineas'][1]['referencia'] === '97480000005' && $re['no_leidas'] === []);
+$mal = $pagosIa; $mal[0]['monto'] = '972,161.88';
+check('ia: monto cambiado -> rechaza', LayoutTexto::textoDesdeIa($orig, $mal, $totIa)['ok'] === false);
+check('ia: pago perdido -> rechaza', LayoutTexto::textoDesdeIa($orig, [$pagosIa[0]], $totIa)['ok'] === false);
+$extra = $pagosIa; $extra[] = ['numero' => '2099', 'proveedor' => 'X', 'monto' => '10.00', 'empresa' => 'Y', 'referencia' => ''];
+check('ia: pago inventado -> rechaza', LayoutTexto::textoDesdeIa($orig, $extra, $totIa)['ok'] === false);
+$sinEmp = $pagosIa; $sinEmp[0]['empresa'] = '';
+check('ia: línea incompleta -> rechaza', LayoutTexto::textoDesdeIa($orig, $sinEmp, $totIa)['ok'] === false);
+
 finish();

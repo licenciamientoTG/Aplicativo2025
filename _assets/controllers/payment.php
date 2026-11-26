@@ -4121,6 +4121,60 @@ class Payment
         }
     }
 
+    /**
+     * Pasa un texto desordenado (WhatsApp, otro orden de columnas) al formato que
+     * lee el parser, usando Gemini solo para separar columnas. No resuelve cuentas
+     * ni genera archivos: devuelve el texto normalizado para que Tesorería lo revise
+     * en el cuadro y lo lea con "Leer texto". Candado: los importes devueltos deben
+     * ser exactamente los escritos en el texto original (ver LayoutTexto::textoDesdeIa).
+     */
+    public function layout_texto_ia()
+    {
+        header('Content-Type: application/json');
+        try {
+            $texto = (string)($_POST['texto'] ?? '');
+            if ($error = $this->layout_texto_validar($texto)) {
+                json_output(['success' => false, 'message' => $error]);
+                return;
+            }
+
+            $instrucciones = 'Extraes pagos de un texto de Tesorería (puede venir de WhatsApp o de una tabla con columnas en cualquier orden). '
+                . 'Responde SOLO un JSON: {"pagos":[{"numero":"","proveedor":"","monto":"","empresa":"","referencia":""}],"totales":[{"empresa":"","monto":""}]}. '
+                . '"pagos": una entrada por cada renglón de pago. "numero" es el folio o número del renglón (por ejemplo 2001 o C1446). '
+                . '"proveedor" es quien recibe el pago y "empresa" la razón social o estación que paga. '
+                . '"referencia" es un número largo (6 dígitos o más) pegado al renglón, o "" si no hay. '
+                . '"totales": renglones que solo traen una empresa y un importe (sumas de comprobación). '
+                . 'Copia cada "monto" EXACTAMENTE como está escrito en el texto, con sus comas y dos decimales; no sumes, no redondees, no calcules ni inventes importes. '
+                . 'Copia los nombres tal como aparecen. Ignora encabezados y frases que no sean pagos. Si no hay nada que extraer, devuelve {"pagos":[],"totales":[]}.';
+
+            $r = GeminiClient::generar($instrucciones, "Texto:\n" . $texto, [
+                'temperature'      => 0,
+                'responseMimeType' => 'application/json',
+            ]);
+            if (!$r['success']) {
+                json_output(['success' => false, 'message' => $r['message']]);
+                return;
+            }
+
+            $json = json_decode($r['texto'], true);
+            if (!is_array($json) || !isset($json['pagos']) || !is_array($json['pagos'])) {
+                json_output(['success' => false, 'message' => 'La IA no devolvió un resultado que se pueda leer. Intenta de nuevo o acomoda el texto.']);
+                return;
+            }
+
+            $v = LayoutTexto::textoDesdeIa($texto, $json['pagos'], is_array($json['totales'] ?? null) ? $json['totales'] : []);
+            if (!$v['ok']) {
+                json_output(['success' => false, 'message' => $v['errores'] ? implode(' ', $v['errores']) : 'La IA no encontró pagos en el texto.']);
+                return;
+            }
+
+            json_output(['success' => true, 'texto' => $v['texto'], 'pagos' => count($json['pagos'])]);
+        } catch (Exception $e) {
+            error_log('Error en layout_texto_ia: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al interpretar con IA: ' . $e->getMessage()]);
+        }
+    }
+
     /** Descarga el layout del banco indicado con las líneas del texto que sí se resolvieron. */
     public function layout_texto_generate()
     {
