@@ -2,26 +2,29 @@
 -- Ligar las notas de crédito/cargo existentes a FacturasRecibidas (2026-11-25)
 --
 -- Llena en TG.dbo.invoice_credit_debit_notes: factura_recibida_id, uuid,
--- emp_cod, codgas y origen='historica'. Orden de match (cada paso solo
--- sobre las notas sin pareja):
---   1) CREDIT por UUID en description ('Carga masiva - UUID <uuid>')
---   2) DEBIT y CREDIT por folio numérico + EmisorRfc = RFC proveedor
---      + ABS(Total - amount) < 0.01, solo cuando el match es único
---   3) Se excluyen UUID repetidos y los que ya tiene otra nota activa
+-- emp_cod, codgas y origen='historica'. Match (solo notas sin pareja):
+--   CREDIT: folio numérico + EmisorRfc = RFC del proveedor + ABS(Total-amount)<0.01
+--           + TipoDeComprobante='E'
+--   DEBIT : igual, con TipoDeComprobante='I'
+--   Solo se liga cuando el match es único por nota Y único por fila de FR
+--   (dos notas nunca a la misma FR). Se excluyen FR/UUID ya ligados a otra
+--   nota activa (índice UX_icdn_uuid_activa).
+-- El UUID de description ('Carga masiva - UUID <uuid>') NO es el de la nota:
+-- es el de la factura de combustible relacionada (tipo I); no se usa para ligar,
+-- solo se cuenta de forma informativa.
 -- Además: payment_request_invoices (is_debit_note=1, uuid NULL) recibe
 -- uuid y codgas; payment_requests con emp_cod NULL (solo notas) recibe
 -- emp_cod si todas sus notas comparten empresa.
 --
--- Esperado verificado en dry-run 2026-11-25: 177 por UUID, 78 por folio (72 DEBIT + 6 CREDIT).
--- El análisis del 2026-11-24 daba ~254 por UUID, pero eran 254 notas sobre solo 212 UUID
--- distintos: varias notas comparten el mismo CFDI y el índice UX_icdn_uuid_activa solo
--- permite una nota activa por UUID. Las notas con UUID compartido (77) NO se ligan
--- (se excluyen en el paso 3) y salen en la lista de sin pareja.
--- Si los conteos reales se alejan más de 5 se aborta con RAISERROR.
+-- Esperado (dry-run 2026-11-25): 142 CREDIT y 72 DEBIT. Las 142 son las notas con
+-- match único por nota y por FR; hay ~148 con match por folio, pero 6 FR (12 notas,
+-- p.ej. 'NC842663' y 'CT 842663') tienen dos notas capturadas con el mismo CFDI y
+-- no se ligan (quedan en la lista de sin pareja). Si los conteos reales se alejan
+-- más de 5 se aborta con RAISERROR.
 --
 -- @aplicar = 0 : dry-run (todo dentro de BEGIN TRAN ... ROLLBACK)
 -- @aplicar = 1 : COMMIT
--- Respaldo: TG.dbo.bkp_notas_fr_20261125_icdn / _pri
+-- Respaldo: TG.dbo.bkp_notas_fr_20261125_icdn / _pri / _pr
 -- =====================================================================
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
@@ -29,12 +32,12 @@ SET QUOTED_IDENTIFIER ON;  -- payment_request_invoices tiene índice filtrado
 SET ANSI_NULLS ON;
 
 DECLARE @aplicar BIT = 0;
-DECLARE @esperado_uuid INT = 177;
-DECLARE @esperado_folio INT = 78;
+DECLARE @esperado_credit INT = 142;
+DECLARE @esperado_debit INT = 72;
 
 IF OBJECT_ID('tempdb..#m') IS NOT NULL DROP TABLE #m;
 CREATE TABLE #m (note_id INT NOT NULL, fr_id INT NOT NULL, uuid VARCHAR(50) NOT NULL,
-                 emp_cod INT NULL, codgas INT NULL, metodo VARCHAR(10) NOT NULL);
+                 emp_cod INT NULL, codgas INT NULL, metodo VARCHAR(20) NOT NULL);
 
 -- Empresa por RFC receptor (el RFC puede repetirse: la de menor cod)
 IF OBJECT_ID('tempdb..#emp') IS NOT NULL DROP TABLE #emp;
@@ -44,25 +47,18 @@ INTO #emp FROM SG12.dbo.Empresas WHERE rfc IS NOT NULL GROUP BY rfc;
 -- Notas candidatas
 IF OBJECT_ID('tempdb..#n') IS NOT NULL DROP TABLE #n;
 SELECT n.id, n.provider_id, n.note_type, n.note_number, n.amount, n.description,
-       TRY_CAST(SUBSTRING(n.note_number, PATINDEX('%[0-9]%', n.note_number), 50) AS BIGINT) AS folio_num,
-       CASE WHEN n.description LIKE 'Carga masiva - UUID %'
-            THEN LTRIM(RTRIM(SUBSTRING(n.description, 21, 40))) END AS uuid_desc
+       TRY_CAST(SUBSTRING(n.note_number, PATINDEX('%[0-9]%', n.note_number), 50) AS BIGINT) AS folio_num
 INTO #n
 FROM TG.dbo.invoice_credit_debit_notes n
 WHERE n.status = 1 AND n.factura_recibida_id IS NULL;
 
--- Paso 1: CREDIT por UUID de la descripción
-INSERT INTO #m (note_id, fr_id, uuid, emp_cod, codgas, metodo)
-SELECT n.id, fr.Id, fr.UUID, e.cod, TRY_CAST(fr.EstacionCodgas AS INT), 'UUID'
-FROM #n n
-JOIN TG.dbo.FacturasRecibidas fr
-  ON fr.UUID COLLATE DATABASE_DEFAULT = n.uuid_desc COLLATE DATABASE_DEFAULT
-LEFT JOIN #emp e ON e.rfc = fr.ReceptorRfc COLLATE DATABASE_DEFAULT
-WHERE n.note_type = 'CREDIT' AND n.uuid_desc IS NOT NULL;
+-- Informativo: el UUID en la descripción es la factura relacionada, no se usa
+SELECT COUNT(*) AS uuid_en_descripcion_factura_relacionada_no_se_usa
+FROM #n WHERE description LIKE 'Carga masiva - UUID %';
 
--- Paso 2: folio + RFC emisor + monto, solo si es único en ambos sentidos
+-- Match por folio + RFC emisor + monto + tipo de comprobante
 IF OBJECT_ID('tempdb..#c') IS NOT NULL DROP TABLE #c;
-SELECT n.id AS note_id, fr.Id AS fr_id, fr.UUID, fr.ReceptorRfc, fr.EstacionCodgas
+SELECT n.id AS note_id, fr.Id AS fr_id, fr.UUID, fr.ReceptorRfc, fr.EstacionCodgas, n.note_type
 INTO #c
 FROM #n n
 JOIN SG12.dbo.Proveedores p ON p.cod = n.provider_id
@@ -70,40 +66,39 @@ JOIN TG.dbo.FacturasRecibidas fr
   ON fr.EmisorRfc COLLATE DATABASE_DEFAULT = p.rfc COLLATE DATABASE_DEFAULT
  AND TRY_CAST(fr.Folio AS BIGINT) = n.folio_num
  AND ABS(fr.Total - n.amount) < 0.01
+ AND fr.TipoDeComprobante = CASE n.note_type WHEN 'CREDIT' THEN 'E' ELSE 'I' END
 WHERE n.folio_num IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM #m m WHERE m.note_id = n.id);
+  AND NOT EXISTS (SELECT 1 FROM TG.dbo.invoice_credit_debit_notes o
+                  WHERE o.status = 1
+                    AND (o.factura_recibida_id = fr.Id
+                         OR o.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT));
 
 INSERT INTO #m (note_id, fr_id, uuid, emp_cod, codgas, metodo)
-SELECT c.note_id, c.fr_id, c.UUID, e.cod, TRY_CAST(c.EstacionCodgas AS INT), 'FOLIO'
+SELECT c.note_id, c.fr_id, c.UUID, e.cod, TRY_CAST(c.EstacionCodgas AS INT), 'FOLIO_' + c.note_type
 FROM #c c
 LEFT JOIN #emp e ON e.rfc = c.ReceptorRfc COLLATE DATABASE_DEFAULT
 WHERE c.note_id IN (SELECT note_id FROM #c GROUP BY note_id HAVING COUNT(*) = 1)
-  AND c.fr_id   IN (SELECT fr_id   FROM #c GROUP BY fr_id   HAVING COUNT(*) = 1)
-  AND NOT EXISTS (SELECT 1 FROM #m m WHERE m.fr_id = c.fr_id);
+  AND c.fr_id   IN (SELECT fr_id   FROM #c GROUP BY fr_id   HAVING COUNT(*) = 1);
 
--- Paso 3: excluir UUID repetidos en #m o ya usados por otra nota activa
+-- Seguridad: UUID repetidos en #m (índice único por UUID activo)
 DELETE FROM #m WHERE uuid COLLATE DATABASE_DEFAULT IN (
     SELECT uuid COLLATE DATABASE_DEFAULT FROM #m GROUP BY uuid HAVING COUNT(*) > 1);
-DELETE m FROM #m m
-WHERE EXISTS (SELECT 1 FROM TG.dbo.invoice_credit_debit_notes o
-              WHERE o.status = 1 AND o.uuid COLLATE DATABASE_DEFAULT = m.uuid COLLATE DATABASE_DEFAULT);
 
 -- Validaciones
 DECLARE @total INT = (SELECT COUNT(*) FROM #m);
-DECLARE @porUuid INT = (SELECT COUNT(*) FROM #m WHERE metodo = 'UUID');
-DECLARE @porFolio INT = (SELECT COUNT(*) FROM #m WHERE metodo = 'FOLIO');
+DECLARE @credit INT = (SELECT COUNT(*) FROM #m WHERE metodo = 'FOLIO_CREDIT');
+DECLARE @debit INT = (SELECT COUNT(*) FROM #m WHERE metodo = 'FOLIO_DEBIT');
 DECLARE @multi INT = (SELECT COUNT(*) FROM (SELECT note_id FROM #m GROUP BY note_id HAVING COUNT(*) > 1) x);
 DECLARE @dupUuid INT = (SELECT COUNT(*) FROM (SELECT uuid FROM #m GROUP BY uuid HAVING COUNT(*) > 1) x);
 
-SELECT @total total, @porUuid por_uuid, @porFolio por_folio, @multi notas_multi_match, @dupUuid uuid_repetidos;
-SELECT metodo, n.note_type, COUNT(*) cuantas,
+SELECT @total total, @credit credit, @debit debit, @multi notas_multi_match, @dupUuid uuid_repetidos;
+SELECT metodo, COUNT(*) cuantas,
        SUM(CASE WHEN m.emp_cod IS NULL THEN 1 ELSE 0 END) sin_empresa,
        SUM(CASE WHEN m.codgas IS NULL THEN 1 ELSE 0 END) sin_codgas
-FROM #m m JOIN TG.dbo.invoice_credit_debit_notes n ON n.id = m.note_id
-GROUP BY metodo, n.note_type ORDER BY metodo, n.note_type;
+FROM #m m GROUP BY metodo ORDER BY metodo;
 
 IF @multi > 0 OR @dupUuid > 0
-   OR ABS(@porUuid - @esperado_uuid) > 5 OR ABS(@porFolio - @esperado_folio) > 5
+   OR ABS(@credit - @esperado_credit) > 5 OR ABS(@debit - @esperado_debit) > 5
 BEGIN
     RAISERROR('Validación falló (multi-match, UUID repetido o conteos fuera de lo esperado); no se modificó nada.', 16, 1);
     RETURN;
