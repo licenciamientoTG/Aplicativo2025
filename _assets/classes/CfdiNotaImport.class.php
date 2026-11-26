@@ -117,4 +117,91 @@ class CfdiNotaImport
         $totalOk = abs((float)($fr['Total'] ?? 0) - (float)($fila['Total'] ?? 0)) <= 0.01;
         return $folioOk && $rfcOk && $totalOk;
     }
+
+    /** Parte numérica del número de nota (desde el primer dígito; null si no es solo dígitos), como el SQL de backfill. */
+    public static function folioNumericoNota(string $noteNumber): ?string
+    {
+        if (!preg_match('/\d.*$/', $noteNumber, $m) || !ctype_digit($m[0])) {
+            return null;
+        }
+        $n = ltrim($m[0], '0');
+        return $n === '' ? '0' : $n;
+    }
+
+    /** Folio del PDF vs número de la nota: igual como entero, o la nota termina en el folio (folio de 5+ dígitos). */
+    public static function folioPdfCoincideConNota(string $folioPdf, string $noteNumber): bool
+    {
+        $nota = self::folioNumericoNota($noteNumber);
+        $pdf = ltrim(preg_replace('/\D/', '', $folioPdf) ?? '', '0');
+        if ($nota === null || $pdf === '') {
+            return false;
+        }
+        if ($nota === $pdf) {
+            return true;
+        }
+        return strlen($pdf) >= 5 && strlen($pdf) <= strlen($nota) && substr($nota, -strlen($pdf)) === $pdf;
+    }
+
+    /** UUID de "Carga masiva - UUID <uuid>" (es el de la factura relacionada, no el de la nota) o ''. */
+    public static function uuidEnDescripcion(string $descripcion): string
+    {
+        return preg_match('/UUID\s+([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})/i', $descripcion, $m)
+            ? strtoupper($m[1]) : '';
+    }
+
+    /**
+     * Decide qué hacer con una nota histórica y su PDF ya leído (sin BD ni disco).
+     * @param array      $nota  note_type, note_number, amount, description, rfc_proveedor
+     * @param array      $pdf   salida de NotaCreditoPdfParser::parse
+     * @param array|null $frExistente fila de FacturasRecibidas con el UUID del PDF (Folio, EmisorRfc, Total) o null
+     * @param bool       $uuidEnOtraNota el UUID del PDF ya está en otra nota activa
+     * @return array{accion:string,detalle:string,aviso:string}
+     *   accion: no-legible | pdf-no-coincide | ya-ligada | uuid-otro-cfdi | ya-en-FR | importar
+     */
+    public static function accionBackfill(array $nota, array $pdf, ?array $frExistente, bool $uuidEnOtraNota): array
+    {
+        $r = fn(string $a, string $d = '', string $aviso = '') => ['accion' => $a, 'detalle' => $d, 'aviso' => $aviso];
+        if (empty($pdf['raw_ok'])) {
+            return $r('no-legible', (string)($pdf['error'] ?? ''));
+        }
+        $fallas = [];
+        if (!self::folioPdfCoincideConNota((string)($pdf['folio'] ?? ''), (string)($nota['note_number'] ?? ''))) {
+            $fallas[] = 'folio ' . ($pdf['folio'] ?? '') . ' vs ' . ($nota['note_number'] ?? '');
+        }
+        if (abs((float)($pdf['total'] ?? 0) - (float)($nota['amount'] ?? 0)) >= 0.01) {
+            $fallas[] = 'total ' . ($pdf['total'] ?? 0) . ' vs ' . ($nota['amount'] ?? 0);
+        }
+        $rfcProv = strtoupper(trim((string)($nota['rfc_proveedor'] ?? '')));
+        if ($rfcProv === '' || strtoupper((string)($pdf['rfc_emisor'] ?? '')) !== $rfcProv) {
+            $fallas[] = 'rfc emisor ' . ($pdf['rfc_emisor'] ?? '') . ' vs ' . $rfcProv;
+        }
+        $tipoEsperado = (($nota['note_type'] ?? '') === 'CREDIT') ? 'E' : 'I';
+        if (strtoupper((string)($pdf['tipo_comprobante'] ?? '')) !== $tipoEsperado) {
+            $fallas[] = 'tipo ' . ($pdf['tipo_comprobante'] ?? '') . ' vs ' . $tipoEsperado;
+        }
+        $aviso = '';
+        $uuidDesc = self::uuidEnDescripcion((string)($nota['description'] ?? ''));
+        if ($uuidDesc !== '') {
+            $rel = strtoupper((string)($pdf['uuid_relacionado'] ?? ''));
+            if ($rel === '') {
+                $aviso = 'sin uuid_relacionado en PDF';
+            } elseif ($rel !== $uuidDesc) {
+                $fallas[] = 'uuid relacionado ' . $rel . ' vs descripcion ' . $uuidDesc;
+            }
+        }
+        if ($fallas) {
+            return $r('pdf-no-coincide', implode('; ', $fallas), $aviso);
+        }
+        if ($uuidEnOtraNota) {
+            return $r('ya-ligada', 'el UUID del PDF ya esta en otra nota activa', $aviso);
+        }
+        if ($frExistente !== null) {
+            $fila = self::filaDesdePdf($pdf);
+            if ($fila !== null && self::facturaCoincideConPdf($frExistente, $fila)) {
+                return $r('ya-en-FR', 'solo ligar', $aviso);
+            }
+            return $r('uuid-otro-cfdi', 'el UUID existe en FacturasRecibidas con otro folio/rfc/total', $aviso);
+        }
+        return $r('importar', '', $aviso);
+    }
 }

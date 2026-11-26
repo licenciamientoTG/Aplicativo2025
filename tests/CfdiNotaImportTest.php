@@ -80,4 +80,38 @@ check('guarda: total distinto -> no', !CfdiNotaImport::facturaCoincideConPdf(arr
 check('guarda: total igual -> si', CfdiNotaImport::facturaCoincideConPdf($frOk, array_merge($filaPdf, ['Total' => 535.84])));
 check('guarda: folio alfanumérico igual -> si', CfdiNotaImport::facturaCoincideConPdf(['Folio' => 'AB', 'EmisorRfc' => 'X', 'Total' => 1], ['Folio' => 'ab', 'EmisorRfc' => 'x', 'Total' => 1.0]));
 
+// accionBackfill (decisión del backfill de notas históricas desde su PDF)
+$uuidRel = 'AAAAAAAA-1111-2222-3333-BBBBBBBBBBBB';
+$notaB = ['note_type' => 'CREDIT', 'note_number' => 'NC034398', 'amount' => 1027.91,
+    'description' => 'Carga masiva - UUID ' . strtolower($uuidRel), 'rfc_proveedor' => 'MME141110IJ9'];
+$pdfB = ['raw_ok' => true, 'uuid' => 'C5BB5D69-B101-451B-81BB-489C5B5C8290', 'uuid_relacionado' => $uuidRel,
+    'folio' => '034398', 'total' => 1027.91, 'rfc_emisor' => 'MME141110IJ9', 'tipo_comprobante' => 'E'];
+$accion = fn(array $n, array $p, ?array $fr = null, bool $otra = false) => CfdiNotaImport::accionBackfill($n, $p, $fr, $otra);
+
+check('folioNumericoNota', CfdiNotaImport::folioNumericoNota('SE034092') === '34092'
+    && CfdiNotaImport::folioNumericoNota('CT4401842666') === '4401842666'
+    && CfdiNotaImport::folioNumericoNota('ABC') === null && CfdiNotaImport::folioNumericoNota('12A') === null);
+check('folio sufijo CT4401842666 <-> 842666', CfdiNotaImport::folioPdfCoincideConNota('842666', 'CT4401842666'));
+check('folio sufijo corto (<5 dígitos) -> no', !CfdiNotaImport::folioPdfCoincideConNota('2666', 'CT4401842666'));
+check('uuidEnDescripcion', CfdiNotaImport::uuidEnDescripcion('Carga masiva - UUID ' . strtolower($uuidRel)) === $uuidRel
+    && CfdiNotaImport::uuidEnDescripcion('otra cosa') === '');
+
+check('accion importar', $accion($notaB, $pdfB)['accion'] === 'importar');
+check('accion importar sin aviso', $accion($notaB, $pdfB)['aviso'] === '');
+check('accion no-legible', $accion($notaB, ['raw_ok' => false, 'error' => 'x'])['accion'] === 'no-legible');
+check('accion pdf-no-coincide folio', $accion($notaB, array_merge($pdfB, ['folio' => '034399']))['accion'] === 'pdf-no-coincide');
+check('accion pdf-no-coincide total', $accion($notaB, array_merge($pdfB, ['total' => 1028.00]))['accion'] === 'pdf-no-coincide');
+check('accion pdf-no-coincide rfc', $accion($notaB, array_merge($pdfB, ['rfc_emisor' => 'AAA010101AAA']))['accion'] === 'pdf-no-coincide');
+check('accion pdf-no-coincide tipo (CREDIT con I)', $accion($notaB, array_merge($pdfB, ['tipo_comprobante' => 'I']))['accion'] === 'pdf-no-coincide');
+check('accion DEBIT con tipo I importa', $accion(array_merge($notaB, ['note_type' => 'DEBIT', 'description' => '']),
+    array_merge($pdfB, ['tipo_comprobante' => 'I', 'uuid_relacionado' => '']))['accion'] === 'importar');
+check('accion pdf-no-coincide uuid relacionado distinto', $accion($notaB,
+    array_merge($pdfB, ['uuid_relacionado' => 'CCCCCCCC-1111-2222-3333-DDDDDDDDDDDD']))['accion'] === 'pdf-no-coincide');
+$sinRel = $accion($notaB, array_merge($pdfB, ['uuid_relacionado' => '']));
+check('uuid_relacionado vacío: acepta con aviso', $sinRel['accion'] === 'importar' && $sinRel['aviso'] !== '');
+check('accion ya-ligada', $accion($notaB, $pdfB, null, true)['accion'] === 'ya-ligada');
+$frB = ['Folio' => '034398', 'EmisorRfc' => 'MME141110IJ9', 'Total' => '1027.91'];
+check('accion ya-en-FR', $accion($notaB, $pdfB, $frB)['accion'] === 'ya-en-FR');
+check('accion uuid-otro-cfdi', $accion($notaB, $pdfB, array_merge($frB, ['Folio' => '999999']))['accion'] === 'uuid-otro-cfdi');
+
 finish();
