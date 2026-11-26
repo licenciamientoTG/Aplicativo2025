@@ -5446,6 +5446,10 @@ class Payment
                     }
 
                     $existente = $frModel->buscarPorUuid($uuid);
+                    if ($existente && $soloPdf && !CfdiNotaImport::facturaCoincideConPdf($existente, $factura)) {
+                        $falla('El UUID leído del PDF pertenece a otro CFDI: sube el XML');
+                        continue;
+                    }
                     $tipo = strtoupper(trim((string)($existente['TipoDeComprobante'] ?? $factura['TipoDeComprobante'])));
 
                     // 2) Clasificar ANTES de insertar o adjuntar nada. Conceptos: los del XML o,

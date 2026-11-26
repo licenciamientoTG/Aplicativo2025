@@ -35,7 +35,8 @@ class NotaCreditoPdfParser
             return $base;
         }
         $r = self::parseTexto($texto, $nombreArchivo);
-        if ($r['uuid'] === '') {
+        // Un rechazo por ambigüedad (varios UUID en la cadena) no se revierte con otro pase
+        if ($r['uuid'] === '' && strpos((string)$r['error'], 'varios UUID') === false) {
             // Con -layout el folio fiscal impreso sale partido por otras columnas; en modo
             // -raw queda contiguo (los PDF de MGC no traen la cadena ||1.1|). Del pase -raw
             // se toma SOLO el uuid; el resto de los campos se queda con los de -layout.
@@ -44,6 +45,7 @@ class NotaCreditoPdfParser
                 $r2 = self::parseTexto($raw, $nombreArchivo);
                 if ($r2['uuid'] !== '' && $r2['uuid'] !== $r['uuid_relacionado']) {
                     $r['uuid'] = $r2['uuid'];
+                    $r['uuid_origen'] = $r2['uuid_origen'];
                     $r = self::finalizar($r);
                 }
             }
@@ -66,6 +68,7 @@ class NotaCreditoPdfParser
             'note_type'        => '',
             'uuid'             => '',
             'uuid_relacionado' => '',
+            'uuid_origen'      => '',   // cadena | etiqueta | unico | ''
             'rfc_emisor'       => '',
             'nombre_emisor'    => '',
             'rfc_receptor'     => '',
@@ -121,7 +124,7 @@ class NotaCreditoPdfParser
             $base['uuid_relacionado'] = $enCadena[0];   // posiciones desplazadas por atributos opcionales
         }
         $ambiguo = $base['uuid_relacionado'] === '' && count($enCadena) > 1;
-        $base['uuid']             = $ambiguo ? '' : self::uuidTimbre($plano, $enCadena);
+        [$base['uuid'], $base['uuid_origen']] = $ambiguo ? ['', ''] : self::uuidTimbre($plano, $enCadena);
         $base['rfc_emisor']       = strtoupper($get(self::POS_RFC_EMI));
         $base['nombre_emisor']    = $get(self::POS_NOM_EMI);
         $base['rfc_receptor']     = strtoupper($get(self::POS_RFC_REC));
@@ -217,7 +220,7 @@ class NotaCreditoPdfParser
     }
 
     /**
-     * UUID del timbre de la nota, por orden de confianza:
+     * [uuid, origen] del timbre de la nota, por orden de confianza (origen: cadena | etiqueta | unico):
      *  1. cadena del complemento ||1.1|UUID|FechaTimbrado|...|| (no la traen los PDF de MGC);
      *  2. etiqueta "Folio Fiscal" seguida inmediatamente de un UUID impreso (estricto);
      *  3. el ÚNICO UUID impreso en el documento que no esté en la cadena del comprobante.
@@ -226,23 +229,23 @@ class NotaCreditoPdfParser
      * reconoce y se devuelve ''; si hay 2+ candidatos distintos (p. ej. una leyenda con otro
      * UUID) tampoco se adivina. '' = no se encontró.
      */
-    private static function uuidTimbre(string $plano, array $excluidos = []): string
+    private static function uuidTimbre(string $plano, array $excluidos = []): array
     {
         if (preg_match('/\|\|1\.1\|(.*?)\|\|/s', $plano, $m)) {
             $campos = explode('|', $m[1]);
             $uuid = strtoupper(preg_replace('/\s+/', '', $campos[0]));
             if (self::validarUuid($uuid) && !in_array($uuid, $excluidos, true)) {
-                return $uuid;
+                return [$uuid, 'cadena'];
             }
         }
         if (preg_match('/Folio\s+Fiscal\s*:?\s*(' . self::UUID_IMPRESO . ')/i', $plano, $m)) {
             $uuid = strtoupper(preg_replace('/\s+/', '', $m[1]));
             if (self::validarUuid($uuid) && !in_array($uuid, $excluidos, true)) {
-                return $uuid;
+                return [$uuid, 'etiqueta'];
             }
         }
         $candidatos = array_values(array_diff(self::uuidsEn($plano), $excluidos));
-        return count($candidatos) === 1 ? $candidatos[0] : '';
+        return count($candidatos) === 1 ? [$candidatos[0], 'unico'] : ['', ''];
     }
 
     /** "2026-05-15T08:54:20" -> "2026-05-15" */

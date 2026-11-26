@@ -70,4 +70,14 @@ check('pdf clase inválida -> no', !CfdiNotaImport::pdfCoincideConClase('Servici
 check('pdf moratorios: factura de combustible con leyenda de pagare -> no', !CfdiNotaImport::pdfCoincideConClase('PEMEX MAGNA 15101514 ... causará intereses moratorios al tipo de 3% mensual', 'MORATORIOS'));
 check('pdf moratorios real -> si', CfdiNotaImport::pdfCoincideConClase('Intereses Moratorios 2705035811 04-Agosto- 2026', 'MORATORIOS'));
 
+// guarda solo-PDF: la fila de FR con ese UUID debe ser la misma nota
+$frOk = ['Folio' => '082596', 'EmisorRfc' => 'mme141110ij9', 'Total' => '535.84'];
+$filaPdf = ['Folio' => '82596', 'EmisorRfc' => 'MME141110IJ9', 'Total' => 535.85];
+check('guarda: coincide (folio numérico, rfc sin mayúsculas, total ±0.01)', CfdiNotaImport::facturaCoincideConPdf($frOk, $filaPdf));
+check('guarda: folio distinto -> no', !CfdiNotaImport::facturaCoincideConPdf(array_merge($frOk, ['Folio' => '082597']), $filaPdf));
+check('guarda: rfc distinto -> no', !CfdiNotaImport::facturaCoincideConPdf(array_merge($frOk, ['EmisorRfc' => 'AAA010101AAA']), $filaPdf));
+check('guarda: total distinto -> no', !CfdiNotaImport::facturaCoincideConPdf(array_merge($frOk, ['Total' => '46142.25']), $filaPdf));
+check('guarda: total igual -> si', CfdiNotaImport::facturaCoincideConPdf($frOk, array_merge($filaPdf, ['Total' => 535.84])));
+check('guarda: folio alfanumérico igual -> si', CfdiNotaImport::facturaCoincideConPdf(['Folio' => 'AB', 'EmisorRfc' => 'X', 'Total' => 1], ['Folio' => 'ab', 'EmisorRfc' => 'x', 'Total' => 1.0]));
+
 finish();

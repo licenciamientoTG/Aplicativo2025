@@ -116,4 +116,16 @@ $dos = str_replace('|X|', '|' . $REL . '|', $dos);
 $r11 = NotaCreditoPdfParser::parseTexto($dos . "\n" . $PROPIO . "\n");
 check('k: cadena con 2 UUID y campo 16 sin UUID -> rechazo', $r11['uuid'] === '' && $r11['raw_ok'] === false && strpos((string)$r11['error'], 'varios UUID') !== false);
 
+// (l) uuid_origen
+check('l: origen cadena', NotaCreditoPdfParser::parseTexto(cadenaComprobante('E', $REL) . "\n" . cadenaTimbre($PROPIO))['uuid_origen'] === 'cadena');
+check('l: origen etiqueta', $r9b['uuid_origen'] === 'etiqueta');
+check('l: origen unico', $r5['uuid_origen'] === 'unico');
+check('l: sin uuid -> origen vacío', $r3['uuid_origen'] === '');
+
+// (m) uuid propio partido por columnas + UUID ajeno en una leyenda fuera de la cadena:
+// la lógica toma el único candidato completo, que es el AJENO (límite conocido, origen 'unico');
+// lo cubre la guarda facturaCoincideConPdf() del consumidor (notas_importar_cfdi).
+$r12 = NotaCreditoPdfParser::parseTexto(cadenaComprobante('E', $REL) . "\nSustituye al CFDI $AJENO\nFolio Fiscal " . substr($PROPIO, 0, 24) . "   00001000000712122236\n" . substr($PROPIO, 24) . "\n");
+check('m: documentado: devuelve el ajeno con origen unico (lo frena la guarda del consumidor)', $r12['uuid'] === $AJENO && $r12['uuid_origen'] === 'unico');
+
 finish();

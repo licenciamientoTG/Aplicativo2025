@@ -96,4 +96,25 @@ class CfdiNotaImport
         }
         return false;
     }
+
+    /**
+     * Guarda para el solo-PDF: si FacturasRecibidas ya tiene una fila con el UUID leído del PDF,
+     * esa fila debe ser la misma nota (folio numérico, RFC emisor y total ±0.01); si no, el UUID
+     * leído pertenece a otro CFDI y no se debe tocar nada.
+     * @param array $fr   fila de FacturasRecibidas (Folio, EmisorRfc, Total)
+     * @param array $fila fila de filaDesdePdf()
+     */
+    public static function facturaCoincideConPdf(array $fr, array $fila): bool
+    {
+        $a = trim((string)($fr['Folio'] ?? ''));
+        $b = trim((string)($fila['Folio'] ?? ''));
+        $da = preg_replace('/\D/', '', $a);
+        $db = preg_replace('/\D/', '', $b);
+        $folioOk = ($da !== '' && $db !== '')
+            ? ltrim($da, '0') === ltrim($db, '0')
+            : strcasecmp($a, $b) === 0;
+        $rfcOk = strcasecmp(trim((string)($fr['EmisorRfc'] ?? '')), trim((string)($fila['EmisorRfc'] ?? ''))) === 0;
+        $totalOk = abs((float)($fr['Total'] ?? 0) - (float)($fila['Total'] ?? 0)) <= 0.01;
+        return $folioOk && $rfcOk && $totalOk;
+    }
 }
