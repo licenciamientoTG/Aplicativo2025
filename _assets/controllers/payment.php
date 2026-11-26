@@ -5460,7 +5460,25 @@ class Payment
                         [$desc, $claves] = $this->InvoiceCreditDebitNotesModel->conceptosFactura((int)$existente['Id']);
                     }
                     $claseForzada = null;
-                    $clase = NotaCfdi::clasificar($tipo, $desc, $claves);
+                    $totalCfdi = (float)($existente['Total'] ?? $factura['Total'] ?? 0);
+                    if ($tipo === 'E') {
+                        // Aplicación de anticipo / total 0: no es una nota (el solo-PDF no trae conceptos: se lee su texto)
+                        if ($totalCfdi <= 0) {
+                            $falla('El CFDI tiene total 0');
+                            continue;
+                        }
+                        if ($soloPdf && count($desc) === 0) {
+                            $textoPdf = NotaCreditoPdfParser::texto($g['pdf']);
+                            if ($textoPdf !== null && NotaCfdi::textoEsAplicacionAnticipo($textoPdf)) {
+                                $falla('Es una aplicación de anticipo, no una nota');
+                                continue;
+                            }
+                        } elseif (NotaCfdi::esAplicacionAnticipo($desc, $claves)) {
+                            $falla('Es una aplicación de anticipo, no una nota');
+                            continue;
+                        }
+                    }
+                    $clase = NotaCfdi::clasificar($tipo, $desc, $claves, $totalCfdi);
                     if ($clase === null && $soloPdf && $tipo === 'I' && count($desc) === 0) {
                         // Solo PDF de cargo, sin conceptos: la clase la elige el usuario, pero el
                         // texto del PDF debe coincidir (el parser lee cualquier CFDI de MGC).

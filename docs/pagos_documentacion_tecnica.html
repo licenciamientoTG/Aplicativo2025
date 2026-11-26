@@ -467,7 +467,7 @@ método del controlador</b>. Los checks Twig en las vistas solo ocultan botones 
     o tienen una nota capturada antes (legacy) con el mismo folio+monto. <b>Importar CFDI</b>
     (<code>notas_importar_cfdi</code>): XML y/o PDF (al menos uno). Solo PDF usa
     <code>NotaCreditoPdfParser</code>; la clase se elige a mano y el texto del PDF debe
-    coincidir con ella; se rechazan palabras de combustible. Guarda: si la FR ya tiene ese
+    coincidir con ella; se rechazan palabras de combustible. <b>Solo PDF funciona únicamente con el RFC MME141110IJ9 (MGC)</b>; otros emisores requieren XML. Se rechazan tipo E con total 0 y las "aplicación de anticipo" (clave 84111506; en solo PDF por su texto), también en Buscar en facturas recibidas. Guarda: si la FR ya tiene ese
     UUID con folio/RFC/total distintos, rechaza.</td></tr>
   <tr><td>Captura manual</td>
     <td>Quitada (alta manual, carga masiva de PDF y subir PDF por nota), también en Nuevo Pago
@@ -485,16 +485,19 @@ método del controlador</b>. Los checks Twig en las vistas solo ocultan botones 
     <td>Las filas de nota de cargo toman uuid/codgas y monto de la BD (se cobra completa).
     Rechaza nota de otro proveedor, repetida, ya cobrada (<code>getAvailableBalance</code>),
     de empresas distintas (mensaje de <code>NotasPago</code>) o con empresa en conflicto con
-    la del pago; sin empresa pide "Elige la empresa del pago". Nunca guarda
+    la del pago; si el uuid de la nota ya estuvo en un pago borrado, rechaza con aviso claro (el índice único cuenta filas borradas; ver <code>docs/sql/indice_pri_uuid_activos_2026-11-25.sql</code>, sin correr); sin empresa pide "Elige la empresa del pago". Nunca guarda
     <code>emp_cod</code> NULL. Notas disponibles se empatan por uuid o folio+proveedor.</td></tr>
   <tr><td>Backfill</td>
     <td><code>docs/sql/backfill_notas_fr_2026-11-25.sql</code>: liga notas existentes por
     folio+RFC+monto+tipo, con pasada por sufijo (folio de 5+ dígitos); excluye las 9 FR
     duplicadas; <code>@aplicar</code> = 0 es dry-run.
     <code>tools/backfill_notas_importar_pdf.php</code> (CLI, en el servidor de producción;
-    requiere el DDL): importa desde PDF las notas históricas de MGC y lista las acciones;
-    primero sin <code>--aplicar</code>. Orden: DDL (aplicado) → deploy del código → SQL con
-    <code>@aplicar=1</code> → CLI en dry-run → CLI <code>--aplicar</code>.</td></tr>
+    requiere el SQL de backfill ya aplicado, no solo el DDL): importa desde PDF las notas históricas de MGC y lista las acciones;
+    primero sin <code>--aplicar</code>. Orden: (1) SQL con <code>@aplicar=1</code> ANTES de desplegar
+    (solo usa las columnas del DDL, ya aplicado) → (2) deploy del código → (3) CLI en dry-run en el servidor de
+    producción → (4) CLI <code>--aplicar</code>. Motivo: entre el deploy y el backfill, las notas
+    legacy con folio con prefijo o dígitos extra (p. ej. SE00333575, pagada en el req 1321) no las
+    reconocería la guarda de notas legacy y su CFDI podría crearse como nota nueva.</td></tr>
   <tr><td>Pruebas</td>
     <td><code>php tests/NotaCfdiTest.php</code>, <code>CfdiNotaImportTest.php</code>,
     <code>NotasPagoTest.php</code>, <code>NotaCreditoPdfParserTest.php</code>.</td></tr>

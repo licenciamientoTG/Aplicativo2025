@@ -150,6 +150,17 @@ class PaymentRequestsModel extends Model
                 if ($nota_uuid && $invModel->get_active_invoice_by_uuid($nota_uuid)) {
                     throw new Exception("La nota $note_number ya está incluida en otra orden de pago");
                 }
+                // El índice único de uuid también cuenta filas borradas (is_deleted = 1): avisar en claro
+                if ($nota_uuid) {
+                    $borrada = $this->sql->select(
+                        'SELECT TOP 1 payment_request_id FROM [TG].[dbo].[payment_request_invoices]
+                         WHERE uuid COLLATE DATABASE_DEFAULT = ? COLLATE DATABASE_DEFAULT ORDER BY id DESC',
+                        [$nota_uuid]
+                    );
+                    if (!empty($borrada)) {
+                        throw new Exception("La nota {$nota['note_number']} estuvo en un pago borrado (req #{$borrada[0]['payment_request_id']}); pide a sistemas liberar el UUID");
+                    }
+                }
                 if (!NotasPago::saldoCubreNota($notasModel->getAvailableBalance($nota['id']), $amount)) {
                     throw new Exception("La nota $note_number ya fue cobrada o aplicada");
                 }

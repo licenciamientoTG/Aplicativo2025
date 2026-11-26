@@ -10,17 +10,23 @@ class NotaCfdi
     const MORATORIOS = 'MORATORIOS';
 
     const CLAVE_SERVICIO_ASOCIADO = '80141629';
+    const CLAVE_APLICACION_ANTICIPO = '84111506';
     const RFC_MCG = 'MME141110IJ9';
 
     /**
      * Clasifica un CFDI. Devuelve NOTA_CREDITO | FALSO_FLETE | MORATORIOS | null.
      * $descripciones y $claves son arreglos paralelos (clave faltante = '').
+     * $total (opcional): un tipo E con total 0 no es nota. Un tipo E cuyos conceptos son todos
+     * "aplicación de anticipo" (clave 84111506) tampoco: es el cierre de un anticipo, no una nota.
      */
-    public static function clasificar(string $tipoComprobante, array $descripciones, array $claves): ?string
+    public static function clasificar(string $tipoComprobante, array $descripciones, array $claves, ?float $total = null): ?string
     {
         $tipo = strtoupper(trim($tipoComprobante));
         if ($tipo === 'E') {
-            return self::NOTA_CREDITO;
+            if ($total !== null && $total <= 0) {
+                return null;
+            }
+            return self::esAplicacionAnticipo($descripciones, $claves) ? null : self::NOTA_CREDITO;
         }
         if ($tipo !== 'I' || count($descripciones) === 0) {
             return null;
@@ -61,6 +67,31 @@ class NotaCfdi
         }
 
         return $todosServicio ? self::FALSO_FLETE : null;
+    }
+
+    /** ¿Todos los conceptos son "aplicación de anticipo" (o clave 84111506)? Sin conceptos = false. */
+    public static function esAplicacionAnticipo(array $descripciones, array $claves): bool
+    {
+        $descripciones = array_values($descripciones);
+        $claves = array_values($claves);
+        if (count($descripciones) === 0) {
+            return false;
+        }
+        foreach ($descripciones as $i => $desc) {
+            $norm = self::normalizar((string)$desc);
+            $clave = trim((string)($claves[$i] ?? ''));
+            if (strpos($norm, 'aplicacion de anticipo') === false && $clave !== self::CLAVE_APLICACION_ANTICIPO) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Texto de un PDF (sin conceptos estructurados): ¿menciona aplicación de anticipo? */
+    public static function textoEsAplicacionAnticipo(string $texto): bool
+    {
+        $norm = self::normalizar($texto);
+        return strpos($norm, 'aplicacion de anticipo') !== false || strpos($norm, self::CLAVE_APLICACION_ANTICIPO) !== false;
     }
 
     public static function noteType(string $clase): string

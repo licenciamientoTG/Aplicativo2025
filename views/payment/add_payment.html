@@ -755,6 +755,7 @@
     let paymentItems = [];
 
     // ── Notas pendientes ──────────────────────────────────────────────────────
+    const escHtml = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     let pendingNotes = [];       // [{credit_note_id, note_number, note_type, applied_amount, invoice_temp_key, note_label, available_balance}]
     let availableNotes = [];     // notas cargadas del proveedor
     let assignNoteInvoiceTempKey = null;
@@ -879,7 +880,7 @@
             document.getElementById('badge-notas-count').textContent = notas.length;
         })
         .catch(err => {
-            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3"><i class="fas fa-exclamation-triangle me-2"></i>${err.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3"><i class="fas fa-exclamation-triangle me-2"></i>${escHtml(err.message)}</td></tr>`;
         })
         .finally(() => hidePaymentLoader());
     }
@@ -916,8 +917,8 @@
             });
 
             return `<tr class="nota-cargo-row ${dragClass} ${yaAplicada ? 'table-warning' : ''}" ${dragAttr} data-drag='${dragData.replace(/'/g,"&#39;")}'>
-                <td class="text-center"><input type="checkbox" class="nota-cargo-check invoice-checkbox" data-id="${n.id}" data-balance="${balance}" data-total="${total}" data-number="${n.note_number || ''}" data-date="${fecha}" data-provider="${proveedor}" data-providerid="${n.provider_id || ''}" ${yaAplicada ? 'disabled checked' : ''}></td>
-                <td><i class="fas fa-grip-vertical text-muted me-1" style="font-size:0.75rem;"></i>${n.note_number || '—'}</td>
+                <td class="text-center"><input type="checkbox" class="nota-cargo-check invoice-checkbox" data-id="${n.id}" data-balance="${balance}" data-total="${total}" data-number="${escHtml(n.note_number)}" data-date="${fecha}" data-provider="${proveedor}" data-providerid="${n.provider_id || ''}" ${yaAplicada ? 'disabled checked' : ''}></td>
+                <td><i class="fas fa-grip-vertical text-muted me-1" style="font-size:0.75rem;"></i>${escHtml(n.note_number) || '—'}</td>
                 <td>${fecha}</td>
                 <td>${proveedor}</td>
                 <td class="text-right">$${total.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
@@ -1093,10 +1094,10 @@
                 const label = `[${type}] ${n.note_number || 'S/N'} — ${date}`;
                 const bal   = n.remaining.toFixed(2);
                 return `<div class="d-flex align-items-center gap-2 py-1 border-bottom assign-note-row"
-                    data-note-id="${n.id}" data-balance="${bal}" data-type="${n.note_type}" data-label="${label}">
+                    data-note-id="${n.id}" data-balance="${bal}" data-type="${n.note_type}" data-label="${escHtml(label)}">
                     <input type="checkbox" class="form-check-input mt-0 assign-note-check" onchange="onAssignNoteCheckToggle(this)">
                     <div class="flex-grow-1" style="font-size:.82rem; line-height:1.15;">
-                        <span class="badge ${badge} me-1">${type}</span>${n.note_number || 'S/N'}
+                        <span class="badge ${badge} me-1">${type}</span>${escHtml(n.note_number) || 'S/N'}
                         <span class="text-muted"> · ${date} · Saldo: $${bal}</span>
                     </div>
                     <input type="number" class="form-control form-control-sm assign-note-amount" style="width:110px;"
@@ -1236,7 +1237,7 @@
         list.innerHTML = independientes.map((n, i) => {
             const globalIndex = pendingNotes.indexOf(n);
             return `<li class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center">
-                <span class="text-dark"><i class="fas fa-tag me-1 text-warning"></i>${n.note_label}: +$${parseFloat(n.applied_amount).toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
+                <span class="text-dark"><i class="fas fa-tag me-1 text-warning"></i>${escHtml(n.note_label)}: +$${parseFloat(n.applied_amount).toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
                 <button class="btn btn-xs btn-link text-danger p-0 ms-1" onclick="removeNoteAssignment(${globalIndex})" title="Quitar">×</button>
             </li>`;
         }).join('');
@@ -1356,7 +1357,7 @@
                             function () { window.location.href = '/payment/payment_list'; }
                         ).set('labels', { ok: 'Ver Detalle', cancel: 'Ir a Lista' });
                     } else {
-                        alertify.error('Error: ' + data.detail);
+                        alertify.error('Error: ' + escHtml(data.detail));
                     }
                 } catch (error) {
                     hidePaymentLoader();
@@ -1504,12 +1505,12 @@
                     hidePaymentLoader();
 
                     if (result.success) {
-                        alertify.success(result.message || 'Facturas agregadas exitosamente');
+                        alertify.success(escHtml(result.message) || 'Facturas agregadas exitosamente');
                         setTimeout(() => {
                             window.location.href = '/payment/payment_detail/' + PAYMENT_ID;
                         }, 1000);
                     } else {
-                        alertify.error(result.message || 'Error al agregar las facturas');
+                        alertify.error(escHtml(result.message) || 'Error al agregar las facturas');
                     }
                 } catch (error) {
                     hidePaymentLoader();

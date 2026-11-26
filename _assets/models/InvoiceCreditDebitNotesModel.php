@@ -254,7 +254,7 @@ class InvoiceCreditDebitNotesModel extends Model
         foreach ($rows as $r) {
             $desc = ($r['conceptos'] ?? '') === '' ? [] : explode('|', (string)$r['conceptos']);
             $claves = ($r['claves'] ?? '') === '' ? [] : explode('|', (string)$r['claves']);
-            $clase = NotaCfdi::clasificar((string)$r['tipo'], $desc, $claves);
+            $clase = NotaCfdi::clasificar((string)$r['tipo'], $desc, $claves, (float)$r['total']);
             if ($clase === null) {
                 continue;
             }
@@ -338,10 +338,11 @@ class InvoiceCreditDebitNotesModel extends Model
             $clase = NotaCfdi::clasificar(
                 (string)$fr['TipoDeComprobante'],
                 array_map(fn($c) => (string)$c['Descripcion'], $cs),
-                array_map(fn($c) => (string)$c['ClaveProdServ'], $cs)
+                array_map(fn($c) => (string)$c['ClaveProdServ'], $cs),
+                (float)$fr['Total']
             );
         }
-        if ($clase === null || !in_array($clase, [NotaCfdi::NOTA_CREDITO, NotaCfdi::FALSO_FLETE, NotaCfdi::MORATORIOS], true)) {
+        if ($clase === null ||!in_array($clase, [NotaCfdi::NOTA_CREDITO, NotaCfdi::FALSO_FLETE, NotaCfdi::MORATORIOS], true)) {
             return $fail('Este CFDI no es nota de crédito ni de cargo');
         }
         if ($this->existsUuid((string)$fr['UUID'])) {

@@ -5,6 +5,8 @@
  * (factura_recibida_id, uuid, emp_cod, codgas NULL, origen='historica').
  *
  * Los PDF solo existen en el servidor de producción: correrlo ahí.
+ * Orden: (1) docs/sql/backfill_notas_fr_2026-11-25.sql con @aplicar = 1 ANTES del deploy,
+ * (2) deploy del código, (3) este CLI en simulación, (4) este CLI con --aplicar.
  *
  *   php tools/backfill_notas_importar_pdf.php              (simulación: no escribe nada)
  *   php tools/backfill_notas_importar_pdf.php --aplicar    (copia PDF, inserta FR y liga la nota)

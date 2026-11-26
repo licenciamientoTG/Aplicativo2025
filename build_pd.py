@@ -249,7 +249,7 @@ new_top = r"""{# payment_detail.html #}
 				<span class="text-muted" style="font-size:.85rem;">Notas aplicadas a este pago</span>
 				<div class="d-flex gap-2">
 					<button class="btn btn-sm btn-outline-secondary" onclick="openApplyCreditNoteModal()"><i class="fas fa-link"></i> Aplicar Nota</button>
-					<button class="btn btn-sm btn-outline-secondary" onclick="addNoteModal()"><i class="fas fa-plus"></i> Nueva Nota</button>
+					<a class="btn btn-sm btn-outline-secondary" href="/payment/credit_notes" target="_blank" rel="noopener"><i class="fas fa-file-import"></i> Crear nota desde CFDI</a>
 				</div>
 			</div>
 			<div class="table-responsive">
@@ -282,7 +282,6 @@ new_top = r"""{# payment_detail.html #}
 										{% if app.documents_count > 0 %}
 											<button class="btn btn-sm btn-outline-secondary view-note-docs-btn me-1" data-note-id="{{ app.credit_note_id }}" title="Ver PDF(s)"><i class="fas fa-file-pdf"></i> {{ app.documents_count }}</button>
 										{% endif %}
-										<button class="btn btn-sm btn-outline-secondary me-1" onclick="openUploadDocModalPD({{ app.credit_note_id }})" title="Subir PDF"><i class="fas fa-upload"></i></button>
 										<button class="btn btn-sm btn-outline-danger" onclick="removeApplication({{ app.id }})" title="Quitar"><i class="fas fa-unlink"></i></button>
 									</td>
 								</tr>

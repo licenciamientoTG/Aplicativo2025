@@ -26,6 +26,12 @@
 -- decida cuál conservar. Pasada 2: folio de FR de al menos 5 dígitos. Si los conteos
 -- reales se alejan más de 5 se aborta con RAISERROR.
 --
+-- ORDEN DE DESPLIEGUE: (1) este script con @aplicar = 1 ANTES de desplegar el código (solo usa
+-- las columnas del DDL, ya aplicado); (2) deploy; (3) tools/backfill_notas_importar_pdf.php en
+-- dry-run; (4) el CLI con --aplicar. Si el código se despliega antes, las notas legacy con folio
+-- con prefijo o dígitos extra (SE00333575, pagada en el req 1321) no las reconoce la guarda y su
+-- CFDI podría crearse como nota nueva.
+--
 -- @aplicar = 0 : dry-run (todo dentro de BEGIN TRAN ... ROLLBACK)
 -- @aplicar = 1 : COMMIT
 -- Respaldo: TG.dbo.bkp_notas_fr_20261125_icdn / _pri / _pr
