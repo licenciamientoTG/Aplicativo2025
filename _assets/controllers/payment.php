@@ -108,8 +108,8 @@ class Payment
      */
     private function banco_por_emp_cod($emp_cod): string
     {
-        if (in_array((int)$emp_cod, [1, 10, 17, 18, 21, 23], true)) return 'Banorte';
-        if (in_array((int)$emp_cod, [11, 14, 15, 16, 19, 20], true)) return 'Santander';
+        if (in_array((int)$emp_cod, [1, 10, 17, 18, 21, 22, 23], true)) return 'Banorte';
+        if (in_array((int)$emp_cod, [11, 14, 15, 16, 19, 20, 102], true)) return 'Santander';
         return 'Sin asignar';
     }
 
@@ -3934,7 +3934,13 @@ class Payment
         $cuentasProveedor = []; // cache por proveedor_cod
         $lineas = [];
         $pagos = ['Santander' => [], 'Banorte' => []];
-        $advertencias = LayoutTexto::verificarTotales($parsed['lineas'], $parsed['totales']);
+        // Los totales se comparan por empresa ya resuelta: "VILLA AHUMADA" y
+        // "GASOLINERA VILLA AHUMADA" son la misma empresa del catálogo.
+        $claveEmpresa = function (string $nombre) use ($catEmpresas): string {
+            $r = LayoutTexto::resolver($nombre, $catEmpresas);
+            return $r['cod'] !== null ? 'cod:' . $r['cod'] : str_replace(' ', '', LayoutTexto::normalizar($nombre));
+        };
+        $advertencias = LayoutTexto::verificarTotales($parsed['lineas'], $parsed['totales'], $claveEmpresa);
 
         $repetidos = array_filter(array_count_values(array_column($parsed['lineas'], 'numero')), fn($n) => $n > 1);
         foreach (array_keys($repetidos) as $numero) {

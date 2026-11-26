@@ -53,6 +53,10 @@ class LayoutTexto
             if ($fila === '') {
                 continue;
             }
+            // Encabezado de la tabla ("Folio Interno  Proveedor  Monto  Empresa ...").
+            if (preg_match('/^(folio|n[uú]mero|no\.?|#)\b.*\bproveedor\b.*\bmonto\b/iu', $fila)) {
+                continue;
+            }
 
             $reDetalle = '/^(' . self::NUMERO . ')\s+(.+?)\s+\$?\s*(' . self::MONTO . ')\s+(.+?)(?:\s+(\d{6,}))?$/u';
             if (preg_match($reDetalle, $fila, $m)) {
@@ -162,23 +166,27 @@ class LayoutTexto
      * Compara el bloque de totales por empresa contra la suma de las líneas.
      * Devuelve una advertencia por cada empresa que no cuadra.
      *
+     * @param callable|null $clave nombre escrito => llave de la empresa (p. ej. su cod
+     *        ya resuelto contra el catálogo), para que "VILLA AHUMADA" y "GASOLINERA
+     *        VILLA AHUMADA" cuenten como una sola. Por omisión, el nombre normalizado.
      * @return string[]
      */
-    public static function verificarTotales(array $lineas, array $totales): array
+    public static function verificarTotales(array $lineas, array $totales, ?callable $clave = null): array
     {
+        $clave = $clave ?? fn(string $n) => str_replace(' ', '', self::normalizar($n));
         if (!$totales) {
             return [];
         }
         $sumas = [];
         foreach ($lineas as $l) {
-            $k = str_replace(' ', '', self::normalizar($l['empresa']));
+            $k = (string)$clave($l['empresa']);
             $sumas[$k] = ($sumas[$k] ?? 0) + $l['monto'];
         }
 
         $avisos = [];
         $vistos = [];
         foreach ($totales as $t) {
-            $k = str_replace(' ', '', self::normalizar($t['empresa']));
+            $k = (string)$clave($t['empresa']);
             $vistos[$k] = true;
             if (!isset($sumas[$k])) {
                 $avisos[] = sprintf('El total de %s (%s) no tiene líneas de pago arriba.', $t['empresa'], self::fmt($t['monto']));
@@ -192,7 +200,7 @@ class LayoutTexto
             }
         }
         foreach ($lineas as $l) {
-            $k = str_replace(' ', '', self::normalizar($l['empresa']));
+            $k = (string)$clave($l['empresa']);
             if (!isset($vistos[$k])) {
                 $vistos[$k] = true;
                 $avisos[] = sprintf('%s tiene líneas de pago pero no aparece en los totales.', $l['empresa']);

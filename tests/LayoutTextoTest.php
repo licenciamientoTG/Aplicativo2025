@@ -100,4 +100,24 @@ $av = LayoutTexto::verificarTotales($l, $tot);
 check('totales: avisa empresa sin total', count($av) === 1 && str_contains($av[0], 'CLARA'));
 check('totales: sin bloque de totales no avisa', LayoutTexto::verificarTotales($l, []) === []);
 
+// Encabezado de tabla: se ignora, no cuenta como línea sin leer
+$rh = LayoutTexto::parse("Folio Interno	Proveedor	Monto	Empresa	Referencia
+2001	ALTOS ENERGETICOS MEXICANOS	972,161.85	ESTACION CUSTODIA	
+");
+check('encabezado: se ignora', count($rh['lineas']) === 1 && $rh['no_leidas'] === []);
+
+// Totales por empresa resuelta: dos nombres de la misma empresa se suman
+$ln = [
+    ['empresa' => 'VILLA AHUMADA', 'monto' => 417029.13],
+    ['empresa' => 'GASOLINERA VILLA AHUMADA', 'monto' => 448131.28],
+];
+$tt = [['empresa' => 'VILLA AHUMADA', 'monto' => 865160.41]];
+check('totales: sin clave, nombres distintos avisan', LayoutTexto::verificarTotales($ln, $tt) !== []);
+$cat = [17 => 'GASOLINERA VILLA AHUMADA'];
+$clave = function (string $n) use ($cat) {
+    $x = LayoutTexto::resolver($n, $cat);
+    return $x['cod'] !== null ? 'cod:' . $x['cod'] : $n;
+};
+check('totales: con clave por empresa resuelta cuadra', LayoutTexto::verificarTotales($ln, $tt, $clave) === []);
+
 finish();

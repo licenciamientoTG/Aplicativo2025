@@ -405,8 +405,8 @@ class CuentasBancariasModel extends Model {
                 (SELECT TOP 1 LTRIM(RTRIM(c.CuentaLocal)) FROM [TG].[dbo].[CatalogosCuentasBancarias] c
                   WHERE c.emp_cod = e.cod AND c.Tipo = 'Propias' AND c.Banco = 'BANORTE' AND c.Activo = 1
                   ORDER BY c.Id) AS cuenta_banorte
-            FROM [SG12].[dbo].[Empresas] e
-            WHERE e.cod > 0
+            FROM [TG].[dbo].[razones_sociales_pago] e
+            WHERE e.cod > 0 AND e.activo = 1
             ORDER BY e.cod
         ";
         return $this->sql->select($query) ?: [];
