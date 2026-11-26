@@ -342,7 +342,7 @@ class InvoiceCreditDebitNotesModel extends Model
                 (float)$fr['Total']
             );
         }
-        if ($clase === null ||!in_array($clase, [NotaCfdi::NOTA_CREDITO, NotaCfdi::FALSO_FLETE, NotaCfdi::MORATORIOS], true)) {
+        if ($clase === null || !in_array($clase, [NotaCfdi::NOTA_CREDITO, NotaCfdi::FALSO_FLETE, NotaCfdi::MORATORIOS], true)) {
             return $fail('Este CFDI no es nota de crédito ni de cargo');
         }
         if ($this->existsUuid((string)$fr['UUID'])) {

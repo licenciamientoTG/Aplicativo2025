@@ -5470,7 +5470,7 @@ class Payment
                         if ($soloPdf && count($desc) === 0) {
                             $textoPdf = NotaCreditoPdfParser::texto($g['pdf']);
                             if ($textoPdf !== null && NotaCfdi::textoEsAplicacionAnticipo($textoPdf)) {
-                                $falla('Es una aplicación de anticipo, no una nota');
+                                $falla('Parece una aplicación de anticipo, no una nota; si es una nota, sube el XML');
                                 continue;
                             }
                         } elseif (NotaCfdi::esAplicacionAnticipo($desc, $claves)) {

@@ -158,7 +158,7 @@ class PaymentRequestsModel extends Model
                         [$nota_uuid]
                     );
                     if (!empty($borrada)) {
-                        throw new Exception("La nota {$nota['note_number']} estuvo en un pago borrado (req #{$borrada[0]['payment_request_id']}); pide a sistemas liberar el UUID");
+                        throw new Exception("La nota $note_number estuvo en un pago borrado (req #{$borrada[0]['payment_request_id']}); pide a sistemas liberar el UUID");
                     }
                 }
                 if (!NotasPago::saldoCubreNota($notasModel->getAvailableBalance($nota['id']), $amount)) {

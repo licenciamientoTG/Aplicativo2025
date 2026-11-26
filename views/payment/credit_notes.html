@@ -292,7 +292,7 @@ function initNotesTable() {
                     ? '<span class="badge" style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;">Crédito</span>'
                     : '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;">Cargo</span>';
             }},
-            { data: 'note_number', defaultContent: '—', render: function (d) { return escNota(d); } },
+            { data: 'note_number', defaultContent: '—', render: function (d) { return d ? escNota(d) : '—'; } },
             { data: 'proveedor', defaultContent: '—' },
             { data: 'note_date', render: function(d) { return d ? d.substring(0,10) : ''; } },
             { data: 'amount', render: function(d) {

@@ -10,6 +10,10 @@
 
   OJO: este cambio tambien afecta a las facturas normales (no solo a notas): un uuid de una
   fila borrada deja de bloquear nuevas filas con ese uuid.
+
+  DESPUES de correrlo: quitar en _assets/models/PaymentRequestsModel.php el bloque
+  "El índice único de uuid también cuenta filas borradas" (create_payment_with_invoices),
+  porque ya no hará falta y seguiría bloqueando recobrar notas de pagos borrados.
 */
 USE TG;
 SET QUOTED_IDENTIFIER ON;
