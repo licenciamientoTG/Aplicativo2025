@@ -2843,6 +2843,171 @@ class MovimientosBancariosModel extends Model
         return $afectadas !== false && $afectadas > 0;
     }
 
+    /* ===================================================================== */
+    /* Alerta "Hacienda te devuelve"                                         */
+    /* ===================================================================== */
+
+    /**
+     * Texto con el que el SAT/Tesorería de la Federación rotula sus
+     * devoluciones. Confirmado 2026-11-26 contra BD: en Santander (TXT y CSV)
+     * y en Banorte (CSV y TXT) viene en `concepto` (en Banorte también en
+     * descripcion_larga); `descripcion` de Santander solo dice "AB TRANSF SPEI".
+     */
+    private const PATRON_DEVOLUCION_HACIENDA = '%HACIENDA TE DEVUELVE%';
+
+    /**
+     * La alerta solo valida devoluciones desde esta fecha (a petición del
+     * usuario, 2026-11-26): lo anterior no cuenta para el globo, ni sale en el
+     * modal ni en el select de meses.
+     */
+    public const DEVOLUCIONES_HACIENDA_DESDE = '2026-11-01';
+
+    /**
+     * WHERE común de la alerta (alias m). Solo abonos. $despuesDeId > 0 limita
+     * a lo que entró después de ese id (el PK clusterizado hace que el rango
+     * por id se resuelva antes que el LIKE). null = el perfil no ve ninguna
+     * cuenta.
+     */
+    private function where_devolucion_hacienda(
+        ?array $cuentasPermitidas, int $despuesDeId, array &$params, ?string $desde = null, ?string $hastaExcl = null
+    ): ?string {
+        if ($cuentasPermitidas !== null && !$cuentasPermitidas) return null;
+
+        $params = [];
+        $where  = '1 = 1';
+        if ($despuesDeId > 0) {
+            $where   .= ' AND m.id > ?';
+            $params[] = $despuesDeId;
+        }
+        // Piso de la alerta: nada anterior a DEVOLUCIONES_HACIENDA_DESDE
+        $where   .= ' AND m.fecha >= ?';
+        $params[] = self::DEVOLUCIONES_HACIENDA_DESDE;
+        // Rango de fechas [desde, hastaExcl): para ver un mes
+        if ($desde !== null && $hastaExcl !== null) {
+            $where   .= ' AND m.fecha >= ? AND m.fecha < ?';
+            array_push($params, $desde, $hastaExcl);
+        }
+        $where   .= ' AND m.abono IS NOT NULL AND (m.concepto LIKE ? OR m.descripcion_larga LIKE ?)';
+        array_push($params, self::PATRON_DEVOLUCION_HACIENDA, self::PATRON_DEVOLUCION_HACIENDA);
+        if ($cuentasPermitidas !== null) {
+            $where .= ' AND m.cuenta IN (' . implode(',', array_fill(0, count($cuentasPermitidas), '?')) . ')';
+            array_push($params, ...$cuentasPermitidas);
+        }
+        return $where;
+    }
+
+    /**
+     * Cuántas devoluciones hay (después de $despuesDeId), su suma y el id
+     * mayor. false si la consulta falla.
+     *
+     * @return array|false ['n' => int, 'monto' => float, 'max_id' => int]
+     */
+    public function resumen_devoluciones_hacienda(
+        ?array $cuentasPermitidas, int $despuesDeId = 0, ?string $desde = null, ?string $hastaExcl = null
+    ) {
+        $params = [];
+        $where  = $this->where_devolucion_hacienda($cuentasPermitidas, $despuesDeId, $params, $desde, $hastaExcl);
+        if ($where === null) return ['n' => 0, 'monto' => 0.0, 'max_id' => 0];
+
+        $r = $this->sql->selectSafe(
+            "SELECT COUNT(*) AS n, ISNULL(SUM(m.abono), 0) AS monto, ISNULL(MAX(m.id), 0) AS max_id
+             FROM [TG].[dbo].[movimientos_bancarios] m WHERE $where;",
+            $params
+        );
+        if ($r === false || !$r) return false;
+        return ['n' => (int)$r[0]['n'], 'monto' => (float)$r[0]['monto'], 'max_id' => (int)$r[0]['max_id']];
+    }
+
+    /**
+     * Devoluciones, de la más reciente a la más vieja, con la razón social del
+     * catálogo. $limite acota la respuesta (hoy son ~9 al mes).
+     */
+    public function get_devoluciones_hacienda(
+        ?array $cuentasPermitidas, int $limite = 500, ?string $desde = null, ?string $hastaExcl = null
+    ): array {
+        $params = [];
+        $where  = $this->where_devolucion_hacienda($cuentasPermitidas, 0, $params, $desde, $hastaExcl);
+        if ($where === null) return [];
+
+        $limite = max(1, min($limite, 2000));
+        return $this->sql->selectSafe(
+            "SELECT TOP ($limite) m.id, m.banco, m.cuenta, m.fecha, m.hora, m.abono,
+                    m.concepto, m.descripcion_larga, m.clave_rastreo, c.Descripcion AS empresa
+             FROM [TG].[dbo].[movimientos_bancarios] m
+             LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] c ON c.CuentaLocal = m.cuenta
+             WHERE $where
+             ORDER BY m.fecha DESC, m.id DESC;",
+            $params
+        ) ?: [];
+    }
+
+    /**
+     * Devoluciones nuevas (id > $despuesDeId) agrupadas por mes (yyyy-MM) de
+     * su fecha. Es barata a propósito: el rango por id (PK clusterizado) deja
+     * solo lo reciente antes de aplicar el LIKE, así que NO crece con el
+     * histórico de la tabla (antes se agrupaba todo el histórico por mes: un
+     * escaneo completo en cada apertura del modal).
+     *
+     * @return array<string,int> ['2026-11' => 3, ...]
+     */
+    public function nuevas_por_mes_devoluciones_hacienda(?array $cuentasPermitidas, int $despuesDeId): array
+    {
+        $params = [];
+        $where  = $this->where_devolucion_hacienda($cuentasPermitidas, $despuesDeId, $params);
+        if ($where === null) return [];
+
+        $r = $this->sql->selectSafe(
+            "SELECT CONVERT(CHAR(7), m.fecha, 23) AS mes, COUNT(*) AS n
+             FROM [TG].[dbo].[movimientos_bancarios] m
+             WHERE $where
+             GROUP BY CONVERT(CHAR(7), m.fecha, 23);",
+            $params
+        ) ?: [];
+        $out = [];
+        foreach ($r as $f) $out[$f['mes']] = (int)$f['n'];
+        return $out;
+    }
+
+    /**
+     * Último id de movimiento que el usuario ya vio para ese tipo de alerta.
+     * null = nunca ha abierto la alerta; false = no se pudo leer (p. ej. la
+     * tabla de docs/sql/tesoreria_alertas_vistas.sql aún no existe).
+     *
+     * @return int|null|false
+     */
+    public function get_ultimo_visto(int $usuario, string $tipo)
+    {
+        $r = $this->sql->selectSafe(
+            'SELECT ultimo_id_visto FROM [TG].[dbo].[movimientos_alertas_vistas] WHERE usuario_id = ? AND tipo = ?;',
+            [$usuario, $tipo]
+        );
+        if ($r === false) return false;
+        return $r ? (int)$r[0]['ultimo_id_visto'] : null;
+    }
+
+    /** Guarda (sin retroceder nunca) hasta qué id vio el usuario. */
+    public function set_ultimo_visto(int $usuario, string $tipo, int $ultimoId): bool
+    {
+        $afectadas = $this->sql->updateSafe(
+            'MERGE [TG].[dbo].[movimientos_alertas_vistas] AS t
+             USING (SELECT CAST(? AS INT) AS usuario_id, CAST(? AS NVARCHAR(40)) AS tipo, CAST(? AS INT) AS id) AS s
+                ON t.usuario_id = s.usuario_id AND t.tipo = s.tipo
+             WHEN MATCHED THEN UPDATE SET
+                  ultimo_id_visto = CASE WHEN s.id > t.ultimo_id_visto THEN s.id ELSE t.ultimo_id_visto END,
+                  actualizado = GETDATE()
+             WHEN NOT MATCHED THEN INSERT (usuario_id, tipo, ultimo_id_visto) VALUES (s.usuario_id, s.tipo, s.id);',
+            [$usuario, $tipo, $ultimoId]
+        );
+        return $afectadas !== false;
+    }
+
+    /** Id más alto de movimientos_bancarios (punto de partida de la alerta). */
+    public function max_id_movimientos(): int
+    {
+        $r = $this->sql->selectSafe('SELECT ISNULL(MAX(id), 0) AS m FROM [TG].[dbo].[movimientos_bancarios];');
+        return $r ? (int)$r[0]['m'] : 0;
+    }
+
     /**
      * Último saldo conocido de cada cuenta al corte de una fecha (el último
      * movimiento aplicado = fecha DESC, id DESC dentro de cada cuenta).

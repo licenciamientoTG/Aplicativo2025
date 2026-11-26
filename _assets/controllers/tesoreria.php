@@ -36,6 +36,8 @@ class Tesoreria
     // puede comentar las que ya se ven.
     private const PERM_COMENTARIOS  = 93;   // Editar Comentarios Movimientos Bancos
     private const MAX_TXT_BYTES     = 10 * 1024 * 1024;
+    // Tipo de la alerta "Hacienda te devuelve" en movimientos_alertas_vistas.
+    private const ALERTA_HACIENDA   = 'hacienda_devuelve';
 
     /**
      * Cuentas visibles para el perfil "Crédito" (permiso 83), por
@@ -558,6 +560,173 @@ class Tesoreria
             'success'    => $ok,
             'message'    => $ok ? 'Comentario guardado' : 'No se encontró el movimiento',
             'comentario' => $comentario,
+        ]);
+    }
+
+    /**
+     * Alerta "Hacienda te devuelve" (icono de casita en los filtros). Solo
+     * para quien tiene el permiso de subir movimientos (81); las cuentas que
+     * ve siguen acotadas por cuentas_permitidas(). Lo "visto" es por usuario
+     * (movimientos_alertas_vistas, ver docs/sql/tesoreria_alertas_vistas.sql).
+     *
+     * Devuelve el id del usuario, o null tras responder 'Sin permiso'.
+     */
+    private function usuario_alerta_hacienda(): ?int
+    {
+        header('Content-Type: application/json');
+        $uid = (int)($_SESSION['tg_user']['Id'] ?? 0);
+        if ($uid <= 0 || !authorized(self::PERM_SUBIR_MOV)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return null;
+        }
+        return $uid;
+    }
+
+    /**
+     * GET AJAX: cuántas devoluciones de Hacienda hay nuevas para el usuario
+     * desde la última vez que abrió el modal (badge de la casita y aviso tras
+     * subir un archivo). NO marca nada como visto.
+     *
+     * Primera vez del usuario: se guarda el id actual como punto de partida,
+     * así no aparecen como "nuevas" las devoluciones históricas.
+     */
+    public function devoluciones_hacienda_resumen(): void
+    {
+        $uid = $this->usuario_alerta_hacienda();
+        if ($uid === null) return;
+
+        try {
+            $visto = $this->movsModel->get_ultimo_visto($uid, self::ALERTA_HACIENDA);
+            if ($visto === false) {
+                json_output(['success' => false, 'message' => 'Seguimiento no disponible']);
+                return;
+            }
+            if ($visto === null) {
+                $this->movsModel->set_ultimo_visto($uid, self::ALERTA_HACIENDA, $this->movsModel->max_id_movimientos());
+                json_output(['success' => true, 'nuevas' => 0, 'monto_nuevas' => 0]);
+                return;
+            }
+            $r = $this->movsModel->resumen_devoluciones_hacienda($this->cuentas_permitidas(), $visto);
+        } catch (Exception $e) {
+            error_log('devoluciones_hacienda_resumen: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al consultar las devoluciones']);
+            return;
+        }
+        if ($r === false) {
+            json_output(['success' => false, 'message' => 'Error al consultar las devoluciones']);
+            return;
+        }
+        json_output(['success' => true, 'nuevas' => $r['n'], 'monto_nuevas' => $r['monto']]);
+    }
+
+    /**
+     * POST AJAX: lista de devoluciones para el modal, con la marca `nuevo` en
+     * las que llegaron después de la última apertura del usuario. Al terminar
+     * las da por vistas.
+     */
+    public function devoluciones_hacienda(): void
+    {
+        $uid = $this->usuario_alerta_hacienda();
+        if ($uid === null) return;
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            json_output(['success' => false, 'message' => 'Método no permitido']);
+            return;
+        }
+
+        // Mes a mostrar (yyyy-MM): por default el mes en curso
+        $mesInicio = substr(MovimientosBancariosModel::DEVOLUCIONES_HACIENDA_DESDE, 0, 7);
+        $mes = trim((string)($_POST['mes'] ?? ''));
+        if (!preg_match('/^(\d{4})-(0[1-9]|1[0-2])$/', $mes) || $mes > date('Y-m')) $mes = date('Y-m');
+        if ($mes < $mesInicio) $mes = $mesInicio;   // la alerta no valida meses anteriores
+        $desde     = $mes . '-01';
+        $hastaExcl = date('Y-m-d', strtotime($desde . ' +1 month'));
+
+        $cuentas = $this->cuentas_permitidas();
+        try {
+            // El id tope se toma ANTES de leer la lista: lo que entre en medio
+            // se muestra pero no se da por visto, y volverá a avisar (mejor
+            // repetir un aviso que perder uno).
+            $tope  = $this->movsModel->max_id_movimientos();
+            $visto = $this->movsModel->get_ultimo_visto($uid, self::ALERTA_HACIENDA);
+            // Al cambiar de mes dentro del modal ya se marcó todo como visto en
+            // la primera carga; el JS reenvía la referencia de esa apertura
+            // (visto_ref) para que las filas nuevas de otros meses sigan
+            // marcadas mientras el modal está abierto.
+            $ref = ($visto !== false && $visto !== null) ? $visto : null;
+            if ($ref !== null && ctype_digit((string)($_POST['visto_ref'] ?? ''))) {
+                $ref = min($ref, (int)$_POST['visto_ref']);
+            }
+            // Solo se consulta el mes pedido (una lectura). Nada se agrupa ni se
+            // cuenta sobre el histórico: el modal no debe tardar más conforme
+            // crece la tabla. Las "nuevas" salen de un rango por id, que es
+            // barato (ver nuevas_por_mes_devoluciones_hacienda).
+            $filas = $this->movsModel->get_devoluciones_hacienda($cuentas, 500, $desde, $hastaExcl);
+            $nuevasPorMes = $ref !== null
+                ? $this->movsModel->nuevas_por_mes_devoluciones_hacienda($cuentas, $ref) : [];
+        } catch (Exception $e) {
+            error_log('devoluciones_hacienda: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al consultar las devoluciones']);
+            return;
+        }
+
+        $seguimiento = $visto !== false;   // false = falta la tabla de "visto"
+        $nuevas = 0;
+        $montoNuevas = 0.0;
+        $salida = [];
+        foreach ($filas as $f) {
+            $texto = preg_replace('/\s+/', ' ', trim((string)($f['concepto'] ?? '')));
+            $esNuevo = $ref !== null && (int)$f['id'] > $ref;
+            if ($esNuevo) {
+                $nuevas++;
+                $montoNuevas += (float)$f['abono'];
+            }
+            $salida[] = [
+                'id'            => (int)$f['id'],
+                'fecha'         => $f['fecha'],
+                'hora'          => $f['hora'],
+                'banco'         => $f['banco'],
+                'cuenta'        => $f['cuenta'],
+                'empresa'       => $f['empresa'],
+                'abono'         => (float)$f['abono'],
+                // Folio de la devolución (DC532600036150), parte del concepto
+                'folio'         => preg_match('/\bD[A-Z]\d{8,}\b/', $texto, $mm) ? $mm[0] : '',
+                'concepto'      => $texto,
+                'clave_rastreo' => $f['clave_rastreo'],
+                'nuevo'         => $esNuevo,
+            ];
+        }
+
+        // Select de meses: calendario desde el mes de inicio de la alerta hasta
+        // el mes en curso (más reciente primero), sin consultar la BD; cada
+        // opción solo lleva cuántas nuevas tiene.
+        $meses = [];
+        for ($i = 0; $i < 120; $i++) {
+            $m = date('Y-m', strtotime(date('Y-m-01') . " -$i month"));
+            if ($m < $mesInicio) break;
+            $meses[] = ['mes' => $m, 'nuevas' => $nuevasPorMes[$m] ?? 0];
+        }
+
+        // Abrir el modal da todo por visto (marca de agua por id). Las nuevas
+        // que caigan en OTRO mes (p. ej. un archivo atrasado) se avisan aquí
+        // mismo ('otros_meses' y el select) y no vuelven a avisar después.
+        $otrosMeses = max(0, array_sum($nuevasPorMes) - $nuevas);
+        if ($seguimiento) {
+            $this->movsModel->set_ultimo_visto($uid, self::ALERTA_HACIENDA, $tope);
+        }
+
+        json_output([
+            'success'      => true,
+            'seguimiento'  => $seguimiento,
+            'primera_vez'  => $seguimiento && $visto === null,
+            'mes'          => $mes,
+            'meses'        => $meses,
+            'nuevas'       => $nuevas,
+            'monto_nuevas' => $montoNuevas,
+            'otros_meses'  => $otrosMeses,   // nuevas que caen en otros meses
+            'visto_ref'    => $ref,          // referencia de esta apertura (el JS la reenvía al cambiar de mes)
+            'total'        => count($salida),
+            'monto_total'  => array_sum(array_column($salida, 'abono')),
+            'movimientos'  => $salida,
         ]);
     }
 

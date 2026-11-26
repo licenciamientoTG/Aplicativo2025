@@ -130,6 +130,39 @@
     border-color: var(--mb-banco, #475569);
   }
 
+  /* Barra de filtros: etiquetas pequeñas en la misma voz que las cabeceras de
+     tabla, y el select de cuentas con el mismo aspecto que los demás campos. */
+  .mb-flabel {
+    display: block; margin: 0 0 .2rem; font-size: .7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .05em; color: #64748b;
+  }
+  #filtrosForm .bootstrap-select > .dropdown-toggle {
+    background: #fff; border: 1px solid #ced4da; color: #212529;
+    height: calc(1.5em + .75rem + 2px); box-shadow: none;
+  }
+  #filtrosForm .bootstrap-select > .dropdown-toggle:focus { border-color: #86b7fe; box-shadow: 0 0 0 .2rem rgba(13,110,253,.2); }
+  /* Las razones sociales largas no caben en 320px: el menú puede ser más ancho que el botón */
+  #filtrosForm .bootstrap-select .dropdown-menu { min-width: 480px; }
+  #filtrosForm .bootstrap-select .dropdown-header { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+
+  /* Botón dividido "Subir": el caret toma el mismo contorno neutro del botón */
+  .mb-split-caret { border-color: #cbd5e1; color: #64748b; }
+  .mb-import-menu { min-width: 300px; padding: .35rem; }
+  .mb-import-menu .dropdown-header { font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: #64748b; }
+  .mb-import-menu .dropdown-item.btn-upload-banco {
+    display: flex; align-items: center; gap: .6rem; width: 100%;
+    border: 0; background: transparent; color: #334155; border-radius: .3rem;
+    font-weight: 600; font-size: .85rem; padding: .4rem .6rem; text-align: left;
+  }
+  .mb-import-menu .dropdown-item.btn-upload-banco:hover,
+  .mb-import-menu .dropdown-item.btn-upload-banco:focus { background: #f1f5f9; color: #0f172a; border: 0; }
+  .mb-import-menu .mb-punto-banco { width: .65rem; height: .65rem; border-radius: 50%; flex: none; background: var(--mb-banco, #cbd5e1); }
+  .mb-import-menu small { display: block; font-weight: 400; font-size: .7rem; color: #64748b; line-height: 1.2; }
+
+  /* Casita con nuevas: el propio botón se tiñe, no solo el globo */
+  #btnHacienda.tiene-nuevas { border-color: #dc3545; color: #dc3545; background: #fff5f5; }
+  @media (prefers-reduced-motion: reduce) { #haciendaBadge { animation: none; } }
+
   /* Cabeceras colapsables (los tres cards de saldo comparten el patrón) */
   .mb-chevron { transition: transform .2s; color: #94a3b8; }
   .mb-collapse-btn:not(.collapsed) .mb-chevron { transform: rotate(180deg); }
@@ -355,6 +388,24 @@
   #mbLoader .spinner-border { width: 2.6rem; height: 2.6rem; color: #009559; }
   #mbLoader span { color: #334155; font-weight: 600; font-size: .9rem; }
 
+  /* Alerta "Hacienda te devuelve": casita con globo de nuevas */
+  #btnHacienda { position: relative; }
+  #haciendaBadge {
+    position: absolute; top: -.45rem; right: -.45rem; min-width: 1.15rem; height: 1.15rem;
+    padding: 0 .3rem; border-radius: 999px; background: #dc3545; color: #fff;
+    font-size: .68rem; font-weight: 700; line-height: 1.15rem; text-align: center;
+    animation: mbPulso 1.6s ease-out infinite;
+  }
+  @keyframes mbPulso {
+    0%   { box-shadow: 0 0 0 0 rgba(220, 53, 69, .55); }
+    70%  { box-shadow: 0 0 0 .5rem rgba(220, 53, 69, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+  }
+  #hacTabla td, #hacTabla th { font-size: .78rem; white-space: nowrap; vertical-align: middle; }
+  #hacTabla .mb-num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  #hacTabla tr.hac-nuevo > td { background: #fffbeb; }
+  .hac-chip-nuevo { background: #dc3545; color: #fff; font-size: .6rem; font-weight: 700; border-radius: 4px; padding: .1rem .35rem; letter-spacing: .04em; }
+
   /* Color de marca de cada banco, salido del registro BANCOS del controlador:
      agregar un banco no obliga a tocar el CSS. El botón de subida lo llevan
      todos; el tab, solo los que tienen tabla. */
@@ -380,48 +431,96 @@
        los movimientos por POST a /tesoreria/movimientos_table. #}
     <form class="row align-items-end g-2" id="filtrosForm">
       <div class="col-auto">
-        <label for="desde">Desde:</label>
+        <label class="mb-flabel" for="desde">Desde</label>
         <input type="date" class="form-control" name="desde" id="desde" value="{{ filtros.desde }}" required>
       </div>
       <div class="col-auto">
-        <label for="hasta">Hasta:</label>
+        <label class="mb-flabel" for="hasta">Hasta</label>
         <input type="date" class="form-control" name="hasta" id="hasta" value="{{ filtros.hasta }}" required>
       </div>
       <div class="col-auto">
-        <label for="cuenta">Cuenta:</label>
-        <select class="selectpicker" data-live-search="true" data-width="320px" name="cuenta" id="cuenta">
+        <label class="mb-flabel" for="cuenta">Cuenta</label>
+        {# Agrupadas por banco (get_cuentas viene ordenado por banco, cuenta).
+           data-banco lo usa buscarMovimientos() para abrir el tab del banco
+           de la cuenta filtrada en vez de dejarte en el que estabas. El texto
+           de cada opción conserva banco y razón social: es lo que busca el
+           buscador del select. #}
+        <select class="selectpicker" data-live-search="true" data-width="320px" data-size="12" name="cuenta" id="cuenta">
           <option value="">Todas</option>
-          {# data-banco lo usa buscarMovimientos() para abrir el tab del banco
-             de la cuenta filtrada en vez de dejarte en el que estabas. #}
+          {% set grupoBanco = '' %}
           {% for c in cuentas %}
+          {% set etiquetaBanco = bancosTabla[c.banco].etiqueta ?? (c.banco|lower|capitalize) %}
+          {% if c.banco != grupoBanco %}
+          {% if grupoBanco != '' %}</optgroup>{% endif %}
+          {% set grupoBanco = c.banco %}
+          <optgroup label="{{ etiquetaBanco }}">
+          {% endif %}
           <option value="{{ c.cuenta }}" data-banco="{{ c.banco }}" {{ filtros.cuenta == c.cuenta ? 'selected' : '' }}>
-            {{ c.cuenta }} ({{ c.banco|lower|capitalize }}){{ c.descripcion ? ' — ' ~ c.descripcion : '' }}
+            {{ c.cuenta }} ({{ etiquetaBanco }}){{ c.descripcion ? ' — ' ~ c.descripcion : '' }}
           </option>
           {% endfor %}
+          {% if grupoBanco != '' %}</optgroup>{% endif %}
         </select>
       </div>
       <div class="col-auto">
-        <label for="tipo">Tipo:</label>
+        <label class="mb-flabel" for="tipo">Tipo</label>
         <select class="form-select" name="tipo" id="tipo">
           <option value="">Todos</option>
           <option value="abono" {{ filtros.tipo == 'abono' ? 'selected' : '' }}>Abonos</option>
           <option value="cargo" {{ filtros.tipo == 'cargo' ? 'selected' : '' }}>Cargos</option>
         </select>
       </div>
+      {# Buscar es la acción principal; Exportar, secundaria (solo contorno). #}
       <div class="col-auto">
-        <button type="submit" class="btn btn-primary">Buscar</button>
-        <button type="button" class="btn btn-success ms-1" data-bs-toggle="modal" data-bs-target="#exportModal">
+        <button type="submit" class="btn btn-primary"><i class="fas fa-magnifying-glass"></i> Buscar</button>
+        <button type="button" class="btn btn-outline-success ms-1" data-bs-toggle="modal" data-bs-target="#exportModal">
           <i class="fas fa-file-excel"></i> Exportar
         </button>
       </div>
-      {% if authorized(114) or (authorized(80) and authorized(81)) %}
-      <div class="col-auto ms-auto d-flex gap-2">
-        {% for cod, b in bancos %}
-        <button type="button" class="btn btn-sm btn-outline-primary btn-upload-banco" data-banco="{{ cod }}"
-                data-bs-toggle="modal" data-bs-target="#uploadModal">
-          <i class="fas fa-file-upload"></i> Subir {{ b.etiqueta }}
+
+      {# Acciones de carga/revisión en UN solo grupo a la derecha (antes eran 10
+         botones "Subir <banco>" + la casita en columnas sueltas que se partían
+         en varias líneas). Subir = botón dividido: el primer banco del
+         registro a un clic y el menú con todos. #}
+      {% set hayBotonesSubida = authorized(114) or (authorized(80) and authorized(81)) %}
+      {% if hayBotonesSubida or authorized(81) %}
+      <div class="col-auto ms-auto d-flex align-items-end gap-2">
+        {% if hayBotonesSubida %}
+        {% set primerBanco = bancos|keys|first %}
+        <div class="btn-group">
+          <button type="button" class="btn btn-upload-banco" data-banco="{{ primerBanco }}"
+                  data-bs-toggle="modal" data-bs-target="#uploadModal">
+            <i class="fas fa-file-upload"></i> Subir {{ bancos[primerBanco].etiqueta }}
+          </button>
+          <button type="button" class="btn btn-outline-secondary dropdown-toggle dropdown-toggle-split mb-split-caret"
+                  data-bs-toggle="dropdown" aria-expanded="false" aria-label="Elegir otro banco para subir movimientos">
+            <span class="visually-hidden">Más bancos</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end mb-import-menu">
+            <li><h6 class="dropdown-header">Subir movimientos de…</h6></li>
+            {% for cod, b in bancos %}
+            <li>
+              <button type="button" class="dropdown-item btn-upload-banco" data-banco="{{ cod }}"
+                      data-bs-toggle="modal" data-bs-target="#uploadModal">
+                <span class="mb-punto-banco" aria-hidden="true"></span>
+                <span>{{ b.etiqueta }}<small>{{ b.ext is defined ? '.' ~ (b.ext|join(' · .')) : '' }}</small></span>
+              </button>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+        {% if authorized(81) %}
+        {# Devoluciones de Hacienda ("HACIENDA TE DEVUELVE ..."): el globo rojo
+           cuenta las que llegaron desde la última vez que ESTE usuario abrió el
+           modal. Solo permiso 81 (subir movimientos). #}
+        <button type="button" class="btn btn-outline-secondary" id="btnHacienda"
+                data-bs-toggle="modal" data-bs-target="#hacModal"
+                title="Devoluciones de Hacienda" aria-label="Devoluciones de Hacienda">
+          <i class="fas fa-house" aria-hidden="true"></i>
+          <span id="haciendaBadge" style="display:none;"></span>
         </button>
-        {% endfor %}
+        {% endif %}
       </div>
       {% endif %}
     </form>
@@ -873,6 +972,36 @@
     </div>
   </div>
 </div>
+
+{% if authorized(81) %}
+<!-- Modal devoluciones de Hacienda -->
+<div class="modal fade" id="hacModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-house me-1"></i> Devoluciones de Hacienda</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex align-items-start gap-3 mb-2">
+          <div>
+            <label for="hacMes" class="form-label form-label-sm mb-1">Mes</label>
+            <select id="hacMes" class="form-select form-select-sm" style="min-width:210px;"></select>
+          </div>
+          <div id="hacResumen" class="flex-grow-1"></div>
+        </div>
+        <div id="hacCuerpo" class="text-center text-muted py-4">
+          <span class="spinner-border spinner-border-sm"></span> Cargando...
+        </div>
+      </div>
+      <div class="modal-footer">
+        <small class="text-muted me-auto">Movimientos con "HACIENDA TE DEVUELVE" en el concepto, de las cuentas que puedes ver.</small>
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {% endblock %}
 
@@ -1947,6 +2076,144 @@ $(function () {
     });
   }
 
+  // ===== Alerta "Hacienda te devuelve" (casita, solo permiso 81) =====
+  var HAC_ACTIVO = {{ authorized(81) ? 'true' : 'false' }};
+
+  function pintarBadgeHacienda(n) {
+    var $b = $('#haciendaBadge');
+    if (n > 0) {
+      var t = n + (n === 1 ? ' devolución nueva' : ' devoluciones nuevas') + ' de Hacienda';
+      $b.text(n > 99 ? '99+' : n).show();
+      $('#btnHacienda').addClass('tiene-nuevas').attr({ title: t, 'aria-label': t });
+    } else {
+      $b.hide();
+      $('#btnHacienda').removeClass('tiene-nuevas').attr({ title: 'Devoluciones de Hacienda', 'aria-label': 'Devoluciones de Hacienda' });
+    }
+  }
+
+  /** Pide cuántas hay nuevas para este usuario (no las marca como vistas). */
+  function consultarHacienda() {
+    return fetch('/tesoreria/devoluciones_hacienda_resumen')
+      .then(function (r) { return r.json(); })
+      .catch(function () { return { success: false }; });
+  }
+
+  if (HAC_ACTIVO) {
+    consultarHacienda().then(function (r) {
+      if (r && r.success) pintarBadgeHacienda(r.nuevas);
+    });
+
+    var MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                    'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    function nombreMes(yyyymm) {
+      var p = String(yyyymm).split('-');
+      var n = MESES_ES[parseInt(p[1], 10) - 1] || p[1];
+      return n.charAt(0).toUpperCase() + n.slice(1) + ' ' + p[0];
+    }
+
+    // Referencia de "ya visto" de ESTA apertura del modal: al cambiar de mes
+    // el servidor ya dio todo por visto, pero las filas nuevas deben seguir
+    // marcadas mientras el modal siga abierto.
+    var hacVistoRef = null;
+
+    function cargarHacienda(mes) {
+      $('#hacResumen').empty();
+      $('#hacCuerpo').attr('class', 'text-center text-muted py-4').css('max-height', '')
+        .html('<span class="spinner-border spinner-border-sm"></span> Cargando...');
+      $('#hacMes').prop('disabled', true);
+
+      var fd = new FormData();
+      if (mes) fd.append('mes', mes);
+      if (mes && hacVistoRef !== null) fd.append('visto_ref', hacVistoRef);
+
+      fetch('/tesoreria/devoluciones_hacienda', { method: 'POST', body: fd })
+        .then(function (r) { return r.json(); })
+        .then(function (r) {
+          $('#hacMes').prop('disabled', false);
+          if (!r.success) {
+            $('#hacCuerpo').html('<span class="text-danger">' + esc(r.message || 'No se pudieron cargar las devoluciones') + '</span>');
+            return;
+          }
+          if (!mes) hacVistoRef = r.visto_ref;
+          // Ya las vio: el globo se apaga hasta que llegue otra
+          if (r.seguimiento) pintarBadgeHacienda(0);
+
+          // Select de meses (calendario fijo del servidor; no consulta la BD por mes)
+          $('#hacMes').html((r.meses || []).map(function (m) {
+            return '<option value="' + esc(m.mes) + '"' + (m.mes === r.mes ? ' selected' : '') + '>' +
+              esc(nombreMes(m.mes)) + (m.nuevas > 0 ? ' · ' + m.nuevas + ' nueva' + (m.nuevas === 1 ? '' : 's') : '') +
+              '</option>';
+          }).join(''));
+
+          var resumen = '<b>' + Number(r.total).toLocaleString('en-US') + '</b> devoluciones en ' + esc(nombreMes(r.mes)) +
+                        ' · <b>$' + fmtMonto(r.monto_total) + '</b>';
+          if (r.nuevas > 0) {
+            resumen = '<div class="alert alert-warning py-2 mb-2"><i class="fas fa-bell me-1"></i><b>' + r.nuevas +
+              (r.nuevas === 1 ? ' devolución nueva' : ' devoluciones nuevas') + '</b> por $' + fmtMonto(r.monto_nuevas) +
+              ' desde la última vez que abriste esta ventana.</div>' + resumen;
+          }
+          if (r.otros_meses > 0) {
+            resumen = '<div class="alert alert-warning py-2 mb-2"><i class="fas fa-bell me-1"></i><b>' + r.otros_meses +
+              (r.otros_meses === 1 ? ' devolución nueva' : ' devoluciones nuevas') + '</b> con fecha de otro mes: ' +
+              'búscalas en el select de meses.</div>' + resumen;
+          }
+          if (!r.seguimiento) {
+            resumen += '<div class="text-muted small mt-1"><i class="fas fa-circle-info"></i> El seguimiento de "nuevas" no está disponible todavía (falta crear la tabla en la BD).</div>';
+          }
+          $('#hacResumen').html(resumen);
+
+          if (!r.movimientos.length) {
+            $('#hacCuerpo').attr('class', 'text-center text-muted py-4')
+              .text('No hay devoluciones de Hacienda en ' + nombreMes(r.mes) + '.');
+            return;
+          }
+          var filas = r.movimientos.map(function (m) {
+            var banco = (BANCOS_TABLA[m.banco] && BANCOS_TABLA[m.banco].etiqueta) || m.banco;
+            return '<tr class="' + (m.nuevo ? 'hac-nuevo' : '') + '">' +
+              '<td>' + fmtFecha(m.fecha) + (m.hora ? ' <small class="text-muted">' + esc(m.hora) + '</small>' : '') + '</td>' +
+              '<td>' + esc(banco) + '</td>' +
+              '<td>' + esc(m.cuenta) + '</td>' +
+              '<td style="white-space:normal;">' + esc(m.empresa || '') + '</td>' +
+              '<td>' + esc(m.folio || '') + '</td>' +
+              '<td class="mb-num mb-abono">$' + fmtMonto(m.abono) + '</td>' +
+              '<td><small>' + esc(m.clave_rastreo || '') + '</small></td>' +
+              '<td>' + (m.nuevo ? '<span class="hac-chip-nuevo">NUEVO</span>' : '') + '</td>' +
+              '</tr>';
+          }).join('');
+          $('#hacCuerpo').attr('class', 'table-responsive').css('max-height', '60vh').html(
+            '<table class="table table-sm table-hover mb-0" id="hacTabla"><thead><tr>' +
+            '<th>Fecha</th><th>Banco</th><th>Cuenta</th><th>Empresa</th><th>Folio</th>' +
+            '<th class="mb-num">Importe</th><th>Clave de rastreo</th><th></th>' +
+            '</tr></thead><tbody>' + filas + '</tbody></table>');
+        })
+        .catch(function () {
+          $('#hacMes').prop('disabled', false);
+          $('#hacCuerpo').html('<span class="text-danger">Error de conexión al cargar las devoluciones</span>');
+        });
+    }
+
+    // Cada apertura empieza en el mes en curso
+    $('#hacModal').on('show.bs.modal', function () {
+      hacVistoRef = null;
+      $('#hacMes').empty();
+      cargarHacienda('');
+    });
+    $('#hacMes').on('change', function () { cargarHacienda(this.value); });
+  }
+
+  /** Tras una importación: avisa en el propio panel si entraron devoluciones nuevas. */
+  function avisoHaciendaTrasSubir() {
+    if (!HAC_ACTIVO) return;
+    consultarHacienda().then(function (r) {
+      if (!r || !r.success || !(r.nuevas > 0)) return;
+      var txt = r.nuevas + (r.nuevas === 1 ? ' devolución nueva' : ' devoluciones nuevas') +
+                ' de Hacienda por $' + fmtMonto(r.monto_nuevas) + '. Revísalas en el icono de la casita.';
+      $('#uploadResultado').append(
+        '<div class="mb-res-nota mb-res-nota--warn mt-2" style="border:1px solid #fde68a;border-radius:6px;">' +
+        '<i class="fas fa-house"></i><div><b>Hacienda te devuelve</b>' + esc(txt) + '</div></div>');
+    });
+  }
+
   function filaDetalle(etiqueta, valor, clase) {
     if (valor === null || valor === undefined || valor === '') return '';
     return '<div><dt>' + etiqueta + '</dt><dd class="' + (clase || '') + '">' + valor + '</dd></div>';
@@ -2055,6 +2322,7 @@ $(function () {
   /** Termina la importación (1 archivo o cola): deja el modal en modo
    *  "cerrar para recargar", igual que antes. */
   function marcarImportado() {
+    avisoHaciendaTrasSubir();
     $('#uploadModal').one('hidden.bs.modal', recargarLimpio);
     $('#btnUpload').hide();
     $('#btnCerrarUpload').removeClass('btn-secondary').addClass('btn-success')
