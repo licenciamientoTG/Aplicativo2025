@@ -57,6 +57,7 @@ class Tesoreria
         '0601500947',    // Banorte, Diaz Gas SA de CV
         '0186932791',    // Banorte, Diaz Gas SA de CV
         '1155446527',    // Banorte, Diaz Gas SA de CV (DG 6527)
+        '65507674547',   // Santander, Distribuidora Gasomex (catálogo Id 31, agregada 2026-11-25)
     ];
 
     /**

@@ -311,3 +311,24 @@ Cómo se confirma cada columna:
 1. ¿Lobo se da de baja definitivamente (sin correos en 200+ días)?
 2. ¿Se mantiene Tesoro leído en los dos buzones, o con Gmail API se lee solo uno?
 3. Fecha objetivo del cambio a cuenta de servicio de la NAS.
+
+## 9. Estado al 2026-11-24 (en pausa por decisión del usuario)
+
+ApiER corre solo desde el 2026-11-23 (cron cada 15 min + respaldo `ayer` 7:35). Fases 0 a 4 hechas.
+
+**Hecho el 2026-11-24:**
+- **AEMSA, 12 facturas de jul-2026 sin archivo:** recuperadas de Gmail (jesus.olivas@), validadas por UUID y apuntadas en BD (lote `aemsa12_20261124` en `FacturasRecibidas_rutas_bkp`).
+- **MCG, 10 filas con `attachments\`:** pasadas a la NAS con el original del 0.3 (lote `fase3_mcg10_20261123`).
+- **Bug Total Petrotal:** el extractor guardaba Total = SubTotal (sin IVA) desde ago-2025; `TOTAL:` matcheaba dentro de `SUBTOTAL:` y el PDF trae el monto antes de la etiqueta.
+  - Fix ApiER `c692c53` (`extractors.py` + 3 tests), desplegado.
+  - BD corregida: 3,641 filas, +$128,122,555.14, respaldo en `dbo.FacturasRecibidas_total_bkp` lote `petrotal_total_20261124` (TotalAnterior/TotalNuevo). Las 623 con XML coinciden exacto; 26 son fletes (IVA 8 % − ret. 4 %).
+  - Petrotal no pasa por `payment_request_invoices`: no se movió ninguna requisición.
+- **Remitente Petrotal:** se agregó `marco.lerma@totalgas.com` (ApiER `7e42e40`, desplegado), porque reenvió la PET 31707. Dry-run 2026: de sus correos solo entra la 31707 (ya existente).
+- **PET 31707:** importada, Id 78026.
+- **PET 31704 (PDF escaneado):** alta desde su XML con `ImportadorFacturas`, Id 78058, estación 23 (Destino leído del PDF), archivos en `procesadas\` / `procesadasXml\`.
+- **Premiergas BOL 1261495:** falsa alarma, es el Id 75576.
+
+**Pendiente:**
+- Secretos de ApiER a `/etc/apier/apier.env`.
+- Fase 5: cuenta de servicio de la NAS, quitar "Todos: Control total", cambiar contraseñas expuestas en el chat (NAS, SFTP, `desarrollador` del 109), quitar contraseñas en claro de los scripts del 0.3, luego retirar la carpeta `attachments` del 0.3 y la lectura doble del resolver.
+- Opcional: limpiar PDF duplicados con fecha (`<UUID>__2026072x_...pdf`) en la NAS.
