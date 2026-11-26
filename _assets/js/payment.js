@@ -5837,29 +5837,6 @@ function mostrarResumenLayoutBanorte(
 }
 
 
-async function addNoteModal(id) {
-  try {
-    $("#addNoteModal").modal("show");
-    const providerEl = document.getElementById("paymentProviderId");
-    const providerId = providerEl ? providerEl.value : "";
-    const response = await fetch("/payment/addNoteModal", {
-      method: "POST",
-      headers: {
-        Accept: "application/json, text/javascript, */*",
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      credentials: "include",
-      body: `provider_id=${providerId}`,
-    });
-
-    const content = await response.text();
-    $("#addNoteModal").find("#addNoteModalContent").html(content);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-
 function openApplyCreditNoteModal(invoiceId, invoiceFolio) {
   showApplyNoteAlert(null);
   const providerEl = document.getElementById("paymentProviderId");
@@ -6250,104 +6227,6 @@ document.addEventListener("click", function (e) {
   if (!btn) return;
   openNoteDocViewerPD(btn.dataset.docId);
 });
-
-
-// ── Submit: subir PDF desde payment_detail ────────────────────────────────────
-// Función para abrir el modal de subir PDF
-function openUploadDocModalPD(noteId) {
-    document.getElementById('uploadDocNoteIdPD').value = noteId;
-    document.getElementById('uploadDocFilePD').value = ''; // Limpiar input
-    $('#uploadDocModalPD').modal('show');
-}
-
-
-// Función para subir el PDF
-function subirPDFNota() {
-    const form = document.getElementById('uploadDocFormPD');
-    const fileInput = document.getElementById('uploadDocFilePD');
-    
-    // Validar que se haya seleccionado un archivo
-    if (!fileInput.files || fileInput.files.length === 0) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'Archivo requerido',
-            text: 'Por favor selecciona un archivo PDF'
-        });
-        return;
-    }
-
-    // Validar que sea PDF
-    const file = fileInput.files[0];
-    if (file.type !== 'application/pdf') {
-        Swal.fire({
-            icon: 'error',
-            title: 'Formato inválido',
-            text: 'Solo se permiten archivos PDF'
-        });
-        return;
-    }
-
-    // Validar tamaño (10MB)
-    if (file.size > 10 * 1024 * 1024) {
-        Swal.fire({
-            icon: 'error',
-            title: 'Archivo muy grande',
-            text: 'El archivo no debe superar los 10MB'
-        });
-        return;
-    }
-
-    const formData = new FormData(form);
-
-    Swal.fire({
-        title: 'Subiendo archivo...',
-        html: `<div class="progress">
-                 <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                      role="progressbar" style="width: 100%">
-                 </div>
-               </div>`,
-        allowOutsideClick: false,
-        showConfirmButton: false,
-        didOpen: () => Swal.showLoading()
-    });
-
-    fetch('/payment/uploadNoteFile', {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
-    })
-    .then(response => response.json())
-    .then(data => {
-        Swal.close();
-        if (data.success) {
-            Swal.fire({
-                icon: 'success',
-                title: '¡Éxito!',
-                text: data.message,
-                timer: 2000,
-                showConfirmButton: false
-            }).then(() => {
-                $('#uploadDocModalPD').modal('hide');
-                location.reload();
-            });
-        } else {
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: data.message || 'No se pudo subir el archivo'
-            });
-        }
-    })
-    .catch(error => {
-        Swal.close();
-        console.error('Error:', error);
-        Swal.fire({
-            icon: 'error',
-            title: 'Error de conexión',
-            text: 'No se pudo conectar con el servidor'
-        });
-    });
-}
 
 
 function removeApplication(appId, fromModal) {

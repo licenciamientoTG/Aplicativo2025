@@ -205,11 +205,14 @@
 <h2 class="verde">4. Notas de crédito y de cargo</h2>
 <div class="flujo">
   <div class="caja usuario"><span class="num">1</span>
-    <b>Carga — manual o masiva (<code>/payment/credit_notes</code>)</b>
-    <small>Manual: <code>addCreditDebitNote()</code> con documento adjunto.
-    Masiva: se suben PDFs de CFDI, <code>preview_notas_credito()</code> lee la cadena SAT
-    (pdftotext empaquetado) y <code>guardar_notas_credito()</code> persiste nota + PDF en
-    <code>invoice_credit_debit_notes</code> / <code>_doc</code>. Las notas de cargo de algunos
+    <b>Alta desde CFDI (<code>/payment/credit_notes</code>)</b>
+    <small>Ya no hay captura manual ni carga masiva de PDF. <b>Buscar en facturas recibidas</b>:
+    <code>notas_ligar_fr()</code> liga un CFDI ya existente (clase Nota de crédito / Falso flete /
+    Moratorios). <b>Importar CFDI</b>: <code>notas_importar_cfdi()</code> con XML y/o PDF
+    (solo PDF: <code>NotaCreditoPdfParser</code>, clase elegida a mano). Ambas crean la nota en
+    <code>invoice_credit_debit_notes</code> con uuid, emp_cod, codgas y origen. En el catálogo,
+    las notas de cargo muestran su estado de pago (Disponible / En pago / Autorizada / Pagada);
+    al crear un pago se cobran completas. Las notas de cargo de algunos
     proveedores (p.ej. falsos fletes SE) llegan solas como CFDI tipo I vía descarga de correo.</small>
   </div>
   <div class="flecha">↓ <small>permiso 66</small></div>

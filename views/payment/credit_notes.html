@@ -96,11 +96,11 @@
             </div>
             {% if authorized(66) %}
             <div class="d-flex align-items-center gap-2">
-                <button class="btn btn-sm d-flex align-items-center gap-1 fw-medium" onclick="abrirModalNotasMasivas()" style="background:#7c3aed;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Subir varias notas en PDF y leerlas automáticamente">
-                    <i class="fas fa-file-upload" style="font-size:.75rem;"></i> Carga masiva
+                <button class="btn btn-sm d-flex align-items-center gap-1 fw-medium" onclick="abrirModalBuscarFR()" style="background:#0891b2;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Buscar notas de crédito, falsos fletes y moratorios ya recibidos como factura">
+                    <i class="fas fa-search-dollar" style="font-size:.75rem;"></i> Buscar en facturas recibidas
                 </button>
-                <button class="btn btn-sm d-flex align-items-center gap-1 fw-medium" onclick="openNewNoteModal()" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
-                    <i class="fas fa-plus" style="font-size:.75rem;"></i> Nueva Nota
+                <button class="btn btn-sm d-flex align-items-center gap-1 fw-medium" onclick="abrirModalImportarCfdi()" style="background:#0f766e;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Importar el XML y/o PDF de una nota (CFDI)">
+                    <i class="fas fa-file-import" style="font-size:.75rem;"></i> Importar CFDI
                 </button>
             </div>
             {% endif %}
@@ -119,6 +119,7 @@
                         <th>Asignado a</th>
                         <th>Saldo Disponible</th>
                         <th>Descripción</th>
+                        <th>Pago</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
@@ -128,231 +129,48 @@
     </div>
 </div>
 
-<!-- Modal Nueva Nota -->
-<div class="modal fade" id="newNoteModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header border-bottom" style="background:#f8fafc;padding:.9rem 1.25rem;">
-                <div class="d-flex align-items-center gap-2">
-                    <div style="width:32px;height:32px;border-radius:8px;background:#dcfce7;display:flex;align-items:center;justify-content:center;">
-                        <i class="fas fa-file-invoice-dollar" style="color:#16a34a;font-size:.85rem;"></i>
-                    </div>
-                    <div>
-                        <h6 class="mb-0 fw-bold" style="color:#1e293b;font-size:.9rem;">Nueva Nota de Crédito / Cargo</h6>
-                        <span style="font-size:.72rem;color:#64748b;">Registrar nota en el catálogo de proveedores</span>
-                    </div>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="newNoteForm" enctype="multipart/form-data">
-                <div class="modal-body" style="padding:1.25rem;">
-
-                    <!-- Fila 1: Proveedor + Tipo -->
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-7">
-                            <label class="d-block mb-1" style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#475569;">Proveedor <span class="text-danger">*</span></label>
-                            <select name="provider_id" id="newNoteProvider" class="form-control selectpicker" data-live-search="true" data-live-search-placeholder="Buscar proveedor..." title="Seleccione..." required>
-                                {% for p in proveedores %}
-                                    <option value="{{ p.cod }}">{{ p.den }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-5">
-                            <label class="d-block mb-1" style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#475569;">Tipo <span class="text-danger">*</span></label>
-                            <select name="note_type" class="form-control" required style="border-color:#e2e8f0;border-radius:.4rem;font-size:.85rem;">
-                                <option value="">Seleccione...</option>
-                                <option value="CREDIT">Nota de Crédito (Reducción)</option>
-                                <option value="DEBIT">Nota de Cargo (Incremento)</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Fila 2: Número + Fecha + Monto -->
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-4">
-                            <label class="d-block mb-1" style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#475569;">Número de Nota</label>
-                            <input type="text" name="note_number" class="form-control" placeholder="Ej: NC-12345" style="border-color:#e2e8f0;border-radius:.4rem;font-size:.85rem;">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="d-block mb-1" style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#475569;">Fecha <span class="text-danger">*</span></label>
-                            <input type="date" name="note_date" class="form-control" required style="border-color:#e2e8f0;border-radius:.4rem;font-size:.85rem;">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="d-block mb-1" style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#475569;">Monto <span class="text-danger">*</span></label>
-                            <div class="input-group" style="border-radius:.4rem;overflow:hidden;">
-                                <span class="input-group-text" style="background:#f1f5f9;border-color:#e2e8f0;font-size:.85rem;color:#475569;">$</span>
-                                <input type="number" name="amount" class="form-control" step="0.01" min="0.01" required placeholder="0.00" style="border-color:#e2e8f0;font-size:.85rem;">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Descripción + Motivo en misma fila -->
-                    <div class="row g-3 mb-3">
-                        <div class="col-md-6">
-                            <label class="d-block mb-1" style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#475569;">Descripción <span class="text-danger">*</span></label>
-                            <textarea name="description" class="form-control" rows="3" required placeholder="Describa el motivo de la nota" style="border-color:#e2e8f0;border-radius:.4rem;font-size:.85rem;resize:none;"></textarea>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="d-block mb-1" style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#475569;">Código de Motivo</label>
-                            <select name="reason_code" class="form-control" style="border-color:#e2e8f0;border-radius:.4rem;font-size:.85rem;">
-                                <option value="">Seleccione...</option>
-                                <optgroup label="Notas de Crédito">
-                                    <option value="DEVOLUCION">Devolución de producto</option>
-                                    <option value="DESCUENTO">Descuento aplicado</option>
-                                    <option value="ERROR_FACTURA">Error en factura</option>
-                                    <option value="BONIFICACION">Bonificación</option>
-                                </optgroup>
-                                <optgroup label="Notas de Cargo">
-                                    <option value="CARGO_EXTRA">Cargo extraordinario</option>
-                                    <option value="SERVICIO_ADICIONAL">Servicio adicional</option>
-                                    <option value="PENALIZACION">Penalización</option>
-                                    <option value="AJUSTE">Ajuste de precio</option>
-                                </optgroup>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Archivo PDF -->
-                    <div>
-                        <label class="d-block mb-1" style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#475569;">Archivo PDF <span style="font-weight:400;text-transform:none;letter-spacing:0;">(opcional)</span></label>
-                        <div class="pdf-dropzone" id="dropzoneNew">
-                            <input type="file" name="note_file" id="newNoteFile" accept=".pdf">
-                            <button type="button" class="dz-clear-btn" id="clearNew" title="Quitar archivo"><i class="fas fa-times"></i></button>
-                            <div class="dz-idle">
-                                <i class="fas fa-cloud-upload-alt"></i>
-                                <span>Arrastra el PDF aquí o <strong>haz clic</strong> para seleccionar</span>
-                                <small>Solo PDF · Máximo 10 MB</small>
-                            </div>
-                            <div class="dz-preview">
-                                <i class="fas fa-file-pdf"></i>
-                                <div>
-                                    <div class="dz-name" id="dzNewName"></div>
-                                    <div class="dz-size" id="dzNewSize"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-                <div class="modal-footer border-top" style="background:#f8fafc;padding:.75rem 1.25rem;gap:.5rem;">
-                    <button type="button" class="btn btn-sm" data-bs-dismiss="modal" style="background:#f1f5f9;color:#64748b;border:none;border-radius:.4rem;padding:.4rem .9rem;font-size:.82rem;">
-                        Cancelar
-                    </button>
-                    <button type="submit" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#16a34a;color:#fff;border:none;border-radius:.4rem;padding:.4rem .9rem;font-size:.82rem;">
-                        <i class="fas fa-save" style="font-size:.75rem;"></i> Guardar Nota
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- Modal subir archivo a nota existente -->
-<div class="modal fade" id="uploadDocModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header border-bottom" style="background:#f8fafc;padding:.9rem 1.25rem;">
-                <div class="d-flex align-items-center gap-2">
-                    <div style="width:32px;height:32px;border-radius:8px;background:#eff6ff;display:flex;align-items:center;justify-content:center;">
-                        <i class="fas fa-upload" style="color:#2563eb;font-size:.85rem;"></i>
-                    </div>
-                    <div>
-                        <h6 class="mb-0 fw-bold" style="color:#1e293b;font-size:.9rem;">Subir Documento PDF</h6>
-                        <span style="font-size:.72rem;color:#64748b;">Se adjuntará a la nota seleccionada</span>
-                    </div>
-                </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="uploadDocForm" enctype="multipart/form-data">
-                <div class="modal-body" style="padding:1.25rem;">
-                    <input type="hidden" id="uploadDocNoteId" name="note_id">
-                    <label class="d-block mb-1" style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#475569;">Archivo PDF <span class="text-danger">*</span></label>
-                    <div class="pdf-dropzone" id="dropzoneUpload">
-                        <input type="file" name="note_file" id="uploadDocFile" accept=".pdf" required>
-                        <button type="button" class="dz-clear-btn" id="clearUpload" title="Quitar archivo"><i class="fas fa-times"></i></button>
-                        <div class="dz-idle">
-                            <i class="fas fa-cloud-upload-alt"></i>
-                            <span>Arrastra el PDF aquí o <strong>haz clic</strong> para seleccionar</span>
-                            <small>Solo PDF · Máximo 10 MB</small>
-                        </div>
-                        <div class="dz-preview">
-                            <i class="fas fa-file-pdf"></i>
-                            <div>
-                                <div class="dz-name" id="dzUploadName"></div>
-                                <div class="dz-size" id="dzUploadSize"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer border-top" style="background:#f8fafc;padding:.75rem 1.25rem;gap:.5rem;">
-                    <button type="button" class="btn btn-sm" data-bs-dismiss="modal" style="background:#f1f5f9;color:#64748b;border:none;border-radius:.4rem;padding:.4rem .9rem;font-size:.82rem;">
-                        Cancelar
-                    </button>
-                    <button type="submit" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#2563eb;color:#fff;border:none;border-radius:.4rem;padding:.4rem .9rem;font-size:.82rem;">
-                        <i class="fas fa-upload" style="font-size:.75rem;"></i> Subir
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- ===== MODAL: Carga masiva de notas de crédito ===== -->
-<div class="modal fade" id="modalNotasMasivas" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+<!-- ===== MODAL: Importar CFDI (XML y/o PDF) ===== -->
+<div class="modal fade" id="modalImportarCfdi" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
-            <div class="modal-header" style="background:#7c3aed;color:#fff;">
-                <h5 class="modal-title"><i class="fas fa-file-upload"></i> Carga masiva de notas de crédito (MGC)</h5>
+            <div class="modal-header" style="background:#0f766e;color:#fff;">
+                <h5 class="modal-title"><i class="fas fa-file-import"></i> Importar CFDI de notas</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div id="notasDropzone" style="border:2px dashed #c4b5fd;border-radius:.75rem;padding:1.75rem;text-align:center;background:#faf5ff;cursor:pointer;">
-                    <i class="fas fa-cloud-upload-alt" style="font-size:2rem;color:#7c3aed;"></i>
-                    <p class="mb-1 mt-2 fw-semibold" style="color:#6d28d9;">Arrastra aquí los PDFs de notas o haz clic para seleccionar</p>
-                    <small class="text-muted">CFDI de notas de crédito · Máximo <strong>{{ max_uploads }}</strong> archivos por carga · No se guarda nada hasta que confirmes.</small>
+                <div id="icDropzone" style="border:2px dashed #5eead4;border-radius:.75rem;padding:1.75rem;text-align:center;background:#f0fdfa;cursor:pointer;">
+                    <i class="fas fa-cloud-upload-alt" style="font-size:2rem;color:#0f766e;"></i>
+                    <p class="mb-1 mt-2 fw-semibold" style="color:#115e59;">Arrastra aquí los archivos o haz clic para seleccionar</p>
+                    <small class="text-muted">Puedes subir el XML, el PDF o ambos con el mismo nombre. Máximo <strong>{{ max_uploads }}</strong> archivos por carga.</small>
                 </div>
-                <input type="file" id="inputNotas" accept="application/pdf" multiple style="display:none;">
-                <div id="notasArchivosSel" class="mt-2 small text-muted"></div>
+                <input type="file" id="icInput" accept=".xml,.pdf,application/pdf,text/xml,application/xml" multiple style="display:none;">
+                <div id="icArchivos" class="mt-2 small text-muted"></div>
 
-                <div id="notasResumen" class="row g-2 mt-2" style="display:none;">
-                    <div class="col"><div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:.5rem;padding:.5rem;text-align:center;"><div style="font-size:.65rem;color:#047857;text-transform:uppercase;font-weight:700;">Listas</div><div style="color:#065f46;font-size:1.2rem;font-weight:700;" id="notasOk">0</div></div></div>
-                    <div class="col"><div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:.5rem;padding:.5rem;text-align:center;"><div style="font-size:.65rem;color:#475569;text-transform:uppercase;font-weight:700;">Duplicadas</div><div style="color:#334155;font-size:1.2rem;font-weight:700;" id="notasDup">0</div></div></div>
-                    <div class="col"><div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:.5rem;padding:.5rem;text-align:center;"><div style="font-size:.65rem;color:#b91c1c;text-transform:uppercase;font-weight:700;">Con error</div><div style="color:#991b1b;font-size:1.2rem;font-weight:700;" id="notasErr">0</div></div></div>
-                    <div class="col"><div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:.5rem;padding:.5rem;text-align:center;"><div style="font-size:.65rem;color:#1d4ed8;text-transform:uppercase;font-weight:700;">Monto total</div><div style="color:#1e40af;font-size:1.2rem;font-weight:700;" id="notasMonto">$0.00</div></div></div>
+                <div class="mt-3">
+                    <label for="icClasePdf" class="form-label small fw-semibold mb-1">Si no subes XML, ¿qué es?</label>
+                    <select id="icClasePdf" class="form-select form-select-sm" style="max-width:260px;">
+                        <option value="">— elegir —</option>
+                        <option value="FALSO_FLETE">Falso flete</option>
+                        <option value="MORATORIOS">Moratorios</option>
+                    </select>
+                    <small class="text-muted">Solo aplica a PDFs de cargo (tipo I). Las notas de crédito (tipo E) se reconocen solas. Un PDF sin XML solo se lee en MGC.</small>
                 </div>
-
-                <div id="notasLoading" class="text-center py-4" style="display:none;">
-                    <i class="fas fa-spinner fa-spin" style="font-size:1.5rem;color:#7c3aed;"></i>
-                    <p class="text-muted mt-2 mb-0">Leyendo notas…</p>
-                </div>
-
-                <div class="table-responsive mt-3" id="notasTablaWrap" style="display:none;">
-                    <table class="table table-sm table-hover align-middle" id="tablaNotasMasivas">
-                        <thead style="background:#f8fafc;">
-                            <tr style="font-size:.72rem;text-transform:uppercase;color:#475569;">
-                                <th class="text-center" style="width:34px;"><input type="checkbox" id="notasSelectAll" title="Seleccionar todas las listas"></th>
-                                <th>Archivo</th>
-                                <th>Serie / Folio</th>
-                                <th>Fecha</th>
-                                <th>Emisor</th>
-                                <th>Empresa receptora</th>
-                                <th class="text-end">Total</th>
-                                <th>UUID</th>
-                                <th>Estado</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
+                <div id="icResultado" class="mt-3"></div>
             </div>
             <div class="modal-footer">
-                <span class="me-auto small text-muted" id="notasSeleccionInfo"></span>
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
-                <button type="button" class="btn btn-sm" style="background:#16a34a;color:#fff;" id="btnGuardarNotas" onclick="guardarNotasMasivas()" disabled>
-                    <i class="fas fa-save"></i> Guardar seleccionadas
+                <button type="button" class="btn btn-sm" style="background:#0f766e;color:#fff;" id="icBtnImportar" onclick="importarCfdi()" disabled>
+                    <i class="fas fa-file-import"></i> Importar
                 </button>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- ===== MODAL: Buscar en facturas recibidas (contenido por fetch) ===== -->
+<div class="modal fade" id="modalBuscarFR" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content" id="modalBuscarFRContent"></div>
     </div>
 </div>
 
@@ -453,7 +271,8 @@ function initNotesTable() {
             { targets: [1, 4], className: 'text-center' },
             { targets: [5, 6, 8], className: 'text-end' },
             { targets: [7], orderable: false },
-            { targets: [10], orderable: false, searchable: false }
+            { targets: [10], className: 'text-center' },
+            { targets: [11], orderable: false, searchable: false }
         ],
         ajax: {
             url: '/payment/getAllProviderNotes',
@@ -473,7 +292,7 @@ function initNotesTable() {
                     ? '<span class="badge" style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;">Crédito</span>'
                     : '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;">Cargo</span>';
             }},
-            { data: 'note_number', defaultContent: '—' },
+            { data: 'note_number', defaultContent: '—', render: function (d) { return d ? escNota(d) : '—'; } },
             { data: 'proveedor', defaultContent: '—' },
             { data: 'note_date', render: function(d) { return d ? d.substring(0,10) : ''; } },
             { data: 'amount', render: function(d) {
@@ -510,11 +329,31 @@ function initNotesTable() {
                 return '<span class="' + cls + '">$' + b.toLocaleString('es-MX', {minimumFractionDigits:2}) + '</span>';
             }},
             { data: 'description', defaultContent: '' },
+            { data: 'estado_pago', defaultContent: '', render: function(d, type, row) {
+                if (!d) return '';
+                var etiquetas = { DISPONIBLE: 'Disponible', EN_PAGO: 'En pago', AUTORIZADA: 'Autorizada', PAGADA: 'Pagada' };
+                var colores = {
+                    DISPONIBLE: 'background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;',
+                    EN_PAGO: 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;',
+                    AUTORIZADA: 'background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;',
+                    PAGADA: 'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;'
+                };
+                var txt = (etiquetas[d] || d) + (row.pago_id ? ' #' + row.pago_id : '');
+                if (type !== 'display') return txt + (row.pago_ref ? ' ' + row.pago_ref : '');
+                var tip = [];
+                if (row.pago_fecha) tip.push('Fecha: ' + String(row.pago_fecha).substring(0, 10));
+                if (row.pago_ref) tip.push('Ref: ' + row.pago_ref);
+                var badge = '<span class="badge" style="' + (colores[d] || '') + '" title="' + escNota(tip.join(' | ')) + '">' + escNota(etiquetas[d] || d) + '</span>';
+                if (!row.pago_id) return badge;
+                return badge + ' <a href="/payment/payment_detail/' + parseInt(row.pago_id) + '" target="_blank" class="small text-primary text-decoration-none" title="' + escNota(tip.join(' | ')) + '">#' + parseInt(row.pago_id) + '</a>';
+            }},
             { data: null, render: function(d) {
                 var docCount = parseInt(d.documents_count) || 0;
                 var s = 'font-size:.8rem;padding:.3rem .5rem;border:none;border-radius:5px;';
                 // Ver PDFs — cualquiera puede usarlo
-                var docsBtn = docCount > 0
+                var docsBtn = (d.factura_recibida_id && parseInt(d.tiene_pdf_fr))
+                    ? '<a href="/payment/invoiceFile?FacturaId=' + parseInt(d.factura_recibida_id) + '" target="_blank" class="btn btn-sm" style="' + s + 'color:#0891b2;background:#ecfeff;" title="Ver PDF de la factura recibida"><i class="fas fa-file-pdf" style="font-size:.8rem;"></i></a>'
+                    : docCount > 0
                     ? '<button class="btn btn-sm view-note-docs-btn" data-note-id="' + d.id + '" style="' + s + 'color:#0891b2;background:#ecfeff;" title="Ver ' + docCount + ' documento(s)">'
                       + '<i class="fas fa-file-pdf" style="font-size:.8rem;"></i>'
                       + (docCount > 0 ? ' <span style="font-size:.72rem;">'+docCount+'</span>' : '')
@@ -522,16 +361,12 @@ function initNotesTable() {
                     : '<button class="btn btn-sm view-note-docs-btn" data-note-id="' + d.id + '" style="' + s + 'color:#94a3b8;background:#f8fafc;" title="Sin documentos" disabled>'
                       + '<i class="fas fa-file-pdf" style="font-size:.8rem;"></i>'
                       + '</button>';
-                // Subir PDF — solo permiso 66
-                var uploadBtn = notesCan.manage
-                    ? '<button class="btn btn-sm" onclick="openUploadDocModal(' + d.id + ')" style="' + s + 'color:#2563eb;background:#eff6ff;" title="Subir PDF"><i class="fas fa-upload" style="font-size:.8rem;"></i></button>'
-                    : '';
                 // Eliminar — solo permiso 66
                 var deleteBtn = notesCan.manage
                     ? '<button class="btn btn-sm" onclick="deleteNoteFromCatalog(' + d.id + ')" style="' + s + 'color:#dc2626;background:#fef2f2;" title="Eliminar"><i class="fas fa-trash" style="font-size:.8rem;"></i></button>'
                     : '';
                 return '<div class="d-flex align-items-center justify-content-center gap-1">'
-                    + docsBtn + uploadBtn + deleteBtn
+                    + docsBtn + deleteBtn
                     + '</div>';
             }}
         ],
@@ -546,62 +381,6 @@ function initNotesTable() {
 function loadProviderNotes() {
     initNotesTable();
 }
-
-// ── Abrir modal nueva nota ───────────────────────────────────────────────────
-function openNewNoteModal() {
-    document.getElementById('newNoteForm').reset();
-    document.getElementById('dropzoneNew')._resetDz && document.getElementById('dropzoneNew')._resetDz();
-    $('#newNoteProvider').selectpicker('val', '');
-    $('#newNoteModal').modal('show');
-}
-
-// ── Submit nueva nota ────────────────────────────────────────────────────────
-document.getElementById('newNoteForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const formData = new FormData(this);
-
-    Swal.fire({ title: 'Guardando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-
-    fetch('/payment/addCreditDebitNote', { method: 'POST', body: formData })
-    .then(r => r.json())
-    .then(data => {
-        Swal.close();
-        if (data.success) {
-            Swal.fire({ icon: 'success', title: 'Guardado', text: data.message, timer: 2000 })
-            .then(() => { $('#newNoteModal').modal('hide'); loadProviderNotes(); });
-        } else {
-            Swal.fire({ icon: 'error', title: 'Error', text: data.message });
-        }
-    })
-    .catch(() => { Swal.close(); Swal.fire({ icon: 'error', title: 'Error', text: 'Error al guardar la nota' }); });
-});
-
-// ── Subir archivo a nota existente ──────────────────────────────────────────
-function openUploadDocModal(noteId) {
-    document.getElementById('uploadDocNoteId').value = noteId;
-    document.getElementById('dropzoneUpload')._resetDz && document.getElementById('dropzoneUpload')._resetDz();
-    $('#uploadDocModal').modal('show');
-}
-
-document.getElementById('uploadDocForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const formData = new FormData(this);
-
-    Swal.fire({ title: 'Subiendo...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-
-    fetch('/payment/uploadNoteFile', { method: 'POST', body: formData })
-    .then(r => r.json())
-    .then(data => {
-        Swal.close();
-        if (data.success) {
-            Swal.fire({ icon: 'success', title: 'Éxito', text: data.message, timer: 2000 })
-            .then(() => { $('#uploadDocModal').modal('hide'); loadProviderNotes(); });
-        } else {
-            Swal.fire({ icon: 'error', title: 'Error', text: data.message });
-        }
-    })
-    .catch(() => { Swal.close(); Swal.fire({ icon: 'error', title: 'Error', text: 'Error al subir el archivo' }); });
-});
 
 // ── Eliminar nota ────────────────────────────────────────────────────────────
 function deleteNoteFromCatalog(noteId) {
@@ -692,234 +471,195 @@ document.addEventListener('click', function(e) {
     openNoteDocViewer(btn.dataset.docId);
 });
 
-// ── Dropzone PDF ──────────────────────────────────────────────────────────────
-function initDropzone(inputId, zoneId, nameId, sizeId, clearId) {
-    const input = document.getElementById(inputId);
-    const zone  = document.getElementById(zoneId);
-    const nameEl = document.getElementById(nameId);
-    const sizeEl = document.getElementById(sizeId);
-    const clearBtn = document.getElementById(clearId);
-    if (!input || !zone) return;
-
-    function formatBytes(b) {
-        if (b < 1024) return b + ' B';
-        if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
-        return (b/1048576).toFixed(1) + ' MB';
-    }
-    function setFile(file) {
-        nameEl.textContent = file.name;
-        sizeEl.textContent = formatBytes(file.size);
-        zone.classList.add('has-file');
-    }
-    function clearFile() {
-        input.value = '';
-        zone.classList.remove('has-file');
-    }
-
-    input.addEventListener('change', function() {
-        if (this.files.length > 0) setFile(this.files[0]);
-        else clearFile();
-    });
-    clearBtn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        clearFile();
-    });
-    zone.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        zone.classList.add('drag-over');
-    });
-    zone.addEventListener('dragleave', function() {
-        zone.classList.remove('drag-over');
-    });
-    zone.addEventListener('drop', function(e) {
-        e.preventDefault();
-        zone.classList.remove('drag-over');
-        const dt = e.dataTransfer;
-        if (dt.files.length > 0 && dt.files[0].type === 'application/pdf') {
-            const transfer = new DataTransfer();
-            transfer.items.add(dt.files[0]);
-            input.files = transfer.files;
-            setFile(dt.files[0]);
-        }
-    });
-
-    // exponer reset para reuso al abrir modal
-    zone._resetDz = clearFile;
-}
-
-initDropzone('newNoteFile',   'dropzoneNew',    'dzNewName',    'dzNewSize',    'clearNew');
-initDropzone('uploadDocFile', 'dropzoneUpload', 'dzUploadName', 'dzUploadSize', 'clearUpload');
-
 $(document).ready(function() {
     loadProviderNotes();
 });
 
-// =====================================================================
-// CARGA MASIVA DE NOTAS DE CRÉDITO (leer PDF → preview → guardar)
-// =====================================================================
-let notasFiles = [];    // File objects originales (para reenviar al guardar)
-let notasPreview = [];  // resultado del preview por nota
-const NOTAS_MAX_UPLOADS = {{ max_uploads }}; // límite de PHP max_file_uploads
-
-function abrirModalNotasMasivas() {
-    $('#inputNotas').val('');
-    $('#notasArchivosSel').html('');
-    $('#notasResumen').hide();
-    $('#notasTablaWrap').hide();
-    $('#notasLoading').hide();
-    $('#tablaNotasMasivas tbody').empty();
-    $('#notasSelectAll').prop('checked', false);
-    $('#notasSeleccionInfo').text('');
-    $('#btnGuardarNotas').prop('disabled', true);
-    notasFiles = [];
-    notasPreview = [];
-    $('#modalNotasMasivas').modal('show');
-}
-
-$(document).on('click', '#notasDropzone', function () { $('#inputNotas').click(); });
-$(document).on('change', '#inputNotas', function () { if (this.files && this.files.length) subirNotasPreview(this.files); });
-$(document).on('dragover', '#notasDropzone', function (e) { e.preventDefault(); $(this).css('background', '#f3e8ff'); });
-$(document).on('dragleave drop', '#notasDropzone', function (e) { e.preventDefault(); $(this).css('background', '#faf5ff'); });
-$(document).on('drop', '#notasDropzone', function (e) {
-    const files = e.originalEvent.dataTransfer.files;
-    if (files && files.length) subirNotasPreview(files);
-});
+// Límite de PHP max_file_uploads (lo usa Importar CFDI)
+const NOTAS_MAX_UPLOADS = {{ max_uploads }};
 
 function fmtMonedaNota(v) {
     return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 });
 }
 
-function subirNotasPreview(fileList) {
-    const files = Array.from(fileList).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
-    if (files.length === 0) { Swal.fire({ icon: 'warning', title: 'Selecciona PDFs' }); return; }
+// =====================================================================
+// BUSCAR EN FACTURAS RECIBIDAS (ligar CFDI como nota del catálogo)
+// =====================================================================
+let nfrCandidatos = [];
 
+function abrirModalBuscarFR() {
+    nfrCandidatos = [];
+    $('#modalBuscarFRContent').html('<div class="modal-body text-center py-5"><i class="fas fa-spinner fa-spin fa-3x text-secondary"></i><p class="mt-3">Cargando...</p></div>');
+    $('#modalBuscarFR').modal('show');
+    fetch('/payment/notas_buscar_fr_modal', { method: 'POST' })
+        .then(r => { if (!r.ok) throw new Error('Error al cargar el modal'); return r.text(); })
+        .then(html => { $('#modalBuscarFRContent').html(html); nfrBuscar(); })
+        .catch(err => $('#modalBuscarFRContent').html('<div class="modal-body"><div class="alert alert-danger">' + escNota(err.message) + '</div></div>'));
+}
+
+function nfrBuscar() {
+    const fd = new FormData();
+    fd.append('provider_id', $('#nfrProveedor').val());
+    fd.append('desde', $('#nfrDesde').val());
+    fd.append('hasta', $('#nfrHasta').val());
+    $('#nfrLoading').show(); $('#nfrTablaWrap').hide(); $('#nfrVacio').hide();
+    fetch('/payment/notas_candidatos_fr', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(res => {
+            $('#nfrLoading').hide();
+            if (!res.success) { Swal.fire({ icon: 'error', title: 'Error', text: res.message || 'Error al buscar' }); return; }
+            nfrCandidatos = res.candidatos || [];
+            nfrRender();
+        })
+        .catch(err => { $('#nfrLoading').hide(); Swal.fire({ icon: 'error', title: 'Conexión', text: err.message }); });
+}
+
+function nfrRender() {
+    const claseBadge = {
+        NOTA_CREDITO: '<span class="badge" style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;">Nota de crédito</span>',
+        FALSO_FLETE:  '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;">Falso flete</span>',
+        MORATORIOS:   '<span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;">Moratorios</span>',
+    };
+    let html = '';
+    nfrCandidatos.forEach((c, i) => {
+        const pdf = parseInt(c.tiene_pdf) === 1
+            ? '<a class="btn btn-sm btn-outline-danger py-0" target="_blank" href="/payment/invoiceFile?FacturaId=' + encodeURIComponent(c.fr_id) + '"><i class="fas fa-file-pdf"></i></a>'
+            : '<button class="btn btn-sm btn-outline-secondary py-0" disabled><i class="fas fa-file-pdf"></i></button>';
+        html += '<tr>'
+            + '<td class="text-center"><input type="checkbox" class="nfr-check" data-row="' + i + '"></td>'
+            + '<td><small class="fw-semibold">' + escNota(c.numero) + '</small></td>'
+            + '<td><small>' + escNota(String(c.fecha || '').substring(0, 10)) + '</small></td>'
+            + '<td>' + (claseBadge[c.clase] || escNota(c.clase)) + '</td>'
+            + '<td><small>' + escNota(c.emp_den || c.receptor_nombre || '—') + '</small></td>'
+            + '<td><small>' + escNota(c.estacion || '—') + '</small></td>'
+            + '<td class="text-end fw-semibold">' + fmtMonedaNota(c.total) + '</td>'
+            + '<td class="text-center">' + pdf + '</td>'
+            + '</tr>';
+    });
+    $('#nfrTabla tbody').html(html);
+    $('#nfrSelectAll').prop('checked', false);
+    if (nfrCandidatos.length) { $('#nfrTablaWrap').show(); $('#nfrVacio').hide(); } else { $('#nfrTablaWrap').hide(); $('#nfrVacio').show(); }
+    nfrActualizarSeleccion();
+}
+
+function nfrActualizarSeleccion() {
+    let n = 0, total = 0;
+    $('.nfr-check:checked').each(function () {
+        const c = nfrCandidatos[parseInt($(this).data('row'))];
+        if (c) { n++; total += parseFloat(c.total) || 0; }
+    });
+    $('#nfrSeleccionInfo').text(n + ' seleccionadas · ' + fmtMonedaNota(total));
+    $('#nfrBtnCrear').prop('disabled', n === 0).html('<i class="fas fa-save"></i> Crear ' + n + ' notas');
+}
+
+$(document).on('change', '#nfrSelectAll', function () {
+    $('.nfr-check').prop('checked', $(this).prop('checked'));
+    nfrActualizarSeleccion();
+});
+$(document).on('change', '.nfr-check', nfrActualizarSeleccion);
+
+function nfrCrear() {
+    const ids = [];
+    $('.nfr-check:checked').each(function () {
+        const c = nfrCandidatos[parseInt($(this).data('row'))];
+        if (c) ids.push(c.fr_id);
+    });
+    if (ids.length === 0) return;
+    const fd = new FormData();
+    ids.forEach(id => fd.append('factura_ids[]', id));
+    $('#nfrBtnCrear').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Creando...');
+    fetch('/payment/notas_ligar_fr', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(res => {
+            const porId = {};
+            nfrCandidatos.forEach(c => { porId[c.fr_id] = c; });
+            const detalle = (res.resultados || []).map(x => {
+                const c = porId[x.fr_id];
+                return '<li>' + (x.success ? '✅' : '❌') + ' <strong>' + escNota(c ? c.numero : x.fr_id) + '</strong>: ' + escNota(x.message) + '</li>';
+            }).join('');
+            const creadas = res.creadas || 0;
+            Swal.fire({
+                icon: creadas > 0 ? 'success' : 'error',
+                title: 'Resultado',
+                html: '<div class="alert alert-' + (creadas > 0 ? 'success' : 'danger') + '">' + creadas + ' de ' + ids.length + ' notas creadas'
+                    + (res.message ? ' · ' + escNota(res.message) : '') + '</div>'
+                    + '<ul style="text-align:left;font-size:.85rem;max-height:300px;overflow:auto;">' + detalle + '</ul>',
+            });
+            if (typeof loadProviderNotes === 'function') loadProviderNotes();
+            nfrBuscar();
+        })
+        .catch(err => {
+            nfrActualizarSeleccion();
+            Swal.fire({ icon: 'error', title: 'Conexión', text: err.message });
+        });
+}
+
+// =====================================================================
+// IMPORTAR CFDI (XML y/o PDF)
+// =====================================================================
+let icFiles = [];
+
+function abrirModalImportarCfdi() {
+    icFiles = [];
+    $('#icInput').val('');
+    $('#icArchivos').html('');
+    $('#icResultado').html('');
+    $('#icBtnImportar').prop('disabled', true).html('<i class="fas fa-file-import"></i> Importar');
+    $('#modalImportarCfdi').modal('show');
+}
+
+function icSeleccionar(fileList) {
+    const files = Array.from(fileList).filter(f => /\.(xml|pdf)$/i.test(f.name));
+    if (files.length === 0) { Swal.fire({ icon: 'warning', title: 'Selecciona archivos .xml o .pdf' }); return; }
     if (files.length > NOTAS_MAX_UPLOADS) {
         Swal.fire({
             icon: 'warning',
             title: 'Demasiados archivos',
-            html: 'Seleccionaste <strong>' + files.length + '</strong> PDFs, pero el máximo por carga es <strong>' + NOTAS_MAX_UPLOADS + '</strong>.<br>Sube los archivos en grupos de hasta ' + NOTAS_MAX_UPLOADS + '.',
+            html: 'Seleccionaste <strong>' + files.length + '</strong> archivos, pero el máximo por carga es <strong>' + NOTAS_MAX_UPLOADS + '</strong>.',
         });
-        $('#inputNotas').val('');
+        $('#icInput').val('');
         return;
     }
-
-    notasFiles = files;
-    $('#notasArchivosSel').html('<i class="fas fa-paperclip"></i> ' + files.length + ' archivo(s) seleccionado(s)');
-    $('#notasLoading').show();
-    $('#notasTablaWrap').hide();
-    $('#notasResumen').hide();
-
-    const fd = new FormData();
-    files.forEach(f => fd.append('notas[]', f));
-
-    fetch('/payment/preview_notas_credito', { method: 'POST', body: fd })
-        .then(r => r.json())
-        .then(res => {
-            $('#notasLoading').hide();
-            if (!res.success) { Swal.fire({ icon: 'error', title: 'Error', text: res.message || 'Error al procesar' }); return; }
-            notasPreview = res.notas || [];
-            $('#notasOk').text(res.resumen.ok || 0);
-            $('#notasDup').text(res.resumen.duplicado || 0);
-            $('#notasErr').text(res.resumen.error || 0);
-            $('#notasMonto').text(fmtMonedaNota(res.resumen.monto_total));
-            $('#notasResumen').show();
-            renderNotasTabla(res.notas);
-            actualizarSeleccionNotas();
-        })
-        .catch(err => { $('#notasLoading').hide(); Swal.fire({ icon: 'error', title: 'Conexión', text: err.message }); });
+    icFiles = files;
+    $('#icArchivos').html('<i class="fas fa-paperclip"></i> ' + files.length + ' archivo(s): '
+        + files.map(f => escNota(f.name)).join(', '));
+    $('#icResultado').html('');
+    $('#icBtnImportar').prop('disabled', false);
 }
 
-function renderNotasTabla(notas) {
-    const estilos = {
-        ok:        { bg: '#ecfdf5', badge: 'bg-success',         txt: 'Lista' },
-        duplicado: { bg: '#f1f5f9', badge: 'bg-secondary',       txt: 'Duplicada' },
-        error:     { bg: '#fef2f2', badge: 'bg-danger',          txt: 'Error' },
-    };
-    let html = '';
-    notas.forEach((n, i) => {
-        const e = estilos[n.estado] || estilos.error;
-        const esOk = n.estado === 'ok';
-        html += `
-            <tr data-row="${i}" style="background:${e.bg};">
-                <td class="text-center"><input type="checkbox" class="nota-aplicar-check" data-row="${i}" ${esOk ? 'checked' : 'disabled'}></td>
-                <td><small class="fw-semibold">${n.archivo}</small></td>
-                <td><small>${n.note_number || '—'}</small></td>
-                <td><small>${n.fecha || '—'}</small></td>
-                <td><small>${n.nombre_emisor || '—'}<br><span class="text-muted">${n.rfc_emisor || ''}</span></small></td>
-                <td><small>${n.nombre_receptor || '—'}<br><span class="text-muted">${n.rfc_receptor || ''}</span></small></td>
-                <td class="text-end fw-semibold">${fmtMonedaNota(n.total)}</td>
-                <td><small class="text-muted" style="font-size:.68rem;">${n.uuid || '—'}</small></td>
-                <td><span class="badge ${e.badge}">${e.txt}</span>${n.mensaje && n.estado !== 'ok' ? '<br><small class="text-muted">' + n.mensaje + '</small>' : ''}</td>
-            </tr>`;
-    });
-    $('#tablaNotasMasivas tbody').html(html);
-    $('#notasTablaWrap').show();
-}
-
-$(document).on('change', '#notasSelectAll', function () {
-    $('.nota-aplicar-check:not(:disabled)').prop('checked', $(this).prop('checked'));
-    actualizarSeleccionNotas();
+$(document).on('click', '#icDropzone', function () { $('#icInput').click(); });
+$(document).on('change', '#icInput', function () { if (this.files && this.files.length) icSeleccionar(this.files); });
+$(document).on('dragover', '#icDropzone', function (e) { e.preventDefault(); $(this).css('background', '#ccfbf1'); });
+$(document).on('dragleave drop', '#icDropzone', function (e) { e.preventDefault(); $(this).css('background', '#f0fdfa'); });
+$(document).on('drop', '#icDropzone', function (e) {
+    const files = e.originalEvent.dataTransfer.files;
+    if (files && files.length) icSeleccionar(files);
 });
-$(document).on('change', '.nota-aplicar-check', actualizarSeleccionNotas);
 
-function actualizarSeleccionNotas() {
-    let n = 0, total = 0;
-    $('.nota-aplicar-check:checked:not(:disabled)').each(function () {
-        const item = notasPreview[parseInt($(this).data('row'))];
-        if (item) { n++; total += parseFloat(item.total) || 0; }
-    });
-    if (n > 0) {
-        $('#notasSeleccionInfo').html('<strong>' + n + '</strong> nota(s) por guardar · <strong>' + fmtMonedaNota(total) + '</strong>');
-        $('#btnGuardarNotas').prop('disabled', false);
-    } else {
-        $('#notasSeleccionInfo').text('');
-        $('#btnGuardarNotas').prop('disabled', true);
-    }
-}
-
-function guardarNotasMasivas() {
-    const items = [];
-    $('.nota-aplicar-check:checked:not(:disabled)').each(function () {
-        const i = parseInt($(this).data('row'));
-        const n = notasPreview[i];
-        if (!n) return;
-        items.push({
-            archivo_idx: i, archivo: n.archivo, provider_id: n.provider_id,
-            note_type: n.note_type, note_number: n.note_number, fecha: n.fecha,
-            total: n.total, uuid: n.uuid,
-        });
-    });
-    if (items.length === 0) { Swal.fire({ icon: 'warning', title: 'Sin selección' }); return; }
-
-    Swal.fire({
-        icon: 'question', title: 'Confirmar',
-        html: 'Vas a guardar <strong>' + items.length + '</strong> nota(s) en el catálogo con su PDF.',
-        showCancelButton: true, confirmButtonText: 'Sí, guardar', cancelButtonText: 'Cancelar',
-    }).then(r => { if (r.isConfirmed) ejecutarGuardarNotas(items); });
-}
-
-function ejecutarGuardarNotas(items) {
+function importarCfdi() {
+    if (icFiles.length === 0) return;
     const fd = new FormData();
-    notasFiles.forEach(f => fd.append('notas[]', f));
-    fd.append('notas', JSON.stringify(items));
-
-    $('#btnGuardarNotas').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Guardando...');
-    fetch('/payment/guardar_notas_credito', { method: 'POST', body: fd })
+    icFiles.forEach(f => fd.append('cfdi[]', f));
+    fd.append('clase_pdf', $('#icClasePdf').val());
+    $('#icBtnImportar').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Importando...');
+    fetch('/payment/notas_importar_cfdi', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(res => {
-            $('#btnGuardarNotas').html('<i class="fas fa-save"></i> Guardar seleccionadas');
+            $('#icBtnImportar').html('<i class="fas fa-file-import"></i> Importar');
             const detalle = (res.resultados || []).map(x =>
-                '<li>' + (x.success ? '✅' : '❌') + ' <strong>' + x.archivo + '</strong>: ' + x.message + '</li>').join('');
-            Swal.fire({
-                icon: res.guardadas > 0 ? 'success' : 'error',
-                title: 'Resultado',
-                html: '<div class="alert alert-' + (res.guardadas > 0 ? 'success' : 'danger') + '">' + res.guardadas + ' de ' + res.total + ' guardadas</div><ul style="text-align:left;font-size:.85rem;max-height:300px;overflow:auto;">' + detalle + '</ul>',
-            });
+                '<li>' + (x.success ? '✅' : '❌') + ' <strong>' + escNota(x.archivo) + '</strong>: ' + escNota(x.message) + '</li>').join('');
+            const creadas = res.creadas || 0;
+            $('#icResultado').html(
+                '<div class="alert alert-' + (creadas > 0 ? 'success' : 'danger') + ' py-2">'
+                + creadas + ' nota(s) creada(s)' + (res.message ? ' · ' + escNota(res.message) : '') + '</div>'
+                + '<ul style="text-align:left;font-size:.85rem;max-height:300px;overflow:auto;">' + detalle + '</ul>');
+            icFiles = [];
+            $('#icInput').val('');
+            $('#icArchivos').html('');
             if (typeof loadProviderNotes === 'function') loadProviderNotes();
-            if (res.guardadas > 0) $('#modalNotasMasivas').modal('hide');
         })
         .catch(err => {
-            $('#btnGuardarNotas').prop('disabled', false).html('<i class="fas fa-save"></i> Guardar seleccionadas');
+            $('#icBtnImportar').prop('disabled', false).html('<i class="fas fa-file-import"></i> Importar');
             Swal.fire({ icon: 'error', title: 'Conexión', text: err.message });
         });
 }

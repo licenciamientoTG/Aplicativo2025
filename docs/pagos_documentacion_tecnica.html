@@ -136,8 +136,9 @@ notas de crédito / cargo con CFDI, y agrupación contable para archivo físico.
   <tr><td><code>/payment/aplicar_anticipo/{id}</code></td><td><code>aplicar_anticipo.html</code></td>
     <td>Liga facturas disponibles del proveedor al anticipo (permiso 68); maneja remanentes.</td></tr>
   <tr><td><code>/payment/credit_notes</code></td><td><code>credit_notes.html</code></td>
-    <td>Catálogo de notas de crédito/cargo: alta manual, carga masiva de CFDI PDF con preview,
-    aplicación a facturas (permiso 66).</td></tr>
+    <td>Catálogo de notas de crédito/cargo (permiso 66). Alta <b>solo desde un CFDI</b>:
+    "Buscar en facturas recibidas" o "Importar CFDI". Columna "Pago" para notas de cargo.
+    Aplicación a facturas. La captura manual y la carga masiva de PDF se quitaron.</td></tr>
   <tr><td><code>/payment/invoices_due</code></td><td><code>invoices_due.html</code></td>
     <td><b>Estado Facturas</b> (en desarrollo): pestañas Vencidas (documentos aún no
     requisitados, incluye remisiones sin CFDI), Facturas en Pagos (estado unificado de
@@ -192,11 +193,14 @@ notas de crédito / cargo con CFDI, y agrupación contable para archivo físico.
     <code>apply_anticipo_documentos</code>, <code>anticipo_summary_json</code>,
     <code>loadAnticiposList</code></td></tr>
   <tr><td>Notas crédito/cargo</td>
-    <td><code>addCreditDebitNote</code>, <code>preview_notas_credito</code>,
-    <code>guardar_notas_credito</code>, <code>applyCreditNote</code>,
+    <td><code>notas_buscar_fr_modal</code>, <code>notas_candidatos_fr</code>,
+    <code>notas_ligar_fr</code>, <code>notas_importar_cfdi</code>,
+    <code>applyCreditNote</code>,
     <code>removeCreditNoteApplication</code>, <code>deleteCreditDebitNote</code>,
     <code>getProviderNotes</code>, <code>getInvoiceNoteApplications</code>,
-    <code>uploadNoteFile</code>, <code>viewNoteDocument</code></td></tr>
+    <code>viewNoteDocument</code>. <code>addCreditDebitNote</code>,
+    <code>preview_notas_credito</code>, <code>guardar_notas_credito</code> y
+    <code>uploadNoteFile</code> quedaron como stubs (rechazan la petición).</td></tr>
   <tr><td>Contabilidad</td>
     <td><code>create_accounting_group</code>, <code>get_accounting_groups_table</code>,
     <code>get_accounting_group_invoices</code>, <code>print_accounting_group_receipts</code>,
@@ -234,7 +238,12 @@ notas de crédito / cargo con CFDI, y agrupación contable para archivo físico.
     <td>Aplicación de una nota (crédito o cargo) a una factura de una requisición.
     <code>invoice_id</code> es obligatorio para que el recalculo de status funcione.</td></tr>
   <tr><td><code>invoice_credit_debit_notes</code> / <code>_doc</code></td>
-    <td>Catálogo de notas de crédito/cargo del proveedor + sus PDFs (CFDI).</td></tr>
+    <td>Catálogo de notas de crédito/cargo del proveedor + sus PDFs (CFDI). Columnas nuevas
+    (2026-11-25): <code>factura_recibida_id</code>, <code>uuid</code> (del timbre de la nota),
+    <code>emp_cod</code>, <code>codgas</code> y <code>origen</code>
+    (<code>ligada</code> | <code>importada</code> | <code>historica</code>). Índice único
+    filtrado <code>UX_icdn_uuid_activa</code> (un UUID activo por nota). DDL:
+    <code>docs/sql/</code> (aplicado 2026-11-25).</td></tr>
   <tr><td><code>payment_accounting_groups</code></td>
     <td>Grupos contables con ID consecutivo único; congela las requisiciones agrupadas.</td></tr>
   <tr><td><code>PaymentRequestAuditLog</code></td>
@@ -445,6 +454,53 @@ método del controlador</b>. Los checks Twig en las vistas solo ocultan botones 
     CLABE de 18 dígitos cuando <code>CuentaLocal</code> trae la cuenta corta. Solo el
     layout desde texto la lee; los layouts normales siguen tomando la CLABE de
     <code>CuentaLocal</code>.</td></tr>
+</table>
+
+<h2>10b. Notas ligadas a FacturasRecibidas (2026-11-25)</h2>
+<table>
+  <tr><th>Tema</th><th>Detalle</th></tr>
+  <tr><td>Alta de notas</td>
+    <td>Dos vías en <code>/payment/credit_notes</code>. <b>Buscar en facturas recibidas</b>
+    (<code>notas_candidatos_fr</code> / <code>notas_ligar_fr</code>): liga un CFDI ya existente
+    en FacturasRecibidas; clases Nota de crédito / Falso flete / Moratorios
+    (<code>NotaCfdi</code>). No son candidatos los CFDI que ya son nota, ya están en un pago
+    o tienen una nota capturada antes (legacy) con el mismo folio+monto. <b>Importar CFDI</b>
+    (<code>notas_importar_cfdi</code>): XML y/o PDF (al menos uno). Solo PDF usa
+    <code>NotaCreditoPdfParser</code>; la clase se elige a mano y el texto del PDF debe
+    coincidir con ella; se rechazan palabras de combustible. <b>Solo PDF funciona únicamente con el RFC MME141110IJ9 (MGC)</b>; otros emisores requieren XML. Se rechazan tipo E con total 0 y las "aplicación de anticipo" (clave 84111506; en solo PDF por su texto), también en Buscar en facturas recibidas. Guarda: si la FR ya tiene ese
+    UUID con folio/RFC/total distintos, rechaza.</td></tr>
+  <tr><td>Captura manual</td>
+    <td>Quitada (alta manual, carga masiva de PDF y subir PDF por nota), también en Nuevo Pago
+    y en el detalle del pago, donde queda el enlace "Crear nota desde CFDI".</td></tr>
+  <tr><td><code>NotaCreditoPdfParser</code></td>
+    <td><code>uuid</code> = UUID del timbre (folio fiscal) de la nota;
+    <code>uuid_relacionado</code> = CFDI relacionado (posición 16 de la cadena
+    <code>||4.0|</code>); <code>uuid_origen</code>. <b>Ojo:</b> el UUID que guardó la carga
+    masiva vieja en la descripción ("Carga masiva - UUID …") es el de la factura
+    <u>relacionada</u>, no el de la nota.</td></tr>
+  <tr><td>Catálogo, columna "Pago"</td>
+    <td>Solo notas de cargo (DEBIT): Disponible / En pago #id / Autorizada / Pagada, con fecha
+    y referencia. El PDF abre el archivo de la FR vía <code>invoiceFile</code>.</td></tr>
+  <tr><td>Nuevo Pago (<code>create_payment_with_invoices</code>)</td>
+    <td>Las filas de nota de cargo toman uuid/codgas y monto de la BD (se cobra completa).
+    Rechaza nota de otro proveedor, repetida, ya cobrada (<code>getAvailableBalance</code>),
+    de empresas distintas (mensaje de <code>NotasPago</code>) o con empresa en conflicto con
+    la del pago; si el uuid de la nota ya estuvo en un pago borrado, rechaza con aviso claro (el índice único cuenta filas borradas; ver <code>docs/sql/indice_pri_uuid_activos_2026-11-25.sql</code>, sin correr); sin empresa pide "Elige la empresa del pago". Nunca guarda
+    <code>emp_cod</code> NULL. Notas disponibles se empatan por uuid o folio+proveedor.</td></tr>
+  <tr><td>Backfill</td>
+    <td><code>docs/sql/backfill_notas_fr_2026-11-25.sql</code>: liga notas existentes por
+    folio+RFC+monto+tipo, con pasada por sufijo (folio de 5+ dígitos); excluye las 9 FR
+    duplicadas; <code>@aplicar</code> = 0 es dry-run.
+    <code>tools/backfill_notas_importar_pdf.php</code> (CLI, en el servidor de producción;
+    requiere el SQL de backfill ya aplicado, no solo el DDL): importa desde PDF las notas históricas de MGC y lista las acciones;
+    primero sin <code>--aplicar</code>. Orden: (1) SQL con <code>@aplicar=1</code> ANTES de desplegar
+    (solo usa las columnas del DDL, ya aplicado) → (2) deploy del código → (3) CLI en dry-run en el servidor de
+    producción → (4) CLI <code>--aplicar</code>. Motivo: entre el deploy y el backfill, las notas
+    legacy con folio con prefijo o dígitos extra (p. ej. SE00333575, pagada en el req 1321) no las
+    reconocería la guarda de notas legacy y su CFDI podría crearse como nota nueva.</td></tr>
+  <tr><td>Pruebas</td>
+    <td><code>php tests/NotaCfdiTest.php</code>, <code>CfdiNotaImportTest.php</code>,
+    <code>NotasPagoTest.php</code>, <code>NotaCreditoPdfParserTest.php</code>.</td></tr>
 </table>
 
 <h2>11. Pendientes conocidos</h2>

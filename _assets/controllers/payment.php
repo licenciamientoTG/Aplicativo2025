@@ -1750,9 +1750,8 @@ class Payment
 
     function addNoteModal()
     {
-        $provider_id = $_POST['provider_id'] ?? null;
-        $provider    = $this->proveedores->get_by_id($provider_id);
-        echo $this->twig->render($this->route . 'modals/addNoteModal.html', compact('provider_id', 'provider'));
+        echo '<div class="p-3">Las notas se crean desde un CFDI: usa "Buscar en facturas recibidas" o "Importar CFDI". '
+            . '<a href="/payment/credit_notes" target="_blank" rel="noopener">Crear nota desde CFDI</a></div>';
     }
 
 
@@ -5201,288 +5200,23 @@ class Payment
 
     public function addCreditDebitNote()
     {
-        try {
-            // Validar datos requeridos
-            $requiredFields = ['note_type', 'note_date', 'amount', 'provider_id'];
-            foreach ($requiredFields as $field) {
-                if (empty($_POST[$field])) {
-                    throw new Exception("El campo {$field} es requerido");
-                }
-            }
-
-            // Validar tipo de nota
-            if (!in_array($_POST['note_type'], ['CREDIT', 'DEBIT'])) {
-                throw new Exception('Tipo de nota inválido');
-            }
-
-            // PASO 1: Guardar la nota en BD (sin ligar a pago ni factura)
-            $noteData = [
-                'provider_id' => $_POST['provider_id'],
-                'note_type' => $_POST['note_type'],
-                'note_number' => $_POST['note_number'] ?? null,
-                'note_date' => $_POST['note_date'],
-                'amount' => $_POST['amount'],
-                'description' => $_POST['description'],
-                'reason_code' => $_POST['reason_code'] ?? null,
-                'created_by' => $_SESSION['tg_user']['Id']
-            ];
-
-            $noteId = $this->InvoiceCreditDebitNotesModel->addCreditDebitNote($noteData);
-            if (!$noteId) {
-                throw new Exception('Error al guardar la nota en la base de datos');
-            }
-
-            $filePath = null;
-            $docId = null;
-
-            // PASO 2: Procesar archivo si existe
-            if (isset($_FILES['note_file']) && $_FILES['note_file']['error'] === UPLOAD_ERR_OK) {
-                
-                // Validar tipo de archivo
-                $fileType = mime_content_type($_FILES['note_file']['tmp_name']);
-                if ($fileType !== 'application/pdf') {
-                    throw new Exception('Solo se permiten archivos PDF');
-                }
-
-                // Validar tamaño (10MB máximo)
-                if ($_FILES['note_file']['size'] > 10 * 1024 * 1024) {
-                    throw new Exception('El archivo no debe exceder 10MB');
-                }
-
-                $extension = pathinfo($_FILES['note_file']['name'], PATHINFO_EXTENSION);
-
-                // PASO 3: Crear registro del documento en BD
-                $docData = [
-                    'credit_note_id' => $noteId,
-                    'file_extension' => $extension,
-                    'created_by' => $_SESSION['tg_user']['Id']
-                ];
-
-                $docId = $this->InvoiceCreditDebitNotesDocModel->createDocumentRecord($docData);
-                if (!$docId) {
-                    throw new Exception('Error al crear registro del documento');
-                }
-
-                // PASO 4: Renombrar archivo con el ID del documento y subirlo
-                $uploadDir = __DIR__ . '/../uploads/credit_debit_notes/';
-                if (!is_dir($uploadDir)) {
-                    mkdir($uploadDir, 0755, true);
-                }
-
-                $newFilename = "{$docId}.{$extension}";
-                $fullPath = $uploadDir . $newFilename;
-
-                // Mover archivo
-                if (!move_uploaded_file($_FILES['note_file']['tmp_name'], $fullPath)) {
-                    throw new Exception('Error al guardar el archivo');
-                }
-
-                // Ruta relativa para guardar en BD
-                $filePath = 'uploads/credit_debit_notes/' . $newFilename;
-
-                // PASO 5: Actualizar ruta en el registro del documento
-                if (!$this->InvoiceCreditDebitNotesDocModel->updateFilePath($docId, $filePath)) {
-                    throw new Exception('Error al actualizar la ruta del archivo');
-                }
-            }
-
-            echo json_encode([
-                'success' => true,
-                'message' => 'Nota guardada correctamente',
-                'note_id' => $noteId,
-                'doc_id' => $docId,
-                'has_file' => $filePath !== null
-            ]);
-
-        } catch (Exception $e) {
-            // Cleanup en caso de error
-            if (isset($fullPath) && file_exists($fullPath)) {
-                unlink($fullPath);
-            }
-
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'message' => $e->getMessage()
-            ]);
-        }
+        header('Content-Type: application/json');
+        json_output(['success' => false, 'message' => 'Las notas se crean desde un CFDI: usa "Buscar en facturas recibidas" o "Importar CFDI".']);
     }
 
 
-    /** RFC del emisor MGC (única empresa habilitada en esta fase). */
-    private const NOTAS_RFC_MGC = 'MME141110IJ9';
-
-    /**
-     * Carga masiva de notas de crédito — PREVIEW (no persiste).
-     * Recibe varios PDFs ($_FILES['notas']), los lee con NotaCreditoPdfParser,
-     * resuelve el proveedor por RFC emisor, detecta duplicados, y devuelve la
-     * tabla de revisión. Solo MGC en esta fase.
-     */
+    /** Obsoleto: carga masiva reemplazada por "Importar CFDI" (stub por compatibilidad). */
     public function preview_notas_credito()
     {
         header('Content-Type: application/json');
-        try {
-            if (!authorized(66)) {
-                json_output(['success' => false, 'message' => 'No tienes permiso para cargar notas']);
-                return;
-            }
-            if (empty($_FILES['notas']) || !is_array($_FILES['notas']['name'])) {
-                $maxUploads = (int) ini_get('max_file_uploads') ?: 20;
-                // Si se excede max_file_uploads, PHP descarta $_FILES y deja el warning.
-                json_output(['success' => false, 'message' => "No se recibieron PDFs (¿superaste el máximo de {$maxUploads} archivos por carga? Súbelos en grupos más pequeños)"]);
-                return;
-            }
-
-            $files = $_FILES['notas'];
-            $total = count($files['name']);
-
-            $maxUploads = (int) ini_get('max_file_uploads') ?: 20;
-            if ($total > $maxUploads) {
-                json_output(['success' => false, 'message' => "Enviaste {$total} archivos; el máximo por carga es {$maxUploads}. Súbelos en grupos."]);
-                return;
-            }
-            $notas = [];
-            $resumen = ['ok' => 0, 'duplicado' => 0, 'error' => 0, 'total' => 0, 'monto_total' => 0.0];
-
-            for ($i = 0; $i < $total; $i++) {
-                $nombre = $files['name'][$i];
-
-                if ($files['error'][$i] !== UPLOAD_ERR_OK || strtolower(pathinfo($nombre, PATHINFO_EXTENSION)) !== 'pdf') {
-                    $notas[] = ['archivo' => $nombre, 'estado' => 'error', 'mensaje' => 'Archivo inválido', 'raw_ok' => false];
-                    $resumen['error']++; $resumen['total']++;
-                    continue;
-                }
-
-                $d = NotaCreditoPdfParser::parse($files['tmp_name'][$i], $nombre);
-
-                if (!$d['raw_ok']) {
-                    $d['estado'] = 'error';
-                    $d['mensaje'] = $d['error'] ?? 'No se pudo leer la nota';
-                    $notas[] = $d; $resumen['error']++; $resumen['total']++;
-                    continue;
-                }
-
-                // Solo MGC en esta fase
-                if ($d['rfc_emisor'] !== self::NOTAS_RFC_MGC) {
-                    $d['estado'] = 'error';
-                    $d['mensaje'] = 'Emisor no habilitado (solo MGC en esta fase): ' . $d['rfc_emisor'];
-                    $notas[] = $d; $resumen['error']++; $resumen['total']++;
-                    continue;
-                }
-
-                $prov = $this->InvoiceCreditDebitNotesModel->getProviderByRfc($d['rfc_emisor']);
-                if (!$prov) {
-                    $d['estado'] = 'error';
-                    $d['mensaje'] = 'Proveedor no encontrado para RFC ' . $d['rfc_emisor'];
-                    $notas[] = $d; $resumen['error']++; $resumen['total']++;
-                    continue;
-                }
-                $d['provider_id']   = $prov['cod'];
-                $d['provider_name'] = $prov['den'];
-
-                if ($this->InvoiceCreditDebitNotesModel->existsNote($prov['cod'], $d['note_number'])) {
-                    $d['estado'] = 'duplicado';
-                    $d['mensaje'] = 'Ya registrada en el catálogo';
-                    $notas[] = $d; $resumen['duplicado']++; $resumen['total']++;
-                    continue;
-                }
-
-                $d['estado'] = 'ok';
-                $d['mensaje'] = 'Lista para guardar';
-                $notas[] = $d;
-                $resumen['ok']++; $resumen['total']++;
-                $resumen['monto_total'] += (float)$d['total'];
-            }
-
-            json_output(['success' => true, 'resumen' => $resumen, 'notas' => $notas]);
-        } catch (Exception $e) {
-            error_log('Error en preview_notas_credito: ' . $e->getMessage());
-            json_output(['success' => false, 'message' => 'Error al procesar notas: ' . $e->getMessage()]);
-        }
+        json_output(['success' => false, 'message' => 'Las notas se crean desde un CFDI: usa "Buscar en facturas recibidas" o "Importar CFDI".']);
     }
 
-    /**
-     * Guarda las notas seleccionadas (reenviadas) + su PDF. Tolerante a fallo parcial.
-     */
+    /** Obsoleto: carga masiva reemplazada por "Importar CFDI" (stub por compatibilidad). */
     public function guardar_notas_credito()
     {
         header('Content-Type: application/json');
-        try {
-            if (!authorized(66)) {
-                json_output(['success' => false, 'message' => 'No tienes permiso para guardar notas']);
-                return;
-            }
-            $user_id = $_SESSION['tg_user']['Id'] ?? null;
-            $items = json_decode($_POST['notas'] ?? '[]', true);
-            if (!is_array($items) || empty($items)) {
-                json_output(['success' => false, 'message' => 'No se recibieron notas para guardar']);
-                return;
-            }
-
-            $resultados = [];
-            $guardadas = 0;
-
-            foreach ($items as $it) {
-                $archivo_idx = isset($it['archivo_idx']) ? (int)$it['archivo_idx'] : -1;
-                $nombre = $it['archivo'] ?? "nota #{$archivo_idx}";
-                try {
-                    if (empty($it['provider_id']) || empty($it['note_number']) || empty($it['total'])) {
-                        throw new Exception('Datos incompletos');
-                    }
-                    // Revalidar duplicado por si se cargó dos veces en la misma tanda
-                    if ($this->InvoiceCreditDebitNotesModel->existsNote($it['provider_id'], $it['note_number'])) {
-                        throw new Exception('Ya existe (duplicado)');
-                    }
-
-                    $noteId = $this->InvoiceCreditDebitNotesModel->addCreditDebitNote([
-                        'provider_id' => (int)$it['provider_id'],
-                        'note_type'   => $it['note_type'] ?? 'CREDIT',
-                        'note_number' => $it['note_number'],
-                        'note_date'   => $it['fecha'] ?? date('Y-m-d'),
-                        'amount'      => (float)$it['total'],
-                        'description' => 'Carga masiva - UUID ' . ($it['uuid'] ?? ''),
-                        'reason_code' => null,
-                        'created_by'  => $user_id,
-                    ]);
-                    if (!$noteId) {
-                        throw new Exception('No se pudo guardar la nota');
-                    }
-
-                    // Guardar el PDF reenviado
-                    $docMsg = '';
-                    if ($archivo_idx >= 0 && isset($_FILES['notas']['name'][$archivo_idx])
-                        && $_FILES['notas']['error'][$archivo_idx] === UPLOAD_ERR_OK) {
-                        $ext = pathinfo($_FILES['notas']['name'][$archivo_idx], PATHINFO_EXTENSION) ?: 'pdf';
-                        $docId = $this->InvoiceCreditDebitNotesDocModel->createDocumentRecord([
-                            'credit_note_id' => $noteId,
-                            'file_extension' => $ext,
-                            'created_by'     => $user_id,
-                        ]);
-                        if ($docId) {
-                            $uploadDir = __DIR__ . '/../uploads/credit_debit_notes/';
-                            if (!is_dir($uploadDir)) { mkdir($uploadDir, 0755, true); }
-                            $fullPath = $uploadDir . "{$docId}.{$ext}";
-                            if (move_uploaded_file($_FILES['notas']['tmp_name'][$archivo_idx], $fullPath)) {
-                                $this->InvoiceCreditDebitNotesDocModel->updateFilePath($docId, 'uploads/credit_debit_notes/' . "{$docId}.{$ext}");
-                                $docMsg = ' PDF guardado.';
-                            } else {
-                                $docMsg = ' (PDF no se pudo guardar)';
-                            }
-                        }
-                    }
-
-                    $guardadas++;
-                    $resultados[] = ['archivo' => $nombre, 'success' => true, 'message' => "Nota {$it['note_number']} guardada." . $docMsg];
-                } catch (Exception $e) {
-                    $resultados[] = ['archivo' => $nombre, 'success' => false, 'message' => $e->getMessage()];
-                }
-            }
-
-            json_output(['success' => $guardadas > 0, 'guardadas' => $guardadas, 'total' => count($items), 'resultados' => $resultados]);
-        } catch (Exception $e) {
-            error_log('Error en guardar_notas_credito: ' . $e->getMessage());
-            json_output(['success' => false, 'message' => 'Error al guardar: ' . $e->getMessage()]);
-        }
+        json_output(['success' => false, 'message' => 'Las notas se crean desde un CFDI: usa "Buscar en facturas recibidas" o "Importar CFDI".']);
     }
 
 
@@ -5582,91 +5316,302 @@ class Payment
     }
 
 
-    /**
-     * Subir archivo a una nota de crédito/cargo existente
-     */
+    /** Obsoleto: las notas se crean desde un CFDI (stub por compatibilidad). */
     public function uploadNoteFile()
     {
+        header('Content-Type: application/json');
+        json_output(['success' => false, 'message' => 'Las notas se crean desde un CFDI: usa "Buscar en facturas recibidas" o "Importar CFDI".']);
+    }
+
+
+    /**
+     * HTML del modal "Buscar en facturas recibidas" (vista parcial sin layout).
+     */
+    public function notas_buscar_fr_modal()
+    {
+        if (!authorized(66)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+        $proveedores = $this->proveedores->get_actives();
+        echo $this->twig->render($this->route . 'modals/notas_buscar_fr.html', [
+            'proveedores'    => $proveedores,
+            'proveedor_def'  => 72, // MGC
+            'desde_default'  => date('Y-m-d', strtotime('-90 days')),
+            'hasta_default'  => date('Y-m-d'),
+        ]);
+    }
+
+    /**
+     * Candidatos de FacturasRecibidas (notas de crédito, falsos fletes, moratorios).
+     */
+    public function notas_candidatos_fr()
+    {
+        header('Content-Type: application/json');
         try {
-            if (empty($_POST['note_id'])) {
-                throw new Exception('El campo note_id es requerido');
+            if (!authorized(66)) {
+                json_output(['success' => false, 'message' => 'Sin permiso']);
+                return;
             }
-
-            $noteId = (int) $_POST['note_id'];
-
-            // Verificar que la nota existe
-            $note = $this->InvoiceCreditDebitNotesModel->getNoteById($noteId);
-            if (!$note) {
-                throw new Exception('Nota no encontrada');
+            $providerId = (int)($_POST['provider_id'] ?? 0);
+            $desde = $_POST['desde'] ?? '';
+            $hasta = $_POST['hasta'] ?? '';
+            $okFecha = fn($f) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $f) && strtotime($f) !== false;
+            if ($providerId <= 0 || !$okFecha($desde) || !$okFecha($hasta)) {
+                json_output(['success' => false, 'message' => 'Proveedor o fechas inválidos']);
+                return;
             }
-
-            if (!isset($_FILES['note_file']) || $_FILES['note_file']['error'] !== UPLOAD_ERR_OK) {
-                throw new Exception('No se recibió ningún archivo o ocurrió un error al subirlo');
-            }
-
-            // Validar tipo de archivo
-            $fileType = mime_content_type($_FILES['note_file']['tmp_name']);
-            if ($fileType !== 'application/pdf') {
-                throw new Exception('Solo se permiten archivos PDF');
-            }
-
-            // Validar tamaño (10MB máximo)
-            if ($_FILES['note_file']['size'] > 10 * 1024 * 1024) {
-                throw new Exception('El archivo no debe exceder 10MB');
-            }
-
-            $extension = pathinfo($_FILES['note_file']['name'], PATHINFO_EXTENSION);
-
-            // Crear registro del documento en BD
-            $docData = [
-                'credit_note_id' => $noteId,
-                'file_extension' => $extension,
-                'created_by' => $_SESSION['tg_user']['Id']
-            ];
-
-            $docId = $this->InvoiceCreditDebitNotesDocModel->createDocumentRecord($docData);
-            if (!$docId) {
-                throw new Exception('Error al crear registro del documento');
-            }
-
-            // Subir el archivo
-            $uploadDir = __DIR__ . '/../uploads/credit_debit_notes/';
-            if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0755, true);
-            }
-
-            $newFilename = "{$docId}.{$extension}";
-            $fullPath = $uploadDir . $newFilename;
-
-            if (!move_uploaded_file($_FILES['note_file']['tmp_name'], $fullPath)) {
-                throw new Exception('Error al guardar el archivo');
-            }
-
-            // Actualizar ruta en el registro del documento
-            $filePath = 'uploads/credit_debit_notes/' . $newFilename;
-            if (!$this->InvoiceCreditDebitNotesDocModel->updateFilePath($docId, $filePath)) {
-                throw new Exception('Error al actualizar la ruta del archivo');
-            }
-
-            echo json_encode([
-                'success' => true,
-                'message' => 'Archivo subido correctamente',
-                'doc_id' => $docId
-            ]);
-
+            $candidatos = $this->InvoiceCreditDebitNotesModel->getCandidatosFR($providerId, $desde, $hasta);
+            json_output(['success' => true, 'candidatos' => $candidatos]);
         } catch (Exception $e) {
-            if (isset($fullPath) && file_exists($fullPath)) {
-                unlink($fullPath);
-            }
-
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'message' => $e->getMessage()
-            ]);
+            error_log('Error en notas_candidatos_fr: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al buscar: ' . $e->getMessage()]);
         }
     }
 
+    /**
+     * Crea notas del catálogo a partir de facturas recibidas. Tolerante a fallo parcial.
+     */
+    public function notas_ligar_fr()
+    {
+        header('Content-Type: application/json');
+        try {
+            if (!authorized(66)) {
+                json_output(['success' => false, 'message' => 'Sin permiso']);
+                return;
+            }
+            $ids = $_POST['factura_ids'] ?? [];
+            if (!is_array($ids) || empty($ids)) {
+                json_output(['success' => false, 'message' => 'No se recibieron facturas']);
+                return;
+            }
+            $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
+            $resultados = [];
+            $creadas = 0;
+            foreach (array_unique(array_map('intval', $ids)) as $frId) {
+                try {
+                    $r = $this->InvoiceCreditDebitNotesModel->crearDesdeFactura($frId, $userId, 'ligada');
+                } catch (Exception $e) {
+                    $r = ['success' => false, 'message' => $e->getMessage()];
+                }
+                if (!empty($r['success'])) {
+                    $creadas++;
+                }
+                $resultados[] = ['fr_id' => $frId, 'success' => !empty($r['success']), 'message' => $r['message']];
+            }
+            json_output(['success' => $creadas > 0, 'creadas' => $creadas, 'resultados' => $resultados]);
+        } catch (Exception $e) {
+            error_log('Error en notas_ligar_fr: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al ligar: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Importa CFDI de notas (XML, PDF o ambos con el mismo nombre base): da de alta
+     * el CFDI en FacturasRecibidas (o completa el archivo que le falte) y crea la nota.
+     * Solo PDF: únicamente MGC (parser validado); el tipo I necesita la clase elegida.
+     */
+    public function notas_importar_cfdi()
+    {
+        header('Content-Type: application/json');
+        try {
+            if (!authorized(66)) {
+                json_output(['success' => false, 'message' => 'Sin permiso']);
+                return;
+            }
+            if (empty($_FILES['cfdi']) || !is_array($_FILES['cfdi']['name'])) {
+                json_output(['success' => false, 'message' => 'No se recibieron archivos (¿superaste el máximo de archivos por carga?)']);
+                return;
+            }
+            $files = [];
+            foreach ($_FILES['cfdi']['name'] as $i => $n) {
+                $files[] = [
+                    'name' => $n,
+                    'tmp_name' => $_FILES['cfdi']['tmp_name'][$i],
+                    'error' => $_FILES['cfdi']['error'][$i],
+                    'size' => $_FILES['cfdi']['size'][$i] ?? 0,
+                ];
+            }
+            $tamanos = [];
+            foreach ($files as $f) {
+                $tamanos[$f['tmp_name']] = $f['size'];
+            }
+            $grupos = CfdiNotaImport::emparejarArchivos($files);
+            if (empty($grupos)) {
+                json_output(['success' => false, 'message' => 'Sube archivos .xml o .pdf']);
+                return;
+            }
+
+            $claseElegida = $_POST['clase_pdf'] ?? '';
+            $claseElegida = in_array($claseElegida, [NotaCfdi::FALSO_FLETE, NotaCfdi::MORATORIOS], true) ? $claseElegida : null;
+            $userId = (int)($_SESSION['tg_user']['Id'] ?? 0);
+            $frModel = new FuelReceptionInvoiceModel();
+            $maxSize = 10 * 1024 * 1024;
+            $resultados = [];
+            $creadas = 0;
+
+            foreach ($grupos as $g) {
+                $archivo = $g['base'] . ($g['xml'] && $g['pdf'] ? ' (XML+PDF)' : ($g['xml'] ? '.xml' : '.pdf'));
+                $falla = function (string $msg) use (&$resultados, $archivo) {
+                    $resultados[] = ['archivo' => $archivo, 'success' => false, 'message' => $msg];
+                };
+                try {
+                    foreach (['xml', 'pdf'] as $k) {
+                        if ($g[$k] !== null && ($tamanos[$g[$k]] ?? 0) > $maxSize) {
+                            $falla('Cada archivo debe pesar máximo 10MB');
+                            continue 2;
+                        }
+                    }
+                    if ($g['pdf'] !== null && mime_content_type($g['pdf']) !== 'application/pdf') {
+                        $falla('El archivo ' . $g['pdf_name'] . ' no es un PDF válido');
+                        continue;
+                    }
+
+                    // 1) Leer el CFDI: XML si viene, si no el PDF
+                    $conceptos = [];
+                    $soloPdf = $g['xml'] === null;
+                    $d = null;
+                    $textoPdf = null;
+                    if ($g['pdf'] !== null) {
+                        $d = NotaCreditoPdfParser::parse($g['pdf'], $g['pdf_name']);
+                    }
+                    if (!$soloPdf) {
+                        try {
+                            $parseado = $frModel->parseCfdiXml($g['xml']);
+                        } catch (Throwable $e) {
+                            error_log('notas_importar_cfdi parseCfdiXml: ' . $e->getMessage());
+                            $falla($e instanceof Exception ? $e->getMessage() : 'El XML tiene una estructura que no se pudo leer');
+                            continue;
+                        }
+                        $factura = $parseado['factura'];
+                        $conceptos = $parseado['conceptos'];
+                        if ($d !== null && !empty($d['raw_ok']) && strtoupper((string)$d['uuid']) !== strtoupper((string)$factura['UUID'])) {
+                            $falla('El PDF y el XML no son el mismo CFDI');
+                            continue;
+                        }
+                    } else {
+                        $factura = CfdiNotaImport::filaDesdePdf($d);
+                        if ($factura === null || strtoupper((string)$factura['EmisorRfc']) !== NotaCfdi::RFC_MCG) {
+                            $falla('Sube el XML de esta nota' . (($d['error'] ?? '') !== '' && $factura === null ? ' (' . $d['error'] . ')' : ''));
+                            continue;
+                        }
+                    }
+
+                    $uuid = (string)$factura['UUID'];
+                    try {
+                        AttachmentsPath::nombreDesdeUuid($uuid, 'xml');
+                    } catch (Exception $e) {
+                        $falla('El CFDI no trae un UUID válido');
+                        continue;
+                    }
+
+                    $existente = $frModel->buscarPorUuid($uuid);
+                    if ($existente && $soloPdf && !CfdiNotaImport::facturaCoincideConPdf($existente, $factura)) {
+                        $falla('El UUID leído del PDF pertenece a otro CFDI: sube el XML');
+                        continue;
+                    }
+                    $tipo = strtoupper(trim((string)($existente['TipoDeComprobante'] ?? $factura['TipoDeComprobante'])));
+
+                    // 2) Clasificar ANTES de insertar o adjuntar nada. Conceptos: los del XML o,
+                    // si el CFDI ya existe, los de la BD.
+                    $desc = array_map(fn($c) => (string)$c['Descripcion'], $conceptos);
+                    $claves = array_map(fn($c) => (string)$c['ClaveProdServ'], $conceptos);
+                    if ($existente && count($desc) === 0) {
+                        [$desc, $claves] = $this->InvoiceCreditDebitNotesModel->conceptosFactura((int)$existente['Id']);
+                    }
+                    $claseForzada = null;
+                    $totalCfdi = (float)($existente['Total'] ?? $factura['Total'] ?? 0);
+                    if ($tipo === 'E') {
+                        // Aplicación de anticipo / total 0: no es una nota (el solo-PDF no trae conceptos: se lee su texto)
+                        if ($totalCfdi <= 0) {
+                            $falla('El CFDI tiene total 0');
+                            continue;
+                        }
+                        if ($soloPdf && count($desc) === 0) {
+                            $textoPdf = NotaCreditoPdfParser::texto($g['pdf']);
+                            if ($textoPdf !== null && NotaCfdi::textoEsAplicacionAnticipo($textoPdf)) {
+                                $falla('Parece una aplicación de anticipo, no una nota; si es una nota, sube el XML');
+                                continue;
+                            }
+                        } elseif (NotaCfdi::esAplicacionAnticipo($desc, $claves)) {
+                            $falla('Es una aplicación de anticipo, no una nota');
+                            continue;
+                        }
+                    }
+                    $clase = NotaCfdi::clasificar($tipo, $desc, $claves, $totalCfdi);
+                    if ($clase === null && $soloPdf && $tipo === 'I' && count($desc) === 0) {
+                        // Solo PDF de cargo, sin conceptos: la clase la elige el usuario, pero el
+                        // texto del PDF debe coincidir (el parser lee cualquier CFDI de MGC).
+                        if ($claseElegida === null) {
+                            $falla('Elige qué es el PDF (falso flete o moratorios)');
+                            continue;
+                        }
+                        $textoPdf = NotaCreditoPdfParser::texto($g['pdf']);
+                        if ($textoPdf === null || !CfdiNotaImport::pdfCoincideConClase($textoPdf, $claseElegida)) {
+                            $falla('Sube el XML de esta nota');
+                            continue;
+                        }
+                        $claseForzada = $clase = $claseElegida;
+                    }
+                    if ($clase === null) {
+                        $falla('Este CFDI no es nota de crédito ni de cargo');
+                        continue;
+                    }
+
+                    // 3) Rechazos previos (pago, proveedor, nota legacy) antes de insertar
+                    $yaHayNota = $this->InvoiceCreditDebitNotesModel->existsUuid($uuid);
+                    if (!$yaHayNota) {
+                        $rechazo = $this->InvoiceCreditDebitNotesModel->rechazoPrevio(
+                            $uuid, (string)$factura['EmisorRfc'], (string)$factura['Folio'], (float)$factura['Total']
+                        );
+                        if ($rechazo !== null) {
+                            $falla($rechazo);
+                            continue;
+                        }
+                    }
+
+                    // 4) Alta del CFDI y/o archivos faltantes (solo columnas vacías; nunca se pisa una ruta)
+                    $carpeta = NotaCfdi::carpetaPorRfc((string)$factura['EmisorRfc']);
+                    try {
+                        $frId = $existente ? (int)$existente['Id'] : $frModel->insertarFactura($factura, $conceptos);
+                        if ($g['pdf'] !== null && (!$existente || empty($existente['RutaArchivo']))) {
+                            $frModel->actualizarArchivo($frId, 'pdf', $frModel->guardarArchivo($carpeta, $uuid, $g['pdf'], 'pdf'));
+                        }
+                        if ($g['xml'] !== null && (!$existente || empty($existente['RutaXml']))) {
+                            $frModel->actualizarArchivo($frId, 'xml', $frModel->guardarArchivo($carpeta, $uuid, $g['xml'], 'xml'));
+                        }
+                    } catch (Exception $e) {
+                        error_log('notas_importar_cfdi guardar: ' . $e->getMessage());
+                        $falla('No se pudo guardar el CFDI: ' . $e->getMessage());
+                        continue;
+                    }
+
+                    if ($yaHayNota) {
+                        $falla('Ya existe una nota con ese UUID');
+                        continue;
+                    }
+
+                    // 5) Nota del catálogo
+                    $r = $this->InvoiceCreditDebitNotesModel->crearDesdeFactura($frId, $userId, 'importada', $claseForzada);
+                    if (!empty($r['success'])) {
+                        $creadas++;
+                    }
+                    $resultados[] = [
+                        'archivo' => $archivo, 'success' => !empty($r['success']), 'message' => $r['message'],
+                        'note_id' => $r['note_id'] ?? null,
+                    ];
+                } catch (Throwable $e) {
+                    error_log('notas_importar_cfdi ' . $archivo . ': ' . $e->getMessage());
+                    $falla('Error al importar: ' . $e->getMessage());
+                }
+            }
+
+            json_output(['success' => $creadas > 0, 'creadas' => $creadas, 'resultados' => $resultados]);
+        } catch (Throwable $e) {
+            error_log('Error en notas_importar_cfdi: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al importar: ' . $e->getMessage()]);
+        }
+    }
 
     /**
      * Pantalla independiente de gestión de notas de crédito/cargo

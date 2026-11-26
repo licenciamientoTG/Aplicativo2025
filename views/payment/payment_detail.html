@@ -333,7 +333,7 @@
 				<span class="text-muted" style="font-size:.85rem;">Notas aplicadas a este pago</span>
 				<div class="d-flex gap-2">
 					<button class="btn btn-sm btn-outline-secondary" onclick="openApplyCreditNoteModal()"><i class="fas fa-link"></i> Aplicar Nota</button>
-					<button class="btn btn-sm btn-outline-secondary" onclick="addNoteModal()"><i class="fas fa-plus"></i> Nueva Nota</button>
+					<a class="btn btn-sm btn-outline-secondary" href="/payment/credit_notes" target="_blank" rel="noopener"><i class="fas fa-file-import"></i> Crear nota desde CFDI</a>
 				</div>
 			</div>
 			<div class="table-responsive">
@@ -366,7 +366,6 @@
 										{% if app.documents_count > 0 %}
 											<button class="btn btn-sm btn-outline-secondary view-note-docs-btn me-1" data-note-id="{{ app.credit_note_id }}" title="Ver PDF(s)"><i class="fas fa-file-pdf"></i> {{ app.documents_count }}</button>
 										{% endif %}
-										<button class="btn btn-sm btn-outline-secondary me-1" onclick="openUploadDocModalPD({{ app.credit_note_id }})" title="Subir PDF"><i class="fas fa-upload"></i></button>
 										<button class="btn btn-sm btn-outline-danger" onclick="removeApplication({{ app.id }})" title="Quitar"><i class="fas fa-unlink"></i></button>
 									</td>
 								</tr>
@@ -960,55 +959,6 @@
 		</div>
 	</div>
 
-	<div class="modal fade" id="addNoteModal" tabindex="-1" aria-labelledby="addNoteModalLabel" aria-hidden="true">
-		<div class="modal-dialog modal-dialog-centered modal-lg">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h1 class="modal-title fs-5" id="addNoteModalLabel">
-						Agregar Nota de Crédito/Cargo
-					</h1>
-					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-				</div>
-				<div id="addNoteModalContent"></div>
-			</div>
-		</div>
-	</div>
-
-	<!-- Modal para Subir Archivo a Nota -->
-	<div class="modal fade" id="uploadNoteFileModal" tabindex="-1" aria-labelledby="uploadNoteFileModalLabel" aria-hidden="true">
-		<div class="modal-dialog modal-dialog-centered">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title" id="uploadNoteFileModalLabel">
-						<i class="fas fa-upload"></i> Subir Archivo a Nota
-					</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-				</div>
-				<form id="uploadNoteFileForm" enctype="multipart/form-data">
-					<div class="modal-body">
-						<input type="hidden" id="uploadNoteId" name="note_id" value="">
-						<div class="form-group">
-							<label>Archivo PDF *</label>
-							<div class="custom-file">
-								<input type="file" class="custom-file-input" name="note_file" id="uploadNoteFileInput" accept=".pdf" required>
-								<label class="custom-file-label" for="uploadNoteFileInput">
-									Seleccionar archivo PDF...
-								</label>
-							</div>
-							<small class="form-text text-muted">Solo archivos PDF. Máximo 10MB.</small>
-						</div>
-					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-						<button type="submit" class="btn btn-primary">
-							<i class="fas fa-upload"></i> Subir
-						</button>
-					</div>
-				</form>
-			</div>
-		</div>
-	</div>
-
 	<!-- Modal para Agregar Factura -->
 	<div class="modal fade" id="addInvoiceModal" tabindex="-1">
 		<div class="modal-dialog modal-xl">
@@ -1144,41 +1094,6 @@
 					<div class="modal-footer" style="border-top:1px solid #e2e8f0;">
 						<button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal"><i class="fas fa-times"></i> Cancelar</button>
 						<button type="submit" class="btn btn-sm" id="applyNoteSubmitBtn" style="background:#3d6b9e;color:#fff;"><i class="fas fa-link"></i> Aplicar</button>
-					</div>
-				</form>
-			</div>
-		</div>
-	</div>
-
-	<!-- Modal: Subir PDF a nota de crédito (desde payment_detail) -->
-	<div class="modal fade" id="uploadDocModalPD" tabindex="-1" aria-hidden="true">
-		<div class="modal-dialog modal-dialog-centered">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title"><i class="fas fa-upload"></i> Subir PDF a Nota</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-				</div>
-				<form id="uploadDocFormPD" enctype="multipart/form-data">
-					<div class="modal-body">
-						<input type="hidden" id="uploadDocNoteIdPD" name="note_id">
-						<div class="mb-3">
-							<label class="form-label">Archivo PDF *</label>
-							<input type="file" 
-								class="form-control" 
-								name="note_file"
-								id="uploadDocFilePD" 
-								accept=".pdf" 
-								required>
-							<small class="form-text text-muted">Solo PDF. Máximo 10MB.</small>
-						</div>
-					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-							<i class="fas fa-times"></i> Cancelar
-						</button>
-						<button type="button" class="btn btn-primary" onclick="subirPDFNota()">
-							<i class="fas fa-upload"></i> Subir
-						</button>
 					</div>
 				</form>
 			</div>
