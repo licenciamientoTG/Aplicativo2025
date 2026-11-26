@@ -6,7 +6,7 @@
 --   CREDIT: folio numérico + EmisorRfc = RFC del proveedor + ABS(Total-amount)<0.01
 --           + TipoDeComprobante='E'
 --   DEBIT : igual, con TipoDeComprobante='I'
---   Pasada 1: folio exacto. Pasada 2 (solo notas sin pareja y FR libres): el número de
+--   Pasada 1: folio exacto. Pasada 2 (solo notas sin pareja y FR libres, folio FR >= 5 dígitos): el número de
 --   la nota TERMINA en el folio de la FR (CT4401842666 <-> 842666), mismas reglas.
 --   Solo se liga cuando el match es único por nota Y único por fila de FR
 --   (dos notas nunca a la misma FR). Se excluyen FR/UUID ya ligados a otra
@@ -18,12 +18,13 @@
 -- uuid y codgas; payment_requests con emp_cod NULL (solo notas) recibe
 -- emp_cod si todas sus notas comparten empresa.
 --
--- Esperado (dry-run 2026-11-25): 142 CREDIT (todas pasada 1) y 73 DEBIT (72 folio + 1 sufijo).
--- La pasada 2 no agrega CREDIT: las notas 9 (CT4401842666) y 10 (NC4401842664) son el
--- mismo CFDI (FR 59589 / 59562) que las notas 49 y 52 ('CT 842666'/'CT 842664'), ya
--- ligadas en la pasada 1; al ser duplicadas no se ligan y salen en la lista "Duplicadas".
--- Hay 6 FR con 2 notas (NC/CT/BA del mismo CFDI) y 1 FR con 3 notas DEBIT SE034092 que
--- no se ligan. Si los conteos reales se alejan más de 5 se aborta con RAISERROR.
+-- Esperado (dry-run 2026-11-25): 140 CREDIT (pasada 1) y 73 DEBIT (72 folio + 1 sufijo).
+-- Duplicadas: 9 FR tienen 2+ notas candidatas (pasada 1 + 2) = el mismo CFDI capturado
+-- varias veces (NC/CT/BA del mismo CFDI en 8 FR: 59562, 59564, 59571, 59579, 59588, 59589,
+-- 61780, 61809; y 3 notas DEBIT SE034092 en la FR 68187). Ninguna copia se liga; salen en
+-- la lista "Duplicadas" (ligada_por_script = 0) y en las sin pareja, para que el usuario
+-- decida cuál conservar. Pasada 2: folio de FR de al menos 5 dígitos. Si los conteos
+-- reales se alejan más de 5 se aborta con RAISERROR.
 --
 -- @aplicar = 0 : dry-run (todo dentro de BEGIN TRAN ... ROLLBACK)
 -- @aplicar = 1 : COMMIT
@@ -35,7 +36,7 @@ SET QUOTED_IDENTIFIER ON;  -- payment_request_invoices tiene índice filtrado
 SET ANSI_NULLS ON;
 
 DECLARE @aplicar BIT = 0;
-DECLARE @esperado_credit INT = 142;  -- pasada 1 + pasada 2
+DECLARE @esperado_credit INT = 140;  -- pasada 1 (la pasada 2 no agrega CREDIT)
 DECLARE @esperado_debit INT = 73;  -- 72 por folio + 1 por sufijo
 
 IF OBJECT_ID('tempdb..#m') IS NOT NULL DROP TABLE #m;
@@ -76,14 +77,8 @@ WHERE n.folio_num IS NOT NULL
                     AND (o.factura_recibida_id = fr.Id
                          OR o.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT));
 
-INSERT INTO #m (note_id, fr_id, uuid, emp_cod, codgas, metodo)
-SELECT c.note_id, c.fr_id, c.UUID, e.cod, TRY_CAST(c.EstacionCodgas AS INT), 'FOLIO_' + c.note_type
-FROM #c c
-LEFT JOIN #emp e ON e.rfc = c.ReceptorRfc COLLATE DATABASE_DEFAULT
-WHERE c.note_id IN (SELECT note_id FROM #c GROUP BY note_id HAVING COUNT(*) = 1)
-  AND c.fr_id   IN (SELECT fr_id   FROM #c GROUP BY fr_id   HAVING COUNT(*) = 1);
-
 -- Candidatos por sufijo (pasada 2): el número de la nota termina en el folio de la FR
+-- (folio de la FR de al menos 5 dígitos para evitar coincidencias casuales)
 IF OBJECT_ID('tempdb..#c2') IS NOT NULL DROP TABLE #c2;
 SELECT n.id AS note_id, fr.Id AS fr_id, fr.UUID, fr.ReceptorRfc, fr.EstacionCodgas, n.note_type
 INTO #c2
@@ -92,6 +87,7 @@ JOIN SG12.dbo.Proveedores p ON p.cod = n.provider_id
 JOIN TG.dbo.FacturasRecibidas fr
   ON fr.EmisorRfc COLLATE DATABASE_DEFAULT = p.rfc COLLATE DATABASE_DEFAULT
  AND TRY_CAST(fr.Folio AS BIGINT) > 0
+ AND LEN(CAST(TRY_CAST(fr.Folio AS BIGINT) AS VARCHAR(30))) >= 5
  AND LEN(CAST(TRY_CAST(fr.Folio AS BIGINT) AS VARCHAR(30))) <= LEN(CAST(n.folio_num AS VARCHAR(30)))
  AND RIGHT(CAST(n.folio_num AS VARCHAR(30)), LEN(CAST(TRY_CAST(fr.Folio AS BIGINT) AS VARCHAR(30))))
      = CAST(TRY_CAST(fr.Folio AS BIGINT) AS VARCHAR(30))
@@ -103,10 +99,28 @@ WHERE n.folio_num IS NOT NULL
                     AND (o.factura_recibida_id = fr.Id
                          OR o.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT));
 
--- #c2 incluye candidatos ya tomados en la pasada 1 (para listar duplicadas); aquí solo los libres
+-- FR con 2+ notas candidatas (pasada 1 + pasada 2): CFDI capturado varias veces.
+-- Ninguna copia se liga.
+IF OBJECT_ID('tempdb..#dupfr') IS NOT NULL DROP TABLE #dupfr;
+SELECT fr_id
+INTO #dupfr
+FROM (SELECT note_id, fr_id FROM #c UNION SELECT note_id, fr_id FROM #c2) u
+GROUP BY fr_id HAVING COUNT(DISTINCT note_id) > 1;
+
+-- Pasada 1: folio exacto, único por nota y por FR, FR no duplicada
+INSERT INTO #m (note_id, fr_id, uuid, emp_cod, codgas, metodo)
+SELECT c.note_id, c.fr_id, c.UUID, e.cod, TRY_CAST(c.EstacionCodgas AS INT), 'FOLIO_' + c.note_type
+FROM #c c
+LEFT JOIN #emp e ON e.rfc = c.ReceptorRfc COLLATE DATABASE_DEFAULT
+WHERE c.note_id IN (SELECT note_id FROM #c GROUP BY note_id HAVING COUNT(*) = 1)
+  AND c.fr_id   IN (SELECT fr_id   FROM #c GROUP BY fr_id   HAVING COUNT(*) = 1)
+  AND c.fr_id NOT IN (SELECT fr_id FROM #dupfr);
+
+-- Pasada 2: solo notas y FR libres tras la pasada 1, FR no duplicada
 IF OBJECT_ID('tempdb..#c2l') IS NOT NULL DROP TABLE #c2l;
 SELECT * INTO #c2l FROM #c2 c
-WHERE NOT EXISTS (SELECT 1 FROM #m m WHERE m.note_id = c.note_id OR m.fr_id = c.fr_id);
+WHERE NOT EXISTS (SELECT 1 FROM #m m WHERE m.note_id = c.note_id OR m.fr_id = c.fr_id)
+  AND c.fr_id NOT IN (SELECT fr_id FROM #dupfr);
 
 INSERT INTO #m (note_id, fr_id, uuid, emp_cod, codgas, metodo)
 SELECT c.note_id, c.fr_id, c.UUID, e.cod, TRY_CAST(c.EstacionCodgas AS INT), 'SUFIJO_' + c.note_type
@@ -115,16 +129,29 @@ LEFT JOIN #emp e ON e.rfc = c.ReceptorRfc COLLATE DATABASE_DEFAULT
 WHERE c.note_id IN (SELECT note_id FROM #c2l GROUP BY note_id HAVING COUNT(*) = 1)
   AND c.fr_id   IN (SELECT fr_id   FROM #c2l GROUP BY fr_id   HAVING COUNT(*) = 1);
 
--- Duplicadas: el mismo CFDI capturado 2 veces — revisar (no se ligan)
-SELECT 'Duplicadas: el mismo CFDI capturado 2 veces - revisar' AS etiqueta;
+-- Matches por sufijo, para revisión del usuario
+SELECT 'Matches por SUFIJO (revisar)' AS etiqueta;
+SELECT n.id AS note_id, n.note_number, n.amount, n.note_date,
+       m.fr_id, fr.Folio AS fr_folio, fr.Fecha AS fr_fecha, fr.Total AS fr_total, m.codgas
+FROM #m m
+JOIN TG.dbo.invoice_credit_debit_notes n ON n.id = m.note_id
+JOIN TG.dbo.FacturasRecibidas fr ON fr.Id = m.fr_id
+WHERE m.metodo LIKE 'SUFIJO[_]%'
+ORDER BY n.id;
+
+-- Duplicadas: mismo CFDI capturado 2+ veces — revisar (ninguna se liga).
+-- filas_pago_mismo_folio se busca por folio: si varias notas comparten folio, verán la misma fila de pago.
+SELECT 'Duplicadas: mismo CFDI capturado 2+ veces - revisar. filas_pago_mismo_folio se busca por folio: si varias notas comparten folio, verán la misma fila de pago' AS etiqueta;
 SELECT d.fr_id, fr.Folio AS fr_folio, fr.Total AS fr_total, fr.Fecha AS fr_fecha,
        n.id AS note_id, n.note_number, n.amount,
        (SELECT COUNT(*) FROM TG.dbo.credit_note_applications a WHERE a.credit_note_id = n.id AND a.status = 1) AS aplicaciones_activas,
-       (SELECT COUNT(*) FROM TG.dbo.payment_request_invoices p
+       (SELECT STRING_AGG(CAST(p.id AS VARCHAR(10)) + '/req' + CAST(p.payment_request_id AS VARCHAR(10)), ',')
+          FROM TG.dbo.payment_request_invoices p
           JOIN TG.dbo.payment_requests r ON r.id = p.payment_request_id
-         WHERE p.folio = n.note_number AND r.provider_cod = n.provider_id AND p.is_deleted = 0) AS en_pagos_activos
-FROM (SELECT fr_id FROM (SELECT note_id, fr_id FROM #c UNION SELECT note_id, fr_id FROM #c2) u
-      GROUP BY fr_id HAVING COUNT(DISTINCT note_id) > 1) d
+         WHERE p.folio = n.note_number AND r.provider_cod = n.provider_id
+           AND p.is_debit_note = 1 AND ISNULL(p.is_deleted, 0) = 0 AND r.is_deleted = 0) AS filas_pago_mismo_folio,
+       (SELECT COUNT(*) FROM #m m WHERE m.note_id = n.id) AS ligada_por_script
+FROM #dupfr d
 JOIN TG.dbo.FacturasRecibidas fr ON fr.Id = d.fr_id
 JOIN (SELECT note_id, fr_id FROM #c UNION SELECT note_id, fr_id FROM #c2) u2 ON u2.fr_id = d.fr_id
 JOIN TG.dbo.invoice_credit_debit_notes n ON n.id = u2.note_id
