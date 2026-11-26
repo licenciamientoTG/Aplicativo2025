@@ -37,12 +37,14 @@ class NotaCreditoPdfParser
         $r = self::parseTexto($texto, $nombreArchivo);
         if ($r['uuid'] === '') {
             // Con -layout el folio fiscal impreso sale partido por otras columnas; en modo
-            // -raw queda contiguo (los PDF de MGC no traen la cadena ||1.1|).
+            // -raw queda contiguo (los PDF de MGC no traen la cadena ||1.1|). Del pase -raw
+            // se toma SOLO el uuid; el resto de los campos se queda con los de -layout.
             $raw = self::extraerTexto($rutaPdf, '-raw');
             if ($raw !== null) {
                 $r2 = self::parseTexto($raw, $nombreArchivo);
-                if ($r2['raw_ok']) {
-                    return $r2;
+                if ($r2['uuid'] !== '' && $r2['uuid'] !== $r['uuid_relacionado']) {
+                    $r['uuid'] = $r2['uuid'];
+                    $r = self::finalizar($r);
                 }
             }
         }
@@ -109,10 +111,17 @@ class NotaCreditoPdfParser
         $base['subtotal']         = (float) $get(self::POS_SUBTOTAL);
         $base['total']            = (float) $get(self::POS_TOTAL);
         $base['tipo_comprobante'] = $get(self::POS_TIPO);
-        // Campo 16 de la cadena del comprobante: UUID del CFDI relacionado (no el de la nota)
+        // Campo 16 de la cadena del comprobante: UUID del CFDI relacionado (no el de la nota).
+        // Todo UUID dentro de la cadena del comprobante es ajeno a la nota (su timbre se genera
+        // después), así que se excluye de cualquier candidato a UUID propio.
+        $enCadena = self::uuidsEn(preg_replace('/\s+/', '', $m[0]));
         $rel = strtoupper($get(self::POS_UUID_REL));
         $base['uuid_relacionado'] = self::validarUuid($rel) ? $rel : '';
-        $base['uuid']             = self::uuidTimbre($plano, $base['uuid_relacionado']);
+        if ($base['uuid_relacionado'] === '' && count($enCadena) === 1) {
+            $base['uuid_relacionado'] = $enCadena[0];   // posiciones desplazadas por atributos opcionales
+        }
+        $ambiguo = $base['uuid_relacionado'] === '' && count($enCadena) > 1;
+        $base['uuid']             = $ambiguo ? '' : self::uuidTimbre($plano, $enCadena);
         $base['rfc_emisor']       = strtoupper($get(self::POS_RFC_EMI));
         $base['nombre_emisor']    = $get(self::POS_NOM_EMI);
         $base['rfc_receptor']     = strtoupper($get(self::POS_RFC_REC));
@@ -121,18 +130,28 @@ class NotaCreditoPdfParser
         // Tipo de comprobante CFDI: E (Egreso) = nota de crédito.
         $base['note_type'] = ($base['tipo_comprobante'] === 'E') ? 'CREDIT' : 'DEBIT';
 
+        if ($ambiguo) {
+            $base['error'] = 'La cadena del comprobante trae varios UUID y no se pudo identificar el relacionado';
+            return $base;
+        }
+        return self::finalizar($base);
+    }
+
+    /** raw_ok y mensaje de error a partir de los campos ya leídos. */
+    private static function finalizar(array $base): array
+    {
         $base['raw_ok'] = (
             $base['rfc_emisor'] !== '' &&
             $base['folio'] !== '' &&
             $base['total'] > 0 &&
             $base['uuid'] !== ''
         );
+        $base['error'] = null;
         if ($base['uuid'] === '') {
             $base['error'] = 'No se encontró el UUID del timbre (folio fiscal)';
         } elseif (!$base['raw_ok']) {
             $base['error'] = 'No se pudieron extraer los datos clave de la nota (CFDI)';
         }
-
         return $base;
     }
 
@@ -179,41 +198,51 @@ class NotaCreditoPdfParser
         return 'pdftotext'; // fallback: buscar en PATH
     }
 
+    /** Patrón estricto de UUID impreso: espacios solo tras el 4º guion, límites alfanuméricos, último grupo de 12. */
+    private const UUID_IMPRESO = '(?<![0-9A-Za-z])[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-\s*[0-9A-Fa-f]{12}(?![0-9A-Za-z])';
+
+    /** UUID (únicos, mayúsculas, sin espacios) que aparecen en un texto con el patrón estricto. */
+    private static function uuidsEn(string $texto): array
+    {
+        $out = [];
+        if (preg_match_all('/' . self::UUID_IMPRESO . '/', $texto, $mm)) {
+            foreach ($mm[0] as $c) {
+                $u = strtoupper(preg_replace('/\s+/', '', $c));
+                if (self::validarUuid($u)) {
+                    $out[$u] = true;   // el mismo UUID impreso varias veces (p. ej. QR) cuenta una vez
+                }
+            }
+        }
+        return array_keys($out);
+    }
+
     /**
-     * UUID del timbre: cadena original del complemento ||1.1|UUID|FechaTimbrado|...||
-     * (pdftotext intercala espacios/saltos dentro de los valores). Respaldo: la etiqueta
-     * impresa "Folio Fiscal" seguida de un UUID válido. '' si no se encuentra.
+     * UUID del timbre de la nota, por orden de confianza:
+     *  1. cadena del complemento ||1.1|UUID|FechaTimbrado|...|| (no la traen los PDF de MGC);
+     *  2. etiqueta "Folio Fiscal" seguida inmediatamente de un UUID impreso (estricto);
+     *  3. el ÚNICO UUID impreso en el documento que no esté en la cadena del comprobante.
+     * Los UUID de $excluidos (los de la cadena ||4.0|, o sea CfdiRelacionados) nunca se aceptan.
+     * Límites: si el UUID impreso queda partido por otras columnas (pdftotext -layout) no se
+     * reconoce y se devuelve ''; si hay 2+ candidatos distintos (p. ej. una leyenda con otro
+     * UUID) tampoco se adivina. '' = no se encontró.
      */
-    private static function uuidTimbre(string $plano, string $relacionado = ''): string
+    private static function uuidTimbre(string $plano, array $excluidos = []): string
     {
         if (preg_match('/\|\|1\.1\|(.*?)\|\|/s', $plano, $m)) {
             $campos = explode('|', $m[1]);
             $uuid = strtoupper(preg_replace('/\s+/', '', $campos[0]));
-            if (self::validarUuid($uuid)) {
+            if (self::validarUuid($uuid) && !in_array($uuid, $excluidos, true)) {
                 return $uuid;
             }
         }
-        if (preg_match('/Folio\s+Fiscal\s*:?\s*([0-9A-Fa-f\-\s]{36,70})/i', $plano, $m)) {
-            $uuid = strtoupper(substr(preg_replace('/\s+/', '', $m[1]), 0, 36));
-            if (self::validarUuid($uuid)) {
+        if (preg_match('/Folio\s+Fiscal\s*:?\s*(' . self::UUID_IMPRESO . ')/i', $plano, $m)) {
+            $uuid = strtoupper(preg_replace('/\s+/', '', $m[1]));
+            if (self::validarUuid($uuid) && !in_array($uuid, $excluidos, true)) {
                 return $uuid;
             }
         }
-        // Los PDF de MGC no traen la cadena ||1.1| y el folio fiscal queda lejos de su etiqueta:
-        // se acepta el único UUID impreso distinto del relacionado (espacios solo tras guion).
-        if (preg_match_all('/(?<![0-9A-Za-z])[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-\s*[0-9A-Fa-f]{12}(?![0-9A-Za-z])/', $plano, $mm)) {
-            $unicos = [];
-            foreach ($mm[0] as $c) {
-                $u = strtoupper(preg_replace('/\s+/', '', $c));
-                if ($u !== $relacionado && self::validarUuid($u)) {
-                    $unicos[$u] = true;
-                }
-            }
-            if (count($unicos) === 1) {
-                return (string)array_key_first($unicos);
-            }
-        }
-        return '';
+        $candidatos = array_values(array_diff(self::uuidsEn($plano), $excluidos));
+        return count($candidatos) === 1 ? $candidatos[0] : '';
     }
 
     /** "2026-05-15T08:54:20" -> "2026-05-15" */

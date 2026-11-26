@@ -83,4 +83,37 @@ Folio Fiscal  Numero de Certificado del Emisor
 $r6 = NotaCreditoPdfParser::parseTexto($t6);
 check('f: layout partido no inventa UUID', $r6['uuid'] === '' && $r6['raw_ok'] === false);
 
+// (g) posiciones desplazadas (campo 16 ya no es el UUID): el relacionado sale de la cadena y nunca es el uuid
+$desplazada = str_replace('|PUE|', '|PUE|CONTADO|', cadenaComprobante('E', $REL));
+$r7 = NotaCreditoPdfParser::parseTexto($desplazada . "\nFolio Fiscal " . substr($PROPIO, 0, 24) . "   00001000000712122236\n" . substr($PROPIO, 24) . "\n");
+check('g: relacionado tomado de la cadena', $r7['uuid_relacionado'] === $REL);
+check('g: uuid partido en layout -> vacío, nunca el relacionado', $r7['uuid'] === '' && $r7['raw_ok'] === false);
+$r7b = NotaCreditoPdfParser::parseTexto($desplazada . "\nFecha Factura 2026-07-01\n" . $PROPIO . "\n");
+check('g: uuid propio impreso contiguo -> propio', $r7b['uuid'] === $PROPIO && $r7b['uuid_relacionado'] === $REL);
+$r7c = NotaCreditoPdfParser::parseTexto($desplazada);
+check('g: solo el relacionado en el documento -> vacío', $r7c['uuid'] === '' && $r7c['raw_ok'] === false);
+
+// (h) tipo I con un UUID ajeno en una leyenda: 2 candidatos -> no se adivina
+$AJENO = '11111111-2222-3333-4444-555555555555';
+$r8 = NotaCreditoPdfParser::parseTexto(cadenaComprobante('I', 'MME141110IJ9') . "\nSustituye al CFDI $AJENO\n" . $PROPIO . "\n");
+check('h: foreign + propio -> vacío', $r8['uuid'] === '' && $r8['raw_ok'] === false);
+$r8b = NotaCreditoPdfParser::parseTexto(cadenaComprobante('I', 'MME141110IJ9') . "\nSustituye al CFDI $AJENO\n");
+check('h: solo ajeno impreso = único candidato (límite conocido)', $r8b['uuid'] === $AJENO);
+
+// (i) etiqueta "Folio Fiscal" seguida del no. de certificado: no pega dígitos de la columna vecina
+$r9 = NotaCreditoPdfParser::parseTexto(cadenaComprobante('E', $REL) . "\nFolio Fiscal " . substr($PROPIO, 0, 24) . "   00001000000712122236\n");
+check('i: etiqueta + certificado no forma UUID', $r9['uuid'] === '');
+$r9b = NotaCreditoPdfParser::parseTexto(cadenaComprobante('E', $REL) . "\nFolio Fiscal: " . substr($PROPIO, 0, 24) . "\n " . substr($PROPIO, 24) . "\n");
+check('i: etiqueta + UUID partido en 2 líneas -> propio', $r9b['uuid'] === $PROPIO);
+
+// (j) mismo UUID impreso varias veces (etiqueta + QR ?id=UUID&re=...) cuenta una vez
+$r10 = NotaCreditoPdfParser::parseTexto(cadenaComprobante('E', $REL) . "\nQR https://verificacfdi.facturaelectronica.sat.gob.mx/default.aspx?id=" . $PROPIO . "&re=MME141110IJ9&rr=DGA930823KD3\nFecha\n" . $PROPIO . "\n");
+check('j: UUID repetido (QR) cuenta una vez', $r10['uuid'] === $PROPIO && $r10['raw_ok'] === true);
+
+// (k) varios UUID en la cadena y campo 16 sin UUID -> se rechaza con error explícito
+$dos = str_replace('|PUE|', '|PUE|' . $AJENO . '|', cadenaComprobante('E', 'X')) ;
+$dos = str_replace('|X|', '|' . $REL . '|', $dos);
+$r11 = NotaCreditoPdfParser::parseTexto($dos . "\n" . $PROPIO . "\n");
+check('k: cadena con 2 UUID y campo 16 sin UUID -> rechazo', $r11['uuid'] === '' && $r11['raw_ok'] === false && strpos((string)$r11['error'], 'varios UUID') !== false);
+
 finish();
