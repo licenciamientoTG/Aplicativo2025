@@ -103,8 +103,8 @@ check('accion pdf-no-coincide folio', $accion($notaB, array_merge($pdfB, ['folio
 check('accion pdf-no-coincide total', $accion($notaB, array_merge($pdfB, ['total' => 1028.00]))['accion'] === 'pdf-no-coincide');
 check('accion pdf-no-coincide rfc', $accion($notaB, array_merge($pdfB, ['rfc_emisor' => 'AAA010101AAA']))['accion'] === 'pdf-no-coincide');
 check('accion pdf-no-coincide tipo (CREDIT con I)', $accion($notaB, array_merge($pdfB, ['tipo_comprobante' => 'I']))['accion'] === 'pdf-no-coincide');
-check('accion DEBIT con tipo I importa', $accion(array_merge($notaB, ['note_type' => 'DEBIT', 'description' => '']),
-    array_merge($pdfB, ['tipo_comprobante' => 'I', 'uuid_relacionado' => '']))['accion'] === 'importar');
+check('accion DEBIT con tipo I -> requiere-revision', $accion(array_merge($notaB, ['note_type' => 'DEBIT', 'description' => '']),
+    array_merge($pdfB, ['tipo_comprobante' => 'I', 'uuid_relacionado' => '']))['accion'] === 'requiere-revision');
 check('accion pdf-no-coincide uuid relacionado distinto', $accion($notaB,
     array_merge($pdfB, ['uuid_relacionado' => 'CCCCCCCC-1111-2222-3333-DDDDDDDDDDDD']))['accion'] === 'pdf-no-coincide');
 $sinRel = $accion($notaB, array_merge($pdfB, ['uuid_relacionado' => '']));
@@ -113,5 +113,20 @@ check('accion ya-ligada', $accion($notaB, $pdfB, null, true)['accion'] === 'ya-l
 $frB = ['Folio' => '034398', 'EmisorRfc' => 'MME141110IJ9', 'Total' => '1027.91'];
 check('accion ya-en-FR', $accion($notaB, $pdfB, $frB)['accion'] === 'ya-en-FR');
 check('accion uuid-otro-cfdi', $accion($notaB, $pdfB, array_merge($frB, ['Folio' => '999999']))['accion'] === 'uuid-otro-cfdi');
+
+$dupUuid = CfdiNotaImport::accionBackfill($notaB, $pdfB, null, false, [7, 9], []);
+check('accion duplicada por grupo de uuid (lista los otros ids)', $dupUuid['accion'] === 'duplicada' && strpos($dupUuid['detalle'], '7,9') !== false);
+check('accion duplicada por otra nota sin ligar que coincide', CfdiNotaImport::accionBackfill($notaB, $pdfB, null, false, [], [326])['accion'] === 'duplicada');
+check('accion duplicada también con ya-en-FR', CfdiNotaImport::accionBackfill($notaB, $pdfB, $frB, false, [], [326])['accion'] === 'duplicada');
+check('accion DEBIT duplicada gana a requiere-revision', CfdiNotaImport::accionBackfill(
+    array_merge($notaB, ['note_type' => 'DEBIT', 'description' => '']), array_merge($pdfB, ['tipo_comprobante' => 'I']), $frB, false, [], [5])['accion'] === 'duplicada');
+check('uuid-otro-cfdi gana a duplicada', CfdiNotaImport::accionBackfill($notaB, $pdfB, array_merge($frB, ['Folio' => '1']), false, [3], [])['accion'] === 'uuid-otro-cfdi');
+check('notaCoincideConPdf: folio+total+tipo', CfdiNotaImport::notaCoincideConPdf(['note_type' => 'CREDIT', 'note_number' => 'NC 34398', 'amount' => 1027.90], $pdfB));
+check('notaCoincideConPdf: tipo distinto -> no', !CfdiNotaImport::notaCoincideConPdf(['note_type' => 'DEBIT', 'note_number' => 'NC034398', 'amount' => 1027.91], $pdfB));
+check('notaCoincideConPdf: total distinto -> no', !CfdiNotaImport::notaCoincideConPdf(['note_type' => 'CREDIT', 'note_number' => 'NC034398', 'amount' => 1030], $pdfB));
+check('codgasDeFr', CfdiNotaImport::codgasDeFr(['EstacionCodgas' => '12']) === 12 && CfdiNotaImport::codgasDeFr(['EstacionCodgas' => null]) === null
+    && CfdiNotaImport::codgasDeFr(['EstacionCodgas' => 'x']) === null && CfdiNotaImport::codgasDeFr(null) === null);
+check('rutaDocValida', CfdiNotaImport::rutaDocValida('uploads/credit_debit_notes/2.pdf') && !CfdiNotaImport::rutaDocValida('uploads/credit_debit_notes/a/2.pdf')
+    && !CfdiNotaImport::rutaDocValida('uploads/credit_debit_notes/../x.pdf') && !CfdiNotaImport::rutaDocValida('x/2.pdf') && !CfdiNotaImport::rutaDocValida('uploads/credit_debit_notes/2.exe'));
 
 finish();

@@ -155,10 +155,13 @@ class CfdiNotaImport
      * @param array      $pdf   salida de NotaCreditoPdfParser::parse
      * @param array|null $frExistente fila de FacturasRecibidas con el UUID del PDF (Folio, EmisorRfc, Total) o null
      * @param bool       $uuidEnOtraNota el UUID del PDF ya está en otra nota activa
+     * @param int[]      $otrasConMismoUuid ids de otras notas de la corrida cuyo PDF trae el mismo UUID
+     * @param int[]      $otrasSinLigar ids de otras notas activas sin ligar que coinciden con este PDF (ver notaCoincideConPdf)
      * @return array{accion:string,detalle:string,aviso:string}
-     *   accion: no-legible | pdf-no-coincide | ya-ligada | uuid-otro-cfdi | ya-en-FR | importar
+     *   accion: no-legible | pdf-no-coincide | requiere-revision | ya-ligada | uuid-otro-cfdi | duplicada | ya-en-FR | importar
      */
-    public static function accionBackfill(array $nota, array $pdf, ?array $frExistente, bool $uuidEnOtraNota): array
+    public static function accionBackfill(array $nota, array $pdf, ?array $frExistente, bool $uuidEnOtraNota,
+                                          array $otrasConMismoUuid = [], array $otrasSinLigar = []): array
     {
         $r = fn(string $a, string $d = '', string $aviso = '') => ['accion' => $a, 'detalle' => $d, 'aviso' => $aviso];
         if (empty($pdf['raw_ok'])) {
@@ -197,11 +200,40 @@ class CfdiNotaImport
         }
         if ($frExistente !== null) {
             $fila = self::filaDesdePdf($pdf);
-            if ($fila !== null && self::facturaCoincideConPdf($frExistente, $fila)) {
-                return $r('ya-en-FR', 'solo ligar', $aviso);
+            if ($fila === null || !self::facturaCoincideConPdf($frExistente, $fila)) {
+                return $r('uuid-otro-cfdi', 'el UUID existe en FacturasRecibidas con otro folio/rfc/total', $aviso);
             }
-            return $r('uuid-otro-cfdi', 'el UUID existe en FacturasRecibidas con otro folio/rfc/total', $aviso);
         }
-        return $r('importar', '', $aviso);
+        // Mismo CFDI capturado en varias notas (o copia sin PDF): no se liga ninguna
+        $otras = array_values(array_unique(array_merge($otrasConMismoUuid, $otrasSinLigar)));
+        if ($otras) {
+            return $r('duplicada', 'mismo CFDI en otras notas: ' . implode(',', $otras), $aviso);
+        }
+        if (($nota['note_type'] ?? '') === 'DEBIT') {
+            return $r('requiere-revision', 'nota de cargo: sus filas de pago las liga el SQL de backfill', $aviso);
+        }
+        return $frExistente !== null ? $r('ya-en-FR', 'solo ligar', $aviso) : $r('importar', '', $aviso);
+    }
+
+    /** ¿Otra nota sin ligar es el mismo CFDI que este PDF? Folio (o sufijo) + total ±0.01 + tipo de comprobante. */
+    public static function notaCoincideConPdf(array $otra, array $pdf): bool
+    {
+        $tipo = (($otra['note_type'] ?? '') === 'CREDIT') ? 'E' : 'I';
+        return self::folioPdfCoincideConNota((string)($pdf['folio'] ?? ''), (string)($otra['note_number'] ?? ''))
+            && abs((float)($otra['amount'] ?? 0) - (float)($pdf['total'] ?? 0)) < 0.01
+            && $tipo === strtoupper((string)($pdf['tipo_comprobante'] ?? ''));
+    }
+
+    /** codgas para la nota a partir de EstacionCodgas de la FR: entero o null. */
+    public static function codgasDeFr(?array $fr): ?int
+    {
+        $v = $fr['EstacionCodgas'] ?? null;
+        return ($v !== null && is_numeric($v)) ? (int)$v : null;
+    }
+
+    /** La ruta del documento debe ser uploads/credit_debit_notes/<archivo>.pdf (sin subcarpetas ni ..). */
+    public static function rutaDocValida(string $ruta): bool
+    {
+        return (bool)preg_match('#^uploads/credit_debit_notes/[^/\\\\]+\.pdf$#i', $ruta) && strpos($ruta, '..') === false;
     }
 }

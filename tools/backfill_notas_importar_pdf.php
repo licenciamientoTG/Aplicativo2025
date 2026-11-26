@@ -14,8 +14,9 @@
  * El UUID de la descripción ("Carga masiva - UUID ...") es el de la factura RELACIONADA; el de la
  * nota es el del timbre que lee NotaCreditoPdfParser. Decisión por nota: CfdiNotaImport::accionBackfill.
  *
- * Acciones: importar, ya-en-FR, ya-ligada, uuid-otro-cfdi, uuid-repetido-en-corrida, pdf-no-coincide,
- *           no-legible, pdf-no-encontrado, sin-pdf, otro-proveedor.
+ * Acciones: importar, ya-en-FR, ya-ligada, uuid-otro-cfdi, duplicada (mismo CFDI en 2+ notas: no se liga ninguna),
+ *           requiere-revision (notas de cargo), pdf-no-coincide, no-legible, pdf-no-encontrado, ruta-invalida,
+ *           sin-pdf, otro-proveedor. Con --aplicar exige el respaldo del SQL de backfill (Task 8).
  * El PDF se COPIA (no se mueve); la nota y la FR nueva se escriben en una sola transacción por nota.
  */
 if (php_sapi_name() !== 'cli') {
@@ -77,62 +78,92 @@ $notas = $sql->select("
       AND EXISTS (SELECT 1 FROM TG.dbo.invoice_credit_debit_notes_doc d WHERE d.credit_note_id = n.id)
     ORDER BY n.id", []);
 
+$respaldo = $sql->select("SELECT OBJECT_ID('TG.dbo.bkp_notas_fr_20261125_icdn') AS oid", []);
+$hayRespaldo = !empty($respaldo[0]['oid']);
+if (!$hayRespaldo) {
+    $aviso = 'Corre primero docs/sql/backfill_notas_fr_2026-11-25.sql con @aplicar = 1';
+    if ($aplicar) {
+        exit("ABORTADO: $aviso\n");
+    }
+    echo "ADVERTENCIA: $aviso (sin eso --aplicar se negara a escribir)\n";
+}
+
 echo ($aplicar ? "MODO APLICAR\n" : "SIMULACION (sin --aplicar: no se escribe nada)\n");
 echo "note_id | note_number | amount | uuid | uuid_origen | pdf | accion | detalle\n";
 
-$cuenta = [];
-$uuidsCorrida = [];
+// Todas las notas activas sin ligar del proveedor (con o sin PDF): una copia sin PDF también cuenta como duplicada
+$sinLigar = $sql->select("
+    SELECT id, note_type, note_number, amount FROM TG.dbo.invoice_credit_debit_notes
+    WHERE status = 1 AND provider_id = ? AND factura_recibida_id IS NULL AND uuid IS NULL", [BACKFILL_PROVEEDOR]);
+
+// Pasada 1: resolver ruta, parsear y juntar los UUID del PDF
+$info = [];       // id => ['accion','detalle','parsed','abs']
+$porUuid = [];    // UUID => [ids]
 foreach ($notas as $n) {
     $id = (int)$n['id'];
-    $uuid = '';
-    $origen = '';
-    $accion = '';
-    $detalle = '';
     $pdfRuta = (string)($n['file_path'] ?? '');
-    $parsed = null;
-
+    $i = ['accion' => '', 'detalle' => '', 'parsed' => null, 'abs' => ''];
     if ((int)$n['provider_id'] !== BACKFILL_PROVEEDOR) {
-        $accion = 'otro-proveedor';
-        $detalle = 'provider_id ' . $n['provider_id'];
+        $i['accion'] = 'otro-proveedor';
+        $i['detalle'] = 'provider_id ' . $n['provider_id'];
     } elseif ($pdfRuta === '') {
-        $accion = 'sin-pdf';
+        $i['accion'] = 'sin-pdf';
+    } elseif (!CfdiNotaImport::rutaDocValida($pdfRuta)) {
+        $i['accion'] = 'ruta-invalida';
     } else {
-        $abs = __DIR__ . '/../_assets/' . $pdfRuta;
-        if (!is_file($abs)) {
-            $accion = 'pdf-no-encontrado';
+        $i['abs'] = __DIR__ . '/../_assets/' . $pdfRuta;
+        if (!is_file($i['abs'])) {
+            $i['accion'] = 'pdf-no-encontrado';
         } else {
-            $parsed = NotaCreditoPdfParser::parse($abs, basename($abs));
-            $uuid = (string)($parsed['uuid'] ?? '');
-            $origen = (string)($parsed['uuid_origen'] ?? '');
-            $existente = $uuid !== '' ? $frModel->buscarPorUuid($uuid) : null;
-            $otra = false;
-            if ($uuid !== '') {
-                $q = $sql->select("
-                    SELECT TOP 1 id FROM TG.dbo.invoice_credit_debit_notes
-                    WHERE status = 1 AND id <> ? AND (uuid = ? " . ($existente ? "OR factura_recibida_id = ?" : "") . ")",
-                    $existente ? [$id, $uuid, (int)$existente['Id']] : [$id, $uuid]);
-                $otra = !empty($q);
+            $i['parsed'] = NotaCreditoPdfParser::parse($i['abs'], basename($i['abs']));
+            if (!empty($i['parsed']['raw_ok'])) {
+                $porUuid[strtoupper((string)$i['parsed']['uuid'])][] = $id;
             }
-            $d = CfdiNotaImport::accionBackfill(
-                $n + ['rfc_proveedor' => $rfcProv], $parsed, $existente, $otra
-            );
-            $accion = $d['accion'];
-            $detalle = trim($d['detalle'] . ($d['aviso'] !== '' ? ' [AVISO ' . $d['aviso'] . ']' : ''));
+        }
+    }
+    $info[$id] = $i;
+}
 
-            if (in_array($accion, ['importar', 'ya-en-FR'], true) && isset($uuidsCorrida[strtoupper($uuid)])) {
-                $accion = 'uuid-repetido-en-corrida';
-                $detalle = 'ya usado por la nota ' . $uuidsCorrida[strtoupper($uuid)];
-            }
-            if (in_array($accion, ['importar', 'ya-en-FR'], true)) {
-                $uuidsCorrida[strtoupper($uuid)] = $id;
-            }
+// Pasada 2: decidir y aplicar
+$cuenta = [];
+foreach ($notas as $n) {
+    $id = (int)$n['id'];
+    $i = $info[$id];
+    $parsed = $i['parsed'];
+    $accion = $i['accion'];
+    $detalle = $i['detalle'];
+    $uuid = $parsed ? (string)($parsed['uuid'] ?? '') : '';
+    $origen = $parsed ? (string)($parsed['uuid_origen'] ?? '') : '';
+    $pdfRuta = (string)($n['file_path'] ?? '');
 
-            if ($aplicar && in_array($accion, ['importar', 'ya-en-FR'], true)) {
-                $res = aplicarNota($n, $parsed, $existente, $abs, $accion, $frModel, $sql);
-                $detalle = trim($detalle . ' ' . $res);
-                if (str_starts_with($res, 'ERROR')) {
-                    $accion .= '-FALLO';
+    if ($parsed !== null) {
+        $existente = $uuid !== '' ? $frModel->buscarPorUuid($uuid) : null;
+        $otra = false;
+        if ($uuid !== '') {
+            $q = $sql->select("
+                SELECT TOP 1 id FROM TG.dbo.invoice_credit_debit_notes
+                WHERE status = 1 AND id <> ? AND (uuid = ? " . ($existente ? "OR factura_recibida_id = ?" : "") . ")",
+                $existente ? [$id, $uuid, (int)$existente['Id']] : [$id, $uuid]);
+            $otra = !empty($q);
+        }
+        $mismoUuid = $uuid !== '' ? array_values(array_diff($porUuid[strtoupper($uuid)] ?? [], [$id])) : [];
+        $otrasSinLigar = [];
+        if (!empty($parsed['raw_ok'])) {
+            foreach ($sinLigar as $o) {
+                if ((int)$o['id'] !== $id && CfdiNotaImport::notaCoincideConPdf($o, $parsed)) {
+                    $otrasSinLigar[] = (int)$o['id'];
                 }
+            }
+        }
+        $d = CfdiNotaImport::accionBackfill($n + ['rfc_proveedor' => $rfcProv], $parsed, $existente, $otra, $mismoUuid, $otrasSinLigar);
+        $accion = $d['accion'];
+        $detalle = trim($d['detalle'] . ($d['aviso'] !== '' ? ' [AVISO ' . $d['aviso'] . ']' : ''));
+
+        if ($aplicar && in_array($accion, ['importar', 'ya-en-FR'], true)) {
+            $res = aplicarNota($n, $parsed, $existente, $i['abs'], $accion, $frModel, $sql);
+            $detalle = trim($detalle . ' ' . $res);
+            if (str_starts_with($res, 'ERROR')) {
+                $accion .= '-FALLO';
             }
         }
     }
@@ -209,9 +240,9 @@ function aplicarNota(array $n, array $parsed, ?array $existente, string $pdfAbs,
         }
         $aff = $sql->updateSafe("
             UPDATE TG.dbo.invoice_credit_debit_notes
-            SET factura_recibida_id = ?, uuid = ?, emp_cod = ?, codgas = NULL, origen = 'historica'
+            SET factura_recibida_id = ?, uuid = ?, emp_cod = ?, codgas = ?, origen = 'historica'
             WHERE id = ? AND factura_recibida_id IS NULL AND uuid IS NULL",
-            [$frId, $uuid, $empCod, (int)$n['id']]);
+            [$frId, $uuid, $empCod, CfdiNotaImport::codgasDeFr($existente), (int)$n['id']]);
         if ($aff !== 1) {
             throw new Exception('El UPDATE de la nota afectó ' . var_export($aff, true) . ' filas');
         }
