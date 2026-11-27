@@ -3546,7 +3546,13 @@ class Operations{
     function clientes_contado() : void {
         $stations = $this->estacionesModel->get_select_stations() ?: [];
         $estatus = ClientesModel::CONTADO_ESTATUS;
-        echo $this->twig->render($this->route . 'clientes_contado.html', compact('stations', 'estatus'));
+        // Catálogo c_RegimenFiscal agrupado para el <select> del modal (una sola fuente: ValidacionFiscal)
+        $grupos = ['F' => 'Personas físicas', 'M' => 'Personas morales', 'FM' => 'Físicas y morales'];
+        $regimenes = array_fill_keys(array_values($grupos), []);
+        foreach (ValidacionFiscal::REGIMENES as $clave => [$descripcion, $aplica]) {
+            $regimenes[$grupos[$aplica]][$clave] = $descripcion;
+        }
+        echo $this->twig->render($this->route . 'clientes_contado.html', compact('stations', 'estatus', 'regimenes'));
     }
 
     /**
@@ -3596,6 +3602,7 @@ class Operations{
                 'Nombre'         => $r['den'],
                 'Domicilio'      => $r['dom'],
                 'RFC'            => $r['rfc'],
+                'RegimenFiscal'  => $r['regfis'],
                 'CodigoPostal'   => $r['codpos'],
                 'Telefono'       => $r['tel'],
                 'Correo'         => $r['correo'],
@@ -3615,6 +3622,7 @@ class Operations{
         $cod    = (int)($_POST['cod'] ?? 0);
         $den    = (string)($_POST['den'] ?? '');
         $rfc    = trim((string)($_POST['rfc'] ?? ''));
+        $regfis = (string)($_POST['regfis'] ?? '');
         $codpos = trim((string)($_POST['codpos'] ?? ''));
         $correo = (string)($_POST['correo'] ?? '');
 
@@ -3648,6 +3656,15 @@ class Operations{
         }
         $rfc = $vRfc['rfc'];
 
+        // Régimen fiscal: clave del catálogo del SAT y compatible con el RFC
+        // (12 = moral, 13 = física, genérico = 616). Vacío se permite.
+        $vRegimen = ValidacionFiscal::regimen($regfis, $rfc);
+        if ($vRegimen['nivel'] === 'error') {
+            json_output(['success' => false, 'message' => 'Régimen fiscal: ' . lcfirst($vRegimen['mensaje']) . '.']);
+            return;
+        }
+        $regfis = $vRegimen['regimen'];
+
         // Código postal: numérico, de 2 a 5 dígitos
         if (!preg_match('/^[0-9]{2,5}$/', $codpos)) {
             json_output(['success' => false, 'message' => 'El código postal debe ser numérico, de 2 a 5 dígitos.']);
@@ -3662,9 +3679,10 @@ class Operations{
         }
         $correo = $vCorreo['normalizado'];
 
-        $result = $this->clientesModel->update_cliente_contado($codgas, $cod, $den, $rfc, $codpos, $correo, (int)$_SESSION['tg_user']['Id']);
+        $result = $this->clientesModel->update_cliente_contado($codgas, $cod, $den, $rfc, $regfis, $codpos, $correo, (int)$_SESSION['tg_user']['Id']);
         if (!empty($result['success'])) {
             $result['correo'] = $correo; // el front refresca la fila con el valor normalizado
+            $result['regfis'] = $regfis;
         }
         json_output($result);
     }

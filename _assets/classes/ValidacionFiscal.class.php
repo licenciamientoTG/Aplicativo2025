@@ -98,6 +98,79 @@ final class ValidacionFiscal
     }
 
     /**
+     * Catálogo c_RegimenFiscal del SAT (CFDI 4.0): clave => [descripción, a quién aplica].
+     * Aplica: 'F' = solo persona física, 'M' = solo persona moral, 'FM' = ambas.
+     */
+    public const REGIMENES = [
+        '601' => ['General de Ley Personas Morales', 'M'],
+        '603' => ['Personas Morales con Fines no Lucrativos', 'M'],
+        '605' => ['Sueldos y Salarios e Ingresos Asimilados a Salarios', 'F'],
+        '606' => ['Arrendamiento', 'F'],
+        '607' => ['Régimen de Enajenación o Adquisición de Bienes', 'F'],
+        '608' => ['Demás ingresos', 'F'],
+        '610' => ['Residentes en el Extranjero sin Establecimiento Permanente en México', 'FM'],
+        '611' => ['Ingresos por Dividendos (socios y accionistas)', 'F'],
+        '612' => ['Personas Físicas con Actividades Empresariales y Profesionales', 'F'],
+        '614' => ['Ingresos por intereses', 'F'],
+        '615' => ['Régimen de los ingresos por obtención de premios', 'F'],
+        '616' => ['Sin obligaciones fiscales', 'F'],
+        '620' => ['Sociedades Cooperativas de Producción que optan por diferir sus ingresos', 'M'],
+        '621' => ['Incorporación Fiscal', 'F'],
+        '622' => ['Actividades Agrícolas, Ganaderas, Silvícolas y Pesqueras', 'M'],
+        '623' => ['Opcional para Grupos de Sociedades', 'M'],
+        '624' => ['Coordinados', 'M'],
+        '625' => ['Actividades Empresariales con ingresos a través de Plataformas Tecnológicas', 'F'],
+        '626' => ['Régimen Simplificado de Confianza', 'FM'],
+    ];
+
+    /** Con RFC genérico (público en general / extranjero) el SAT pide el régimen 616. */
+    public const REGIMEN_RFC_GENERICO = '616';
+
+    /**
+     * Régimen fiscal (Clientes.regfis) contra el catálogo y contra el tipo de
+     * persona que indica el RFC (12 = moral, 13 = física, genérico = 616).
+     * Si el RFC tiene error no se cruza: primero hay que corregir el RFC.
+     *
+     * @return array{nivel:string, mensaje:string, regimen:string}
+     *   nivel: 'ok' | 'vacio' (sin capturar, se puede guardar) | 'aviso' (se puede guardar) | 'error'
+     *   regimen: la clave sin espacios en los extremos
+     */
+    public static function regimen(?string $valor, ?string $rfc = null): array
+    {
+        $original = (string)$valor;
+        $clave = trim($original);
+        $r = fn(string $nivel, string $mensaje) => ['nivel' => $nivel, 'mensaje' => $mensaje, 'regimen' => $clave];
+
+        if ($clave === '') {
+            return $r('vacio', 'Sin régimen fiscal capturado (se necesita para facturar CFDI 4.0)');
+        }
+        if (!isset(self::REGIMENES[$clave])) {
+            return $r('error', "La clave «{$clave}» no existe en el catálogo de regímenes fiscales del SAT");
+        }
+
+        $vRfc = self::rfc($rfc);
+        if ($vRfc['nivel'] === 'generico') {
+            if ($clave !== self::REGIMEN_RFC_GENERICO) {
+                return $r('error', 'Con RFC genérico el régimen debe ser 616 - Sin obligaciones fiscales');
+            }
+        } elseif ($vRfc['nivel'] !== 'error') {
+            $fisica = mb_strlen($vRfc['rfc'], 'UTF-8') === 13;
+            $aplica = self::REGIMENES[$clave][1];
+            if ($fisica && $aplica === 'M') {
+                return $r('error', "El régimen {$clave} es solo para personas morales y el RFC es de persona física (13 caracteres)");
+            }
+            if (!$fisica && $aplica === 'F') {
+                return $r('error', "El régimen {$clave} es solo para personas físicas y el RFC es de persona moral (12 caracteres)");
+            }
+        }
+
+        if ($original !== $clave) {
+            return $r('aviso', "Tiene espacios; se guardará «{$clave}»");
+        }
+        return $r('ok', '');
+    }
+
+    /**
      * Valida una lista de correos separados por ; (también acepta , como
      * separador y la corrige). Vacío es válido: no todos los clientes tienen correo.
      *

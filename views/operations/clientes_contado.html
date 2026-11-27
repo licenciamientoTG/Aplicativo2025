@@ -4,7 +4,7 @@
 
 {% block mycss %}
 <style>
-    /* Nota bajo el RFC / correo cuando no cumple las reglas */
+    /* Nota bajo el RFC / régimen / correo cuando no cumple las reglas */
     .vf-nota { display: flex; gap: 4px; align-items: flex-start; margin-top: 2px;
                font-size: .75rem; line-height: 1.25; max-width: 28ch; white-space: normal; }
     .vf-nota svg { width: 12px; height: 12px; flex: none; margin-top: 1px; }
@@ -12,7 +12,9 @@
     .vf-aviso    { color: #8a5300; }  /* ámbar oscuro: contraste AA sobre blanco y renglón gris */
     .vf-generico { color: #6c757d; }
     .vf-correo   { display: block; white-space: nowrap; }
-    #edit_rfc_hint.vf-aviso, #edit_correo_hint.vf-aviso { color: #8a5300; }
+    #edit_rfc_hint.vf-aviso, #edit_correo_hint.vf-aviso, #edit_regfis_hint.vf-aviso { color: #8a5300; }
+    #edit_regfis_hint.vf-error { color: #b02a37; }
+    .vf-vacio    { color: #6c757d; font-style: italic; }
 </style>
 {% endblock %}
 
@@ -65,7 +67,7 @@
             <div class="card-actions float-end d-flex align-items-center gap-3">
                 <div class="form-check form-switch mb-0 small">
                     <input class="form-check-input" type="checkbox" role="switch" id="solo_revisar_contado" disabled>
-                    <label class="form-check-label" for="solo_revisar_contado">Solo RFC o correo a revisar</label>
+                    <label class="form-check-label" for="solo_revisar_contado">Solo RFC, régimen o correo a revisar</label>
                 </div>
                 <div class="dropdown position-relative">
                     <a href="#" role="button" data-bs-toggle="dropdown" data-bs-display="static"
@@ -98,7 +100,7 @@
                 <thead>
                     <tr>
                         <th>Estación</th><th>Código</th><th>Nombre</th><th>Domicilio</th>
-                        <th>RFC</th><th>C.P.</th><th>Teléfono</th><th>Correo</th><th>Estatus</th><th>Registrado</th><th>Acciones</th><th>Revisión</th>
+                        <th>RFC</th><th>Régimen</th><th>C.P.</th><th>Teléfono</th><th>Correo</th><th>Estatus</th><th>Registrado</th><th>Acciones</th><th>Revisión</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -107,7 +109,7 @@
     </div>
 </div>
 
-{# ── Modal: editar razón social / RFC / código postal ── #}
+{# ── Modal: editar razón social / RFC / régimen / código postal / correo ── #}
 <div class="modal fade" id="modal_edit_cliente_contado" tabindex="-1"
      aria-labelledby="modal_edit_cliente_contado_title" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -141,6 +143,23 @@
                            placeholder="12 o 13 caracteres">
                     <div class="invalid-feedback" id="edit_rfc_feedback"></div>
                     <div class="form-text small" id="edit_rfc_hint" aria-live="polite"></div>
+                </div>
+                {# Régimen fiscal (Clientes.regfis): catálogo c_RegimenFiscal del SAT (CFDI 4.0). Se guarda la clave. #}
+                <div class="mb-2">
+                    <label class="col-form-label-sm" for="edit_regfis">Régimen fiscal</label>
+                    <select class="form-control form-control-sm" id="edit_regfis"
+                            aria-describedby="edit_regfis_feedback edit_regfis_hint">
+                        <option value="">— Sin régimen —</option>
+                        {% for grupo, claves in regimenes %}
+                        <optgroup label="{{ grupo }}">
+                            {% for clave, descripcion in claves %}
+                            <option value="{{ clave }}">{{ clave }} - {{ descripcion }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        {% endfor %}
+                    </select>
+                    <div class="invalid-feedback" id="edit_regfis_feedback"></div>
+                    <div class="form-text small" id="edit_regfis_hint" aria-live="polite"></div>
                 </div>
                 <div class="mb-2">
                     <label class="col-form-label-sm" for="edit_codpos">Código Postal</label>

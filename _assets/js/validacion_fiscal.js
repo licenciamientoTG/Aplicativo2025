@@ -1,4 +1,4 @@
-// Reglas del SAT para RFC y validación de listas de correos (separados por ;).
+// Reglas del SAT para RFC y régimen fiscal, y validación de listas de correos (separados por ;).
 // Espejo de _assets/classes/ValidacionFiscal.class.php: si cambias una regla aquí,
 // cámbiala allá también. Expone window.ValidacionFiscal (y module.exports para
 // pruebas en node: node tests/validacion_fiscal_test.js).
@@ -92,7 +92,65 @@
         return res('ok', '');
     }
 
-    var ValidacionFiscal = { rfc: rfc, correos: correos, CORREO_MAX: CORREO_MAX };
+    // Catálogo c_RegimenFiscal (CFDI 4.0): clave → [descripción, aplica 'F' | 'M' | 'FM']
+    var REGIMENES = {
+        '601': ['General de Ley Personas Morales', 'M'],
+        '603': ['Personas Morales con Fines no Lucrativos', 'M'],
+        '605': ['Sueldos y Salarios e Ingresos Asimilados a Salarios', 'F'],
+        '606': ['Arrendamiento', 'F'],
+        '607': ['Régimen de Enajenación o Adquisición de Bienes', 'F'],
+        '608': ['Demás ingresos', 'F'],
+        '610': ['Residentes en el Extranjero sin Establecimiento Permanente en México', 'FM'],
+        '611': ['Ingresos por Dividendos (socios y accionistas)', 'F'],
+        '612': ['Personas Físicas con Actividades Empresariales y Profesionales', 'F'],
+        '614': ['Ingresos por intereses', 'F'],
+        '615': ['Régimen de los ingresos por obtención de premios', 'F'],
+        '616': ['Sin obligaciones fiscales', 'F'],
+        '620': ['Sociedades Cooperativas de Producción que optan por diferir sus ingresos', 'M'],
+        '621': ['Incorporación Fiscal', 'F'],
+        '622': ['Actividades Agrícolas, Ganaderas, Silvícolas y Pesqueras', 'M'],
+        '623': ['Opcional para Grupos de Sociedades', 'M'],
+        '624': ['Coordinados', 'M'],
+        '625': ['Actividades Empresariales con ingresos a través de Plataformas Tecnológicas', 'F'],
+        '626': ['Régimen Simplificado de Confianza', 'FM']
+    };
+    var REGIMEN_RFC_GENERICO = '616';
+
+    // { nivel: 'ok'|'vacio'|'aviso'|'error', mensaje, regimen }
+    function regimen(valor, rfcValor) {
+        var original = String(valor == null ? '' : valor);
+        var clave = original.trim();
+        var res = function (nivel, mensaje) { return { nivel: nivel, mensaje: mensaje, regimen: clave }; };
+
+        if (clave === '') return res('vacio', 'Sin régimen fiscal capturado (se necesita para facturar CFDI 4.0)');
+        if (!Object.prototype.hasOwnProperty.call(REGIMENES, clave)) {
+            return res('error', 'La clave «' + clave + '» no existe en el catálogo de regímenes fiscales del SAT');
+        }
+
+        var vRfc = rfc(rfcValor);
+        if (vRfc.nivel === 'generico') {
+            if (clave !== REGIMEN_RFC_GENERICO) {
+                return res('error', 'Con RFC genérico el régimen debe ser 616 - Sin obligaciones fiscales');
+            }
+        } else if (vRfc.nivel !== 'error') {
+            var fisica = Array.from(vRfc.rfc).length === 13;
+            var aplica = REGIMENES[clave][1];
+            if (fisica && aplica === 'M') {
+                return res('error', 'El régimen ' + clave + ' es solo para personas morales y el RFC es de persona física (13 caracteres)');
+            }
+            if (!fisica && aplica === 'F') {
+                return res('error', 'El régimen ' + clave + ' es solo para personas físicas y el RFC es de persona moral (12 caracteres)');
+            }
+        }
+
+        if (original !== clave) return res('aviso', 'Tiene espacios; se guardará «' + clave + '»');
+        return res('ok', '');
+    }
+
+    var ValidacionFiscal = {
+        rfc: rfc, correos: correos, regimen: regimen,
+        REGIMENES: REGIMENES, CORREO_MAX: CORREO_MAX
+    };
     if (typeof window !== 'undefined') window.ValidacionFiscal = ValidacionFiscal;
     if (typeof module !== 'undefined' && module.exports) module.exports = ValidacionFiscal;
 })();

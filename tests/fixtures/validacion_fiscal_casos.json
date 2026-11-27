@@ -41,5 +41,30 @@
     {"valor": "nombre con espacio@b.com", "nivel": "error", "contiene": "no válidos"},
     {"valor": "a@b.com\nc@d.com", "nivel": "aviso", "normalizado": "a@b.com;c@d.com"},
     {"valor": "a@b.com c@d.com", "nivel": "aviso", "normalizado": "a@b.com;c@d.com"}
+  ],
+  "regimen": [
+    {"valor": "612", "rfc": "GODE561231GR8", "nivel": "ok"},
+    {"valor": "601", "rfc": "SAT970701NN3", "nivel": "ok"},
+    {"valor": "626", "rfc": "GODE561231GR8", "nivel": "ok"},
+    {"valor": "626", "rfc": "SAT970701NN3", "nivel": "ok"},
+    {"valor": "610", "rfc": "SAT970701NN3", "nivel": "ok"},
+    {"valor": "616", "rfc": "XAXX010101000", "nivel": "ok"},
+    {"valor": "616", "rfc": "XEXX010101000", "nivel": "ok"},
+    {"valor": "", "rfc": "GODE561231GR8", "nivel": "vacio"},
+    {"valor": null, "rfc": "GODE561231GR8", "nivel": "vacio"},
+    {"valor": "   ", "rfc": "GODE561231GR8", "nivel": "vacio"},
+    {"valor": "666", "rfc": "GODE561231GR8", "nivel": "error", "contiene": "«666» no existe"},
+    {"valor": "0", "rfc": "GODE561231GR8", "nivel": "error", "contiene": "«0» no existe"},
+    {"valor": " 12", "rfc": "GODE561231GR8", "nivel": "error", "contiene": "«12» no existe"},
+    {"valor": "602", "rfc": "SAT970701NN3", "nivel": "error", "contiene": "no existe"},
+    {"valor": "601", "rfc": "GODE561231GR8", "nivel": "error", "contiene": "solo para personas morales"},
+    {"valor": "612", "rfc": "SAT970701NN3", "nivel": "error", "contiene": "solo para personas físicas"},
+    {"valor": "616", "rfc": "SAT970701NN3", "nivel": "error", "contiene": "solo para personas físicas"},
+    {"valor": "612", "rfc": "XAXX010101000", "nivel": "error", "contiene": "RFC genérico"},
+    {"valor": "601", "rfc": "XEXX010101000", "nivel": "error", "contiene": "616"},
+    {"valor": "601", "rfc": "OIN211034F7", "nivel": "ok"},
+    {"valor": "612", "rfc": "", "nivel": "ok"},
+    {"valor": " 612", "rfc": "GODE561231GR8", "nivel": "aviso", "contiene": "«612»"},
+    {"valor": "612", "rfc": "gode561231gr8", "nivel": "ok"}
   ]
 }

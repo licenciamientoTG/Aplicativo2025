@@ -37,6 +37,17 @@ foreach ($casos['correos'] as $c) {
     }
 }
 
+foreach ($casos['regimen'] ?? [] as $c) {
+    $r = ValidacionFiscal::regimen($c['valor'], $c['rfc']);
+    $nombre = 'regimen ' . json_encode($c['valor'], JSON_UNESCAPED_UNICODE) . ' con RFC ' . json_encode($c['rfc']);
+    check("{$nombre} → {$c['nivel']} (dio {$r['nivel']}: {$r['mensaje']})", $r['nivel'] === $c['nivel']);
+    if (isset($c['contiene'])) {
+        check("{$nombre} menciona «{$c['contiene']}»", str_contains($r['mensaje'], $c['contiene']));
+    }
+}
+check('hay casos de régimen', !empty($casos['regimen']));
+check('catálogo de régimen con 19 claves', count(ValidacionFiscal::REGIMENES) === 19);
+
 $largo = implode(';', array_map(fn($i) => "correo{$i}@empresa.com.mx", range(1, 10)));
 check('correos de más de 200 caracteres → error', ValidacionFiscal::correos($largo)['nivel'] === 'error');
 

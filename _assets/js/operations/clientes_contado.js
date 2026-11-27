@@ -1,7 +1,7 @@
 const EMPTY_SIN_ESTACION = 'Selecciona una estación para ver sus clientes de contado';
 const EMPTY_SIN_BUSCAR = 'Presiona Buscar (o Enter) para ver los clientes de esta estación';
 const EMPTY_SIN_RESULTADOS = 'No hay clientes de contado que coincidan con la búsqueda';
-const EMPTY_SIN_REVISAR = 'Ningún cliente de esta búsqueda tiene RFC o correo por revisar';
+const EMPTY_SIN_REVISAR = 'Ningún cliente de esta búsqueda tiene RFC, régimen o correo por revisar';
 const ZERO_RECORDS = 'No hay clientes que coincidan con el filtro';
 let ultimoTruncado = false;
 
@@ -18,9 +18,10 @@ function textoSeguro(data, type) {
     return type === 'display' ? esc(data) : (data == null ? '' : data);
 }
 
-// Calcula (una vez por fila) el resultado de las reglas de RFC y correo
+// Calcula (una vez por fila) el resultado de las reglas de RFC, régimen y correo
 function validarFila(d) {
     d._vRfc = VF.rfc(d.RFC);
+    d._vRegimen = VF.regimen(d.RegimenFiscal, d.RFC);
     d._vCorreo = VF.correos(d.Correo);
     return d;
 }
@@ -29,6 +30,14 @@ function validarFila(d) {
 // Los avisos de correo (coma, espacios, repetidos) se corrigen solos al guardar.
 function rfcPorRevisar(d) { return d._vRfc.nivel === 'error' || d._vRfc.nivel === 'aviso'; }
 function correoPorRevisar(d) { return d._vCorreo.nivel === 'error'; }
+// Régimen: clave fuera del catálogo, que no corresponde al RFC, o con espacios.
+// Vacío no cuenta como "por revisar" (son la mayoría y no es un dato erróneo).
+function regimenPorRevisar(d) { return d._vRegimen.nivel === 'error' || d._vRegimen.nivel === 'aviso'; }
+
+function descripcionRegimen(clave) {
+    const r = VF.REGIMENES[String(clave == null ? '' : clave).trim()];
+    return r ? r[0] : '';
+}
 
 const ICONO_NIVEL = { error: 'alert-circle', aviso: 'alert-triangle', generico: 'info' };
 
@@ -53,7 +62,7 @@ let clientes_contado_table = $('#clientes_contado_table').DataTable({
             className: 'd-none',
             title: 'Clientes_Contado',
             exportOptions: {
-                columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11],
+                columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12],
                 orthogonal: 'export'
             }
         }
@@ -68,6 +77,17 @@ let clientes_contado_table = $('#clientes_contado_table').DataTable({
             'render': function (data, type, row) {
                 if (type !== 'display') return data == null ? '' : data;
                 return esc(data) + notaValidacion(row._vRfc);
+            }
+        },
+        {
+            'data': 'RegimenFiscal',
+            'render': function (data, type, row) {
+                const clave = data == null ? '' : String(data).trim();
+                if (type === 'filter') return clave + ' ' + descripcionRegimen(clave);
+                if (type !== 'display') return clave;
+                if (row._vRegimen.nivel === 'vacio') return '<span class="vf-vacio">Sin régimen</span>';
+                const desc = descripcionRegimen(clave);
+                return `<span${desc ? ` title="${esc(desc)}"` : ''}>${esc(clave)}</span>` + notaValidacion(row._vRegimen);
             }
         },
         {'data': 'CodigoPostal', 'render': textoSeguro},
@@ -100,6 +120,7 @@ let clientes_contado_table = $('#clientes_contado_table').DataTable({
             'render': function (data, type, row) {
                 const partes = [];
                 if (row._vRfc.nivel !== 'ok') partes.push('RFC: ' + row._vRfc.mensaje);
+                if (row._vRegimen.nivel !== 'ok') partes.push('Régimen: ' + row._vRegimen.mensaje);
                 if (row._vCorreo.nivel !== 'ok') partes.push('Correo: ' + row._vCorreo.mensaje);
                 return partes.join(' | ');
             }
@@ -118,7 +139,7 @@ $.fn.dataTable.ext.search.push(function (settings, searchData, dataIndex) {
     if (settings.nTable.id !== 'clientes_contado_table') return true;
     if (!$('#solo_revisar_contado').is(':checked')) return true;
     const d = clientes_contado_table.row(dataIndex).data();
-    return rfcPorRevisar(d) || correoPorRevisar(d);
+    return rfcPorRevisar(d) || regimenPorRevisar(d) || correoPorRevisar(d);
 });
 
 $('#solo_revisar_contado').on('change', function () {
@@ -144,8 +165,10 @@ function actualizarResumen(truncado) {
 
             const filas = clientes_contado_table.rows().data().toArray();
             const nRfc = filas.filter(rfcPorRevisar).length;
+            const nRegimen = filas.filter(regimenPorRevisar).length;
             const nCorreo = filas.filter(correoPorRevisar).length;
             if (nRfc) resumen += ` · ${nRfc.toLocaleString('es-MX')} RFC por revisar`;
+            if (nRegimen) resumen += ` · ${nRegimen.toLocaleString('es-MX')} ${nRegimen === 1 ? 'régimen' : 'regímenes'} por revisar`;
             if (nCorreo) resumen += ` · ${nCorreo.toLocaleString('es-MX')} ${nCorreo === 1 ? 'correo' : 'correos'} por revisar`;
         }
     }
@@ -296,6 +319,7 @@ function marcarErrorCampo(campo, mensaje) {
     $(`#edit_${campo}`).addClass('is-invalid').trigger('focus');
     $(`#edit_${campo}_feedback`).text(mensaje);
     actualizarHintRfc();
+    actualizarHintRegimen();
     actualizarHintCorreo();
 }
 
@@ -315,6 +339,39 @@ function actualizarHintRfc() {
         setHint($('#edit_rfc_hint'), v.mensaje, 'error');
     } else {
         setHint($('#edit_rfc_hint'), '', null);
+    }
+}
+
+// Régimen guardado en el cliente al abrir el modal (tal cual, con espacios si los tenía)
+let regfisOriginal = '';
+
+// Pone el valor del cliente en el <select>. Si la clave no está en el catálogo
+// (p. ej. 666 o 0) se agrega una opción temporal para que se vea y no se borre
+// sin que el usuario lo note; mientras siga elegida, no deja guardar.
+function cargarRegimen(valor) {
+    const $sel = $('#edit_regfis');
+    $sel.find('option.regfis-temp').remove();
+    regfisOriginal = valor == null ? '' : String(valor);
+    const clave = regfisOriginal.trim();
+    if (clave !== '' && !VF.REGIMENES[clave]) {
+        $('<option class="regfis-temp">').val(clave).text(`${clave} - No existe en el catálogo del SAT`)
+            .insertAfter($sel.find('option').first());
+    }
+    $sel.val(clave);
+}
+
+function actualizarHintRegimen() {
+    const $sel = $('#edit_regfis');
+    const v = VF.regimen($sel.val(), $('#edit_rfc').val());
+    const marcado = $sel.hasClass('is-invalid');
+    if (v.nivel === 'error' && !marcado) {
+        setHint($('#edit_regfis_hint'), v.mensaje, 'error');
+    } else if (v.nivel === 'vacio') {
+        setHint($('#edit_regfis_hint'), v.mensaje, 'generico');
+    } else if (v.nivel === 'ok' && regfisOriginal !== '' && regfisOriginal !== $sel.val() && regfisOriginal.trim() === $sel.val()) {
+        setHint($('#edit_regfis_hint'), `Tenía espacios; al guardar quedará «${$sel.val()}»`, 'aviso');
+    } else {
+        setHint($('#edit_regfis_hint'), '', null);
     }
 }
 
@@ -340,9 +397,11 @@ $('#clientes_contado_table tbody').on('click', '.btn-edit-contado', function () 
     $('#edit_estacion_nombre').val(row.Estacion);
     $('#edit_den').val(row.Nombre);
     $('#edit_rfc').val((row.RFC || '').toUpperCase());
+    cargarRegimen(row.RegimenFiscal);
     $('#edit_codpos').val(row.CodigoPostal);
     $('#edit_correo').val(row.Correo || '');
     actualizarHintRfc();
+    actualizarHintRegimen();
     actualizarHintCorreo();
 
     bootstrap.Modal.getOrCreateInstance(modalEditEl).show();
@@ -365,7 +424,14 @@ $('#edit_rfc').on('input', function () {
     this.value = this.value.toUpperCase();
     this.setSelectionRange(start, end);
     actualizarHintRfc();
+    actualizarHintRegimen(); // el régimen depende de si el RFC es de física o moral
 }).on('blur', actualizarHintRfc);
+
+$('#edit_regfis').on('change', function () {
+    $(this).removeClass('is-invalid');
+    $('#edit_regfis_feedback').text('');
+    actualizarHintRegimen();
+});
 
 $('#edit_correo').on('input blur', actualizarHintCorreo);
 
@@ -388,6 +454,9 @@ function validarClienteContado(p) {
     const vRfc = VF.rfc(p.rfc);
     if (vRfc.nivel === 'error') return { campo: 'rfc', mensaje: 'El RFC no es válido: ' + vRfc.mensaje.charAt(0).toLowerCase() + vRfc.mensaje.slice(1) };
 
+    const vRegimen = VF.regimen(p.regfis, p.rfc);
+    if (vRegimen.nivel === 'error') return { campo: 'regfis', mensaje: vRegimen.mensaje };
+
     if (!/^[0-9]{2,5}$/.test(p.codpos)) return { campo: 'codpos', mensaje: 'El código postal debe ser numérico, de 2 a 5 dígitos' };
 
     const vCorreo = VF.correos(p.correo);
@@ -406,6 +475,7 @@ $formEdit.on('submit', function (e) {
         cod: $('#edit_cod').val(),
         den: $('#edit_den').val().replace(/\s+/g, ' ').trim(),
         rfc: $('#edit_rfc').val().trim().toUpperCase(),
+        regfis: $('#edit_regfis').val() || '',
         codpos: $('#edit_codpos').val().trim(),
         correo: $('#edit_correo').val(),
     };
@@ -434,6 +504,7 @@ $formEdit.on('submit', function (e) {
                     if (String(d.CodigoEstacion) === String(payload.codgas) && String(d.Codigo) === String(payload.cod)) {
                         d.Nombre = payload.den;
                         d.RFC = payload.rfc;
+                        d.RegimenFiscal = response.regfis !== undefined ? response.regfis : payload.regfis;
                         d.CodigoPostal = payload.codpos;
                         d.Correo = response.correo != null ? response.correo : VF.correos(payload.correo).normalizado;
                         this.data(validarFila(d));

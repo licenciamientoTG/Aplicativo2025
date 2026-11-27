@@ -19,7 +19,15 @@ for (const c of casos.correos) {
     if (c.contiene) assert.ok(r.mensaje.includes(c.contiene), `${nombre} debe mencionar ${c.contiene}: ${r.mensaje}`);
 }
 
-const largo = Array.from({ length: 10 }, (_, i) => `correo${i + 1}@empresa.com.mx`).join(';');
+for (const c of casos.regimen) {
+    const r = VF.regimen(c.valor, c.rfc);
+    const nombre = 'regimen ' + JSON.stringify(c.valor) + ' con RFC ' + JSON.stringify(c.rfc);
+    assert.equal(r.nivel, c.nivel, `${nombre}: ${r.mensaje}`);
+    if (c.contiene) assert.ok(r.mensaje.includes(c.contiene), `${nombre} debe mencionar ${c.contiene}: ${r.mensaje}`);
+}
+assert.equal(Object.keys(VF.REGIMENES).length, 19);
+
+const largo =Array.from({ length: 10 }, (_, i) => `correo${i + 1}@empresa.com.mx`).join(';');
 assert.equal(VF.correos(largo).nivel, 'error');
 
 console.log('validacion_fiscal_test: OK');
