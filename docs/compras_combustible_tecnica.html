@@ -162,7 +162,7 @@ Excel de septiembre contra la base) está en <code>docs/plan_automatizar_compras
   <tr><td><b>Programación de recepciones</b><br><code>/supply/scheduling</code></td><td>Transportista y terminal de cada entrega.</td><td>Ya existe; falta uso diario</td></tr>
   <tr><td><b>Conciliación Petrotal</b><br><code>/supply/petrotal_reconciliation</code></td><td>Factura del proveedor real ↔ factura de Petrotal a la estación.</td><td>En curso</td></tr>
   <tr><td><b>Dashboard de ventas</b><br><code>/merma/ventas</code></td><td>Margen, estímulo y precio por proveedor; ya lee las mismas facturas.</td><td>Ya existe</td></tr>
-  <tr><td><b>Remisiones por correo</b><br><code>correoFacturas</code></td><td>BOL, transportista, placas, litros y fecha de cada remisión, ligados a la factura (§17).</td><td>Por construir</td></tr>
+  <tr><td><b>Remisiones por correo</b><br><code>ApiER + NAS + OCR</code></td><td>BOL, transportista, placas, litros y fecha de cada remisión, ligados a la factura (§17).</td><td>Por construir</td></tr>
   <tr><td><b>Registro de compras</b><br><code>/compras/registro</code></td><td>La pantalla nueva: junta todo lo anterior en un renglón por factura.</td><td>Por construir</td></tr>
 </table>
 
@@ -219,7 +219,7 @@ Excel de septiembre contra la base) está en <code>docs/plan_automatizar_compras
   <tr><td>JS / CSS</td><td><code>_assets/js/compras.js</code>, <code>_assets/css/compras.css</code></td><td>DataTables sin paginación, edición en celda, perfiles, renglón de hoy en verde.</td></tr>
   <tr><td>SQL</td><td><code>docs/sql/compras_permisos.sql</code>, <code>compras_captura_schema.sql</code>, <code>compras_captura_columnas.sql</code></td><td>Permisos y tablas de captura (ya corridos).</td></tr>
   <tr><td>Menú</td><td><code>views/layouts/sidebar.html</code></td><td>Compras → "Registro de compras" (permiso 112).</td></tr>
-  <tr><td>Remisiones por correo</td><td><code>correoFacturas/</code> (servidor 192.168.0.3) y tabla nueva (§17)</td><td>Por construir.</td></tr>
+  <tr><td>Remisiones por correo</td><td>ApiER <code>api/facturas_correo/</code> (molde), NAS y tabla nueva (§17)</td><td>Por construir; descubrimiento y prueba de OCR hechos.</td></tr>
 </table>
 
 <h2>8. Permisos</h2>
@@ -356,21 +356,50 @@ coincide 97.6 % de los renglones; faltan vencimiento, precio de venta y los reng
 <p style="color:var(--gris)">Las horas de hoy y la hora en que llegan las remisiones las dio Abastos el 5-nov-2026 (alrededor de hora y media en facturas, hora y media en remisiones, 3 a 4 horas bajando todo); se toman 22 días hábiles al mes. Las horas con el sistema son estimación y se confirman en el mes en paralelo.</p>
 
 <h2 class="ambar">17. Remisiones por correo</h2>
-<p>Hoy alguien de Abastos baja las remisiones del correo y teclea proveedor, estación, fecha de descarga, producto,
-litros, monto, BOL, transportista y placas. Las remisiones llegan al buzón <code>jesus.olivas@</code>, el mismo de donde
-<code>correoFacturas</code> ya descarga las facturas de Petrotal y MGC. La propuesta es que el mismo ciclo (<code>run_ciclo.py</code>, cada 15 minutos)
-también descargue las remisiones, las ligue a su factura y deje los datos en el registro.</p>
+<p>Hoy el operador de Abastos baja las remisiones del correo y teclea proveedor, estación, fecha de descarga, producto,
+litros, monto, BOL, transportista y placas. La propuesta es que el sistema las descargue del buzón <code>jesus.olivas@</code>,
+las guarde en la NAS, lea su contenido (OCR) y las ligue a su factura, <b>con el mismo molde que ya usan las facturas</b>
+(ApiER <code>api/facturas_correo/</code>) pero con método propio: otro catálogo de remitentes, otro lector y otra tabla.
+<b>El correo es solo la fuente de arranque</b>: después las remisiones saldrán de las que las estaciones suben en Mis Recepciones.</p>
+
+<h3>Lo que se comprobó en noviembre 2026 (prueba de solo lectura; no se construyó ni se guardó nada)</h3>
+<table>
+  <tr><th style="width:25%">Tema</th><th>Hallazgo</th></tr>
+  <tr><td><b>Quién las manda</b></td><td>Las estaciones, desde su cuenta <code>@totalgas.com</code> (= <code>TG.dbo.Estaciones.email</code>, 39 activas), al grupo <b>«Remisiones Abastos» <code>remisiones@totalgas.com</code></b>, que llega a <code>jesus.olivas@</code>. Un correo = el juego de documentos de <b>una pipa</b>. Asunto casi siempre <code>BOL 1269667</code>.</td></tr>
+  <tr><td><b>Cobertura</b></td><td>1–26 nov: 832 correos de 38 de las 39 estaciones; 824 con adjunto (1,535 PDF, 117 PNG, 17 JPG, 1 XML). Contra las 1,243 recepciones de ControlGas del mismo periodo: 62 % con BOL exacto, 36 % solo estación y fecha, 2 % sin correo. Mis Recepciones solo tiene el 13 %, por eso el correo sirve de arranque.</td></tr>
+  <tr><td><b>Formato</b></td><td>El 100 % de los PDF revisados son <b>escaneos sin capa de texto</b>: el OCR es obligatorio. Los nombres de archivo no sirven (<code>Document_261126_…</code>, <code>[Untitled]_…</code>).</td></tr>
+  <tr><td><b>Tipos de documento</b></td><td>Carta Porte / comprobante de carga de Pemex (fecha, embarque, pedido, producto, litros naturales y a 20 °C, placas, operador, porteador, BOL en Observaciones), «tira» de la estación (volumen inicio/fin), remisión del proveedor, CFDI Carta Porte del transportista, incremento, y <b><code>image.png</code> = captura de pantalla de ControlGas «Registro de Compras»</b> (115 en 91 correos; se leen, no se descartan).</td></tr>
+  <tr><td><b>Qué no es remisión</b></td><td>Otros correos con «remisión/BOL» en el buzón son facturas de proveedores (ya las baja el ciclo de facturas), respuestas de personas con la factura PDF+XML, o temas de NC, cierre y fletes. El catálogo de remitentes de remisiones son <b>las estaciones</b>, no las personas.</td></tr>
+  <tr><td><b>Estaciones difíciles</b></td><td>El BOL del asunto casi no sirve en Ejército (5 %), Villa Ahumada (4 %), San Rafael y Puertecito (0 %): nombran distinto o mandan capturas de pantalla. Para ellas el BOL sale del adjunto.</td></tr>
+</table>
+
+<h3>Lectura: OCR híbrido</h3>
+<p>Prueba con 60 correos (128 archivos, 40 de estaciones difíciles) midiendo si se encuentra el BOL que tiene ControlGas para esa estación (±2 días; con un control contra otra estación: 0 falsos positivos):</p>
+<table>
+  <tr><th>Método</th><th class="n">BOL hallado (de 60)</th><th>Observación</th></tr>
+  <tr><td>Tesseract 5 (texto completo, español)</td><td class="n">51 (85 %)</td><td>Local, gratis, ~2.5 s por archivo; no clasifica ni ordena campos.</td></tr>
+  <tr><td>Gemini (imagen → campos)</td><td class="n">37 (62 %)</td><td>4 de 128 respuestas con JSON roto.</td></tr>
+  <tr><td>Gemini sobre el texto de Tesseract</td><td class="n">43 (72 %)</td><td>19 de 128 con JSON roto: no conviene.</td></tr>
+  <tr><td><b>Tesseract + Gemini</b></td><td class="n"><b>53 (88 %)</b></td><td>Diseño elegido.</td></tr>
+</table>
+<ul>
+  <li><b>Tesseract</b> guarda el texto completo de cada documento (así «todos los campos» quedan disponibles y se puede reprocesar sin volver a leer el escaneo) y aporta candidatos de BOL.</li>
+  <li><b>Gemini</b> (con la imagen) clasifica el tipo de documento y devuelve los campos estructurados, con reintento cuando el JSON viene roto. Tipos detectados en la muestra: carta porte Pemex 80, tira 38, CFDI carta porte 22, remisión de proveedor 16, captura de ControlGas 15, incremento 8, otro 9.</li>
+  <li><b>BOL candidato = unión</b> de asunto, Tesseract y Gemini; solo se da por bueno si coincide con la factura o con la recepción de ControlGas; si no, queda «por revisar».</li>
+  <li><b>Litros</b>: la prueba no alcanzó a medirlos (en el control, Tesseract coincidía por casualidad 24 de 53). Hacen falta un lector por tipo de documento y una muestra etiquetada a mano antes de confiar en ellos; hasta entonces los litros leídos se muestran como «por revisar».</li>
+  <li>De los 7 correos sin BOL (4 de Travel Center, Picachos, Ejército, Clara), lo más probable es que ControlGas tenga el BOL capturado distinto (<code>10001</code>, «carga manual») o en otra fecha, y no una falla del OCR. Si se confirma, la remisión leída sirve para auditar esas capturas (no verificado documento por documento).</li>
+</ul>
+
+<h3>Pasos</h3>
 <table>
   <tr><th style="width:25%">Paso</th><th>Qué hace</th></tr>
-  <tr><td><b>1. Descargar</b></td><td>Busca en el buzón los correos de remisión (remitentes y formato por definir) y guarda el archivo en <code>attachments/remisiones/&lt;proveedor&gt;/</code>, sin duplicar (por <code>Message-ID</code> y hash).</td></tr>
-  <tr><td><b>2. Leer</b></td><td>Extrae BOL, fecha, producto, litros, transportista y placas del PDF (texto del PDF o, si es imagen, lectura OCR). Lo que no pueda leer con certeza queda como «por revisar», nunca inventado.</td></tr>
-  <tr><td><b>3. Ligar</b></td><td>Cruza con la factura por BOL (<code>FacturasRecibidas.Remision</code>) y, si no hay, por proveedor + estación + fecha + litros. Si no hay factura aún, la remisión queda esperando.</td></tr>
-  <tr><td><b>4. Mostrar</b></td><td>El registro toma BOL, placas, transportista y fecha de descarga de la remisión, y avisa «factura sin remisión», «remisión sin factura» y «BOL no coincide». Lo capturado a mano sigue ganando.</td></tr>
+  <tr><td><b>1. Descargar</b></td><td>Cuenta de servicio de Google (solo lectura) en ApiER, igual que las facturas. Busca en <code>jesus.olivas@</code> los correos de las estaciones y guarda los adjuntos en la NAS (<code>combustible\remisiones\&lt;estación&gt;\…</code>) con escritura atómica. Control de duplicados por buzón + id de Gmail; como no hay UUID, la llave del documento es hash del archivo + id del correo + BOL.</td></tr>
+  <tr><td><b>2. Leer</b></td><td>OCR híbrido (arriba). Guarda el texto completo y los campos necesarios: tipo de documento, BOL, fecha, producto, litros, placas, transportista, estación. Lo que no se lee con certeza queda «por revisar», nunca inventado.</td></tr>
+  <tr><td><b>3. Ligar</b></td><td>Cruza con la factura por BOL (<code>FacturasRecibidas.Remision</code>) y con la recepción de ControlGas (<code>referencia</code> = «factura / BOL») de la misma estación. Si no hay factura aún, la remisión queda esperando.</td></tr>
+  <tr><td><b>4. Mostrar</b></td><td>El registro toma BOL, placas, transportista y fecha de descarga de la remisión y avisa «factura sin remisión», «remisión sin factura» y «BOL no coincide». Lo capturado a mano sigue ganando.</td></tr>
 </table>
 <div class="nota">
-<b>Por definir antes de construir</b> (ver el spec): remitentes y formato de cada remisión (PDF de texto, escaneado o foto),
-si una misma remisión puede traer varios BOL, y qué proveedores mandan remisión por correo. No se ha entrado al buzón para
-revisar los correos; falta autorización para hacerlo.
+<b>Por definir antes de construir</b>: litros (lector por tipo y muestra etiquetada), cuántos días después de la descarga salta «factura sin remisión», y qué se hace con las estaciones que mandan solo capturas de pantalla. El buzón se leyó únicamente en modo lectura (27-nov-2026); no se descargó ningún adjunto a la NAS ni se escribió en la base.
 </div>
 
 <h2>18. Punto de partida: cruce contra el Excel de Abastos (5-nov-2026)</h2>
@@ -396,7 +425,7 @@ revisar los correos; falta autorización para hacerlo.
   <li><b>Vencimiento</b>: confirmar con Abastos la fecha base y el ajuste de día hábil por proveedor (§18).</li>
   <li><b>Precios de venta</b> faltantes en <code>FuelPrices</code> para las estaciones de §18.</li>
   <li><b>Reesa</b>: Alberto no está seguro de que llegue por correo ni de cómo se integra al pago a proveedores.</li>
-  <li>Remitentes y formato de las remisiones en <code>jesus.olivas@</code> (§17).</li>
+  <li>Litros de las remisiones: lector por tipo de documento y muestra etiquetada (§17). Remitentes y formato ya conocidos.</li>
   <li>¿Qué análisis se hacen con las tablas dinámicas? Si alguno se usa mucho, conviene tenerlo en pantalla además del export.</li>
   <li>Moratorios, falsos fletes y notas de crédito: hoy son hojas aparte. Falsos fletes ya llegan como CFDI y las NC
   tienen carga masiva; moratorios está por definir.</li>
