@@ -14,6 +14,8 @@
     #tabla_altas tbody tr:hover td { background:#f1f6fd; }
     #tabla_altas tbody tr:last-child td { border-bottom:0; }
     .ba-pagan { max-width:16rem; color:#64748b; font-size:.78rem !important; }
+    #tabla_altas thead tr.filter th { background:#e2e8f0; padding:3px 6px; position:static; }
+    #tabla_altas thead tr.filter th input { font-size:.7rem; padding:2px 5px; height:22px; border-radius:3px; border:1px solid #cbd5e1; width:100%; min-width:4.5rem; box-sizing:border-box; text-transform:none; letter-spacing:0; font-weight:400; }
     .ba-varios { cursor:help; color:#1C4587; font-weight:600; border-bottom:1px dotted #1C4587; }
     .ba-proveedor { font-weight:600; color:#0f172a !important; max-width:22rem; }
     .ba-fecha { white-space:nowrap; color:#475569; }
@@ -68,7 +70,7 @@
                 <tr class="ba-fila" data-status="{{ s.status }}" data-busqueda="{{ s.busqueda }}">
                     <td class="ba-folio" data-order="{{ s.id }}">#{{ s.id }}</td>
                     <td class="ba-fecha" data-order="{{ s.fecha_solicitud|date('Y-m-d') }}">{{ s.fecha_solicitud|date('d/m/Y') }}</td>
-                    <td class="ba-pagan">{% if s.pagadores|length > 1 %}<span class="ba-varios" title="{{ s.pagadores|map(p => '• ' ~ p.den)|join("\n") }}">Varios ({{ s.pagadores|length }})</span>{% else %}{{ s.pagadores|map(p => p.den)|join(', ') }}{% endif %}</td>
+                    <td class="ba-pagan" data-search="{{ s.pagadores|map(p => p.den)|join(', ') }}">{% if s.pagadores|length > 1 %}<span class="ba-varios" title="{{ s.pagadores|map(p => '• ' ~ p.den)|join("\n") }}">Varios ({{ s.pagadores|length }})</span>{% else %}{{ s.pagadores|map(p => p.den)|join(', ') }}{% endif %}</td>
                     <td class="ba-proveedor">{{ s.proveedor }}</td>
                     <td>{{ s.banco }}</td>
                     <td class="ba-cuenta">{{ s.num_cuenta }}</td>

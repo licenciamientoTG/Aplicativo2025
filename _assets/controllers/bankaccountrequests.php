@@ -68,11 +68,11 @@ class BankAccountRequests
         return (int) $req['user_id'] === $this->user_id();
     }
 
-    /** Todos ven todas las solicitudes; solo el borrador (sin carátula) es privado de su dueño. */
+    /** Todos ven todas las solicitudes; el borrador (sin carátula) es privado de su dueño, salvo Tesorería (109). */
     private function puede_ver(array $req): bool
     {
         if ((int) $req['status'] === BankAccountRequestsModel::ST_BORRADOR) {
-            return $this->es_propia($req);
+            return $this->es_propia($req) || $this->es_tesoreria();
         }
         return true;
     }
@@ -116,11 +116,11 @@ class BankAccountRequests
     /* Vistas                                                                */
     /* ===================================================================== */
 
-    /** Lista: todas (los borradores, solo los propios). Los filtros corren en el navegador. */
+    /** Lista: todas (los borradores, solo los propios; Tesorería ve los de todos). Los filtros corren en el navegador. */
     public function index(): void
     {
         $es_tesoreria = $this->es_tesoreria();
-        $solicitudes  = $this->model->list_visible($this->user_id());
+        $solicitudes  = $this->model->list_visible($this->user_id(), $es_tesoreria);
         $pagadores    = $this->pagadores_seguro(array_column($solicitudes, 'id'));
         foreach ($solicitudes as &$s) {
             $s['es_propia'] = $this->es_propia($s);

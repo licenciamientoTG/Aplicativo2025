@@ -76,9 +76,12 @@ class BankAccountRequestsModel extends Model
         return $r ? $r[0] : null;
     }
 
-    /** Todas las solicitudes; el borrador es siempre privado de su dueño. */
-    public function list_visible(int $userId): array
+    /** Todas las solicitudes; el borrador es privado de su dueño salvo que $verBorradores (Tesorería, 109). */
+    public function list_visible(int $userId, bool $verBorradores = false): array
     {
+        if ($verBorradores) {
+            return $this->sql->select(self::SELECT . ' WHERE r.is_deleted = 0 ORDER BY r.id DESC;') ?: [];
+        }
         $where = ' WHERE r.is_deleted = 0 AND (r.status <> ' . self::ST_BORRADOR . ' OR r.user_id = ?)';
         return $this->sql->select(self::SELECT . $where . ' ORDER BY r.id DESC;', [$userId]) ?: [];
     }

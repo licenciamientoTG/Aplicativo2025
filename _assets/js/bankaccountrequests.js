@@ -64,6 +64,7 @@
             pageLength: 25,
             lengthMenu: [[25, 50, 100, -1], [25, 50, 100, 'Todas']],
             autoWidth: false,
+            orderCellsTop: true,   // el orden se engancha a la primera fila de la cabecera (la segunda lleva los filtros)
             columnDefs: [{ targets: [2, 8], orderable: false }],
             language: {
                 lengthMenu: 'Ver _MENU_ por página',
@@ -77,6 +78,18 @@
             pagingType: 'simple_numbers',
             initComplete: function () { $('#ba_pie').append($('.ba-pie-dt')); }
         });
+        // Fila de filtros por columna (mismo patrón que tesoreria/bank_accounts); Acciones no lleva filtro
+        var $filtros = $('<tr class="filter"></tr>');
+        $tabla.find('thead tr:first th').each(function () {
+            var titulo = $(this).text().trim();
+            $filtros.append(titulo === 'Acciones'
+                ? '<th></th>'
+                : '<th><input type="text" class="form-control form-control-sm" placeholder="' + escHtml(titulo) + '"></th>');
+        });
+        $tabla.find('thead').append($filtros);
+        $filtros.find('input')
+            .on('keyup change', function () { dt.column($(this).parent().index()).search(this.value).draw(); })
+            .on('click', function (e) { e.stopPropagation(); });
         var timer = null;
         $('#ba_tabs').on('click', 'button', function () {
             status = String($(this).data('status'));
