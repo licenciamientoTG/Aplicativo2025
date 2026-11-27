@@ -537,15 +537,15 @@ class ClientesModel extends Model{
     }
 
     /**
-     * Última factura (DocumentosC tip=3, no cancelada) de cada cliente, en
+     * Última factura (DocumentosC tip=3, incluidas las canceladas) de cada cliente, en
      * cualquier estación: el cliente de contado puede facturar fuera de la
      * estación donde se dio de alta. Usa IX_DocumentosCOpr (codopr, fch, codgas)
-     * con un TOP 1 por cliente. Los códigos (enteros ya validados) se cargan a
+     * (con pista explícita) y un TOP 1 por cliente. Los códigos (enteros ya validados) se cargan a
      * una tabla temporal en bloques de 1000 (límite de VALUES); SG12 está en
      * compatibilidad 110, así que no hay STRING_SPLIT ni OPENJSON.
      *
      * @param int[] $codigos
-     * @return array<int, array{Factura:int, Fecha:string, CodigoEstacion:int, Estacion:string}> por código de cliente;
+     * @return array<int, array{Factura:int, Fecha:string, CodigoEstacion:int, Estacion:string, Cancelada:bool}> por código de cliente;
      *         false = falló la consulta (la búsqueda de clientes sigue funcionando sin la columna)
      */
     public function get_ultima_factura_por_cliente(array $codigos) : array|false {
@@ -562,19 +562,30 @@ class ClientesModel extends Model{
             DROP TABLE IF EXISTS #k;
             CREATE TABLE #k (cod int NOT NULL PRIMARY KEY);
             {$inserts}
-            SELECT k.cod, f.nro, f.codgas,
-                   CONVERT(varchar(10), DATEADD(day, f.fch - 1, '19000101'), 23) AS fecha,
-                   CASE WHEN f.codgas = 0 THEN 'Corporativo' ELSE e.Nombre END AS estacion
+            -- 1) Última factura por cliente. INDEX(IX_DocumentosCOpr) explícito: sin
+            --    la pista el optimizador cambia de plan según el filtro (de ~1 s a
+            --    45-80 s con 5000 clientes, medido 2026-11-27). txtref (text) se lee
+            --    después, solo para las facturas elegidas.
+            DROP TABLE IF EXISTS #f;
+            SELECT k.cod, f.nro, f.codgas, f.fch
+              INTO #f
               FROM #k k
              CROSS APPLY (
                    SELECT TOP 1 c.nro, c.codgas, c.fch
-                     FROM [SG12].dbo.DocumentosC c WITH (NOLOCK)
+                     FROM [SG12].dbo.DocumentosC c WITH (NOLOCK, INDEX(IX_DocumentosCOpr))
                     WHERE c.codopr = k.cod AND c.tip = 3
-                      AND ISNULL(CAST(c.txtref AS varchar(20)), '') NOT LIKE '@N:CANCELAD%'
                     ORDER BY c.fch DESC, c.nro DESC
-             ) f
+             ) f;
+
+            -- 2) Cancelada o no, solo para esas facturas (por PK)
+            SELECT f.cod, f.nro, f.codgas,
+                   CONVERT(varchar(10), DATEADD(day, f.fch - 1, '19000101'), 23) AS fecha,
+                   CASE WHEN f.codgas = 0 THEN 'Corporativo' ELSE e.Nombre END AS estacion,
+                   CASE WHEN CAST(c.txtref AS varchar(20)) LIKE '@N:CANCELAD%' THEN 1 ELSE 0 END AS cancelada
+              FROM #f f
+              JOIN [SG12].dbo.DocumentosC c WITH (NOLOCK) ON c.nro = f.nro AND c.tip = 3 AND c.codgas = f.codgas
               LEFT JOIN [TG].[dbo].[Estaciones] e ON e.Codigo = f.codgas;
-            DROP TABLE IF EXISTS #k;";
+            DROP TABLE IF EXISTS #k, #f;";
         $rs = $this->sql->selectSafe($query);
         if ($rs === false) return false;
 
@@ -585,9 +596,117 @@ class ClientesModel extends Model{
                 'Fecha'          => $r['fecha'],
                 'CodigoEstacion' => (int)$r['codgas'],
                 'Estacion'       => $r['estacion'] ?? ('Estación ' . $r['codgas']),
+                'Cancelada'      => (bool)$r['cancelada'],
             ];
         }
         return $out;
+    }
+
+    /** Claves de c_UsoCFDI que aparecen en facturas de mostrador (las demás se muestran solo con la clave). */
+    private const USO_CFDI = [
+        'G01' => 'Adquisición de mercancías',
+        'G02' => 'Devoluciones, descuentos o bonificaciones',
+        'G03' => 'Gastos en general',
+        'I08' => 'Otra maquinaria y equipo',
+        'S01' => 'Sin efectos fiscales',
+        'CP01' => 'Pagos',
+        'P01' => 'Por definir',
+    ];
+
+    private const METODO_PAGO = [
+        'PUE' => 'Pago en una sola exhibición',
+        'PPD' => 'Pago en parcialidades o diferido',
+    ];
+
+    /**
+     * Detalle completo de una factura de venta (DocumentosC tip=3 + conceptos
+     * de Documentos). Importes en Documentos vienen en centavos; el importe de
+     * cada concepto (mto) ya incluye IEPS y el IVA va aparte (mtoiva). La línea
+     * nroitm = -1 es el renglón contable del IVA, no un concepto. Las facturas
+     * canceladas no conservan conceptos en Documentos.
+     *
+     * @return array|null|false null = no existe; false = falló la consulta
+     */
+    public function get_factura_detalle(int $codgas, int $nro) : array|null|false {
+        $cab = $this->sql->selectSafe("
+            SELECT c.nro, c.codgas, c.codopr,
+                   CONVERT(varchar(10), DATEADD(day, c.fch - 1, '19000101'), 23) AS fecha,
+                   CONVERT(varchar(10), DATEADD(day, c.vto - 1, '19000101'), 23) AS vencimiento,
+                   CONVERT(varchar(19), c.lognew, 120) AS creada,
+                   CONVERT(varchar(19), c.logfch, 120) AS modificada,
+                   CAST(c.txtref AS nvarchar(1000)) AS txtref,
+                   c.satuid, c.satuso, c.satmdp,
+                   CASE WHEN c.codgas = 0 THEN 'Corporativo' ELSE e.Nombre END AS estacion,
+                   cl.den AS cliente, cl.rfc AS cliente_rfc,
+                   em.den AS empresa, em.rfc AS empresa_rfc
+              FROM [SG12].dbo.DocumentosC c WITH (NOLOCK)
+              LEFT JOIN [TG].[dbo].[Estaciones] e ON e.Codigo = c.codgas
+              LEFT JOIN [SG12].dbo.Clientes cl WITH (NOLOCK) ON cl.cod = c.codopr
+              LEFT JOIN [SG12].dbo.Empresas em WITH (NOLOCK) ON em.cod = c.codemp
+             WHERE c.nro = ? AND c.tip = 3 AND c.codgas = ?;", [$nro, $codgas]);
+        if ($cab === false) return false;
+        if (!$cab) return null;
+        $c = $cab[0];
+
+        // PK_Documentos explícito: Documentos es un heap de ~112M filas y sin la pista el optimizador escanea
+        $lineas = $this->sql->selectSafe("
+            SELECT d.nroitm, d.codprd, p.den AS producto, d.can, d.pre,
+                   d.mto / 100.0 AS importe, d.mtoiva / 100.0 AS iva, d.mtoiie / 100.0 AS ieps
+              FROM [SG12].dbo.Documentos d WITH (NOLOCK, INDEX(PK_Documentos))
+              LEFT JOIN [SG12].dbo.Productos p WITH (NOLOCK) ON p.cod = d.codprd
+             WHERE d.nro = ? AND d.tip = 3 AND d.codgas = ?
+             ORDER BY d.nroitm;", [$nro, $codgas]);
+        if ($lineas === false) return false;
+
+        $conceptos = [];
+        $subtotal = $iva = $ieps = $total = 0.0;
+        foreach ($lineas as $l) {
+            $total += (float)$l['importe'];
+            if ((int)$l['nroitm'] <= 0) continue;
+            $conceptos[] = [
+                'Producto' => $l['producto'] !== null ? trim($l['producto']) : ('Producto ' . $l['codprd']),
+                'Cantidad' => round((float)$l['can'], 3),
+                'Precio'   => round((float)$l['pre'], 4),
+                'Importe'  => round((float)$l['importe'], 2),
+                'IVA'      => round((float)$l['iva'], 2),
+                'IEPS'     => round((float)$l['ieps'], 2),
+            ];
+            $subtotal += (float)$l['importe'];
+            $iva      += (float)$l['iva'];
+            $ieps     += (float)$l['ieps'];
+        }
+
+        $txtref = trim((string)$c['txtref']);
+        $cancelada = stripos($txtref, '@N:CANCELAD') === 0;
+        $nota = trim(preg_replace('/^@N:/', '', $txtref));
+        $uso = trim((string)$c['satuso']);
+        $mdp = trim((string)$c['satmdp']);
+
+        return [
+            'Factura'        => (int)$c['nro'],
+            'CodigoEstacion' => (int)$c['codgas'],
+            'Estacion'       => $c['estacion'] ?? ('Estación ' . $c['codgas']),
+            'Fecha'          => $c['fecha'],
+            'Vencimiento'    => $c['vencimiento'],
+            'Creada'         => $c['creada'],
+            'Modificada'     => $c['modificada'],
+            'CodigoCliente'  => (int)$c['codopr'],
+            'Cliente'        => $c['cliente'] !== null ? trim($c['cliente']) : null,
+            'ClienteRFC'     => $c['cliente_rfc'] !== null ? trim($c['cliente_rfc']) : null,
+            'Empresa'        => $c['empresa'] !== null ? trim($c['empresa']) : null,
+            'EmpresaRFC'     => $c['empresa_rfc'] !== null ? trim($c['empresa_rfc']) : null,
+            'UUID'           => trim((string)$c['satuid']) ?: null,
+            'UsoCFDI'        => $uso === '' ? null : trim($uso . ' - ' . (self::USO_CFDI[$uso] ?? ''), ' -'),
+            'MetodoPago'     => $mdp === '' ? null : trim($mdp . ' - ' . (self::METODO_PAGO[$mdp] ?? ''), ' -'),
+            'Cancelada'      => $cancelada,
+            'Nota'           => $nota === '' ? null : $nota,
+            'Conceptos'      => $conceptos,
+            // Sin conceptos (cancelada) no hay desglose: el total sale de lo que quede en Documentos
+            'Subtotal'       => round($subtotal, 2),
+            'IVA'            => round($iva, 2),
+            'IEPS'           => round($ieps, 2),
+            'Total'          => round($total, 2),
+        ];
     }
 
     /** Valores actuales (den/rfc/regfis/codpos/correo/codest) de un cliente en la estación, para capturar el "anterior" antes de editar. */

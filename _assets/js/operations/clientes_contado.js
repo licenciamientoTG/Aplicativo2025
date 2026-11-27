@@ -117,8 +117,12 @@ let clientes_contado_table = $('#clientes_contado_table').DataTable({
                     return `<span class="vf-vacio">${data === null ? 'Sin facturas' : 'No disponible'}</span>`;
                 }
                 if (type === 'sort') return data.Fecha + ' ' + data.Factura;
-                if (type !== 'display') return `${data.Fecha} ${data.Factura} (${data.Estacion})`;
-                return `<span class="uf-factura">${esc(data.Fecha)} · ${esc(data.Factura)}</span>` +
+                const cancelada = data.Cancelada ? ' CANCELADA' : '';
+                if (type !== 'display') return `${data.Fecha} ${data.Factura} (${data.Estacion})${cancelada}`;
+                return `<a href="#" class="uf-factura btn-factura-contado${data.Cancelada ? ' uf-cancelada' : ''}" ` +
+                       `data-codgas="${esc(data.CodigoEstacion)}" data-nro="${esc(data.Factura)}" ` +
+                       `title="Ver detalle de la factura">${esc(data.Fecha)} · ${esc(data.Factura)}</a>` +
+                       (data.Cancelada ? ' <span class="badge bg-danger">Cancelada</span>' : '') +
                        `<span class="uf-estacion">(${esc(data.Estacion)})</span>`;
             }
         },
@@ -626,4 +630,120 @@ $formEdit.on('submit', function (e) {
             $btnGuardar.prop('disabled', false).text('Guardar');
         }
     });
+});
+
+// ── Modal: detalle de la última factura ──
+const modalFacturaEl = document.getElementById('modal_factura_contado');
+const $facturaBody = $('#factura_contado_body');
+let facturaDetalleXhr = null;
+
+const fmtMoneda = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+const fmtCantidad = new Intl.NumberFormat('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+const fmtPrecio = new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+
+function campoFactura(etiqueta, valor, extraClase) {
+    const texto = (valor == null || valor === '') ? '<span class="vf-vacio">—</span>' : esc(valor);
+    return `<dt class="col-sm-4">${esc(etiqueta)}</dt><dd class="col-sm-8${extraClase ? ' ' + extraClase : ''}">${texto}</dd>`;
+}
+
+function renderDetalleFactura(f) {
+    const estado = f.Cancelada
+        ? '<span class="badge bg-danger">Cancelada</span>'
+        : '<span class="badge bg-success">Vigente</span>';
+    const cliente = [f.CodigoCliente, f.Cliente].filter(v => v != null && v !== '').join(' - ');
+    const empresa = [f.Empresa, f.EmpresaRFC ? `(${f.EmpresaRFC})` : ''].filter(Boolean).join(' ');
+
+    let html = `<div class="mb-2">${estado}</div>`;
+    if (f.Cancelada && f.Nota) {
+        html += `<div class="alert alert-danger small py-2" role="note">${esc(f.Nota)}</div>`;
+    }
+    html += '<dl class="row small mb-3">' +
+        campoFactura('Folio', f.Factura) +
+        campoFactura('Estación', f.Estacion) +
+        campoFactura('Fecha', f.Fecha) +
+        campoFactura('Vencimiento', f.Vencimiento) +
+        campoFactura('Cliente', cliente) +
+        campoFactura('RFC del cliente', f.ClienteRFC) +
+        campoFactura('Emisor', empresa) +
+        campoFactura('UUID (folio fiscal)', f.UUID, 'font-monospace') +
+        campoFactura('Uso CFDI', f.UsoCFDI) +
+        campoFactura('Método de pago', f.MetodoPago) +
+        (!f.Cancelada && f.Nota ? campoFactura('Nota', f.Nota) : '') +
+        campoFactura('Registrada', f.Creada) +
+        campoFactura('Última modificación', f.Modificada) +
+        '</dl>';
+
+    if (!f.Conceptos.length) {
+        html += `<p class="vf-vacio small mb-0">${f.Cancelada
+            ? 'La factura cancelada ya no conserva sus conceptos en el sistema.'
+            : 'La factura no tiene conceptos registrados.'}</p>`;
+        return html;
+    }
+
+    const filas = f.Conceptos.map(c => `<tr>
+            <td>${esc(c.Producto)}</td>
+            <td class="text-end">${fmtCantidad.format(c.Cantidad)}</td>
+            <td class="text-end">${fmtPrecio.format(c.Precio)}</td>
+            <td class="text-end">${fmtMoneda.format(c.IEPS)}</td>
+            <td class="text-end">${fmtMoneda.format(c.Importe)}</td>
+            <td class="text-end">${fmtMoneda.format(c.IVA)}</td>
+        </tr>`).join('');
+
+    html += `<div class="table-responsive">
+        <table class="table table-sm table-striped small mb-0">
+            <caption class="small">Importe incluye IEPS; el IVA se desglosa aparte.</caption>
+            <thead><tr>
+                <th scope="col">Producto</th><th scope="col" class="text-end">Cantidad</th>
+                <th scope="col" class="text-end">Precio</th><th scope="col" class="text-end">IEPS</th>
+                <th scope="col" class="text-end">Importe</th><th scope="col" class="text-end">IVA</th>
+            </tr></thead>
+            <tbody>${filas}</tbody>
+            <tfoot>
+                <tr><th colspan="5" class="text-end">Subtotal</th><td class="text-end">${fmtMoneda.format(f.Subtotal)}</td></tr>
+                <tr><th colspan="5" class="text-end">IVA</th><td class="text-end">${fmtMoneda.format(f.IVA)}</td></tr>
+                <tr><th colspan="5" class="text-end">Total</th><td class="text-end fw-bold">${fmtMoneda.format(f.Total)}</td></tr>
+            </tfoot>
+        </table>
+    </div>`;
+    return html;
+}
+
+$('#clientes_contado_table tbody').on('click', '.btn-factura-contado', function (e) {
+    e.preventDefault();
+    const codgas = $(this).data('codgas');
+    const nro = $(this).data('nro');
+
+    if (facturaDetalleXhr) facturaDetalleXhr.abort();
+    $('#modal_factura_contado_title').text(`Factura ${nro}`);
+    $facturaBody.attr('aria-busy', 'true').html(
+        '<div class="text-center py-4"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Cargando factura…</div>');
+    bootstrap.Modal.getOrCreateInstance(modalFacturaEl).show();
+
+    const xhr = facturaDetalleXhr = $.ajax({
+        url: '/operations/clientes_contado_factura',
+        method: 'POST',
+        data: { codgas: codgas, nro: nro },
+        success: function (response) {
+            if (response.success && response.data) {
+                $facturaBody.html(renderDetalleFactura(response.data));
+            } else {
+                $facturaBody.html(`<div class="alert alert-warning small mb-0">${esc(response.message || 'No se pudo cargar la factura.')}</div>`);
+            }
+        },
+        error: function (xhr, status) {
+            if (status === 'abort') return;
+            $facturaBody.html(`<div class="alert alert-danger small mb-0">${esc(mensajeErrorAjax(xhr, 'cargar la factura'))}</div>`);
+        },
+        complete: function () {
+            if (facturaDetalleXhr === xhr) {
+                facturaDetalleXhr = null;
+                $facturaBody.removeAttr('aria-busy');
+            }
+        }
+    });
+});
+
+modalFacturaEl.addEventListener('hidden.bs.modal', function () {
+    if (facturaDetalleXhr) facturaDetalleXhr.abort();
+    facturaDetalleXhr = null;
 });

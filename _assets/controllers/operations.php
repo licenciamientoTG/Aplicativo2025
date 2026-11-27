@@ -3635,6 +3635,26 @@ class Operations{
         json_output(['data' => (object)$facturas]);
     }
 
+    /** Detalle completo de una factura (encabezado + conceptos) para el modal de "Última factura". */
+    function clientes_contado_factura() : void {
+        $codgas = filter_var($_POST['codgas'] ?? null, FILTER_VALIDATE_INT);
+        $nro    = filter_var($_POST['nro'] ?? null, FILTER_VALIDATE_INT);
+        if ($codgas === false || $codgas < 0 || $nro === false || $nro <= 0) {
+            json_output(['success' => false, 'message' => 'Factura inválida.']);
+            return;
+        }
+        $factura = $this->clientesModel->get_factura_detalle($codgas, $nro);
+        if ($factura === false) {
+            json_output(['success' => false, 'message' => 'No se pudo consultar la factura. Intenta de nuevo.']);
+            return;
+        }
+        if ($factura === null) {
+            json_output(['success' => false, 'message' => 'No se encontró la factura.']);
+            return;
+        }
+        json_output(['success' => true, 'data' => $factura]);
+    }
+
     function edit_cliente_contado() : void {
         $codgas = (int)($_POST['codgas'] ?? 0);
         $cod    = (int)($_POST['cod'] ?? 0);

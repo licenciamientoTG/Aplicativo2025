@@ -17,6 +17,10 @@
     .vf-vacio    { color: #6c757d; font-style: italic; }
     .uf-factura  { white-space: nowrap; }
     .uf-estacion { display: block; color: #6c757d; white-space: nowrap; }
+    .uf-cancelada { text-decoration: line-through; }
+    #factura_contado_body dt { font-weight: 600; color: #495057; }
+    #factura_contado_body dd { margin-bottom: .35rem; word-break: break-word; }
+    #factura_contado_body .table td, #factura_contado_body .table th { white-space: nowrap; }
 </style>
 {% endblock %}
 
@@ -199,6 +203,23 @@
                 <button type="submit" class="btn btn-sm btn-primary" id="btn_guardar_cliente_contado">Guardar</button>
             </div>
         </form>
+    </div>
+</div>
+
+{# ── Modal: detalle de la última factura del cliente ── #}
+<div class="modal fade" id="modal_factura_contado" tabindex="-1"
+     aria-labelledby="modal_factura_contado_title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modal_factura_contado_title">Factura</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body" id="factura_contado_body" aria-live="polite"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
     </div>
 </div>
 
