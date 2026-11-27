@@ -253,7 +253,14 @@ class inventario_urovo {
     private function error(Throwable $e): void {
         if (http_response_code()<400) http_response_code(($e instanceof InvalidArgumentException || $e instanceof DomainException)?422:($e instanceof OutOfBoundsException?404:500));
         $status=http_response_code();
-        if ($status>=500) { error_log('Inventario UROVO API: '.$e::class.': '.$e->getMessage()); $message='Ocurrió un error al procesar el inventario.'; }
+        if ($status>=500) {
+            $detail=$e->getMessage();
+            error_log('Inventario UROVO API: '.$e::class.': '.$detail);
+            $message='Ocurrió un error al procesar el inventario.';
+            if (stripos($detail,'CK_inv_urovo_terminales_ubicacion')!==false || stripos($detail,'CK_urovo_mov_origen')!==false || stripos($detail,'CK_urovo_mov_destino')!==false) {
+                $message='La base de datos aún no permite esta ubicación. Ejecuta docs/sql/alter_urovo_soporte_locations.sql y vuelve a intentar.';
+            }
+        }
         elseif ($status===403) $message='No tienes permiso para esta operación o el token CSRF no es válido.';
         elseif ($status===405) $message='Método no permitido.';
         elseif ($e instanceof InvalidArgumentException || $e instanceof DomainException || $e instanceof OutOfBoundsException) $message=$e->getMessage();
