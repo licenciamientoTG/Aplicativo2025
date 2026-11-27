@@ -536,6 +536,60 @@ class ClientesModel extends Model{
         return $this->sql->selectSafe($query);
     }
 
+    /**
+     * Última factura (DocumentosC tip=3, no cancelada) de cada cliente, en
+     * cualquier estación: el cliente de contado puede facturar fuera de la
+     * estación donde se dio de alta. Usa IX_DocumentosCOpr (codopr, fch, codgas)
+     * con un TOP 1 por cliente. Los códigos (enteros ya validados) se cargan a
+     * una tabla temporal en bloques de 1000 (límite de VALUES); SG12 está en
+     * compatibilidad 110, así que no hay STRING_SPLIT ni OPENJSON.
+     *
+     * @param int[] $codigos
+     * @return array<int, array{Factura:int, Fecha:string, CodigoEstacion:int, Estacion:string}> por código de cliente;
+     *         false = falló la consulta (la búsqueda de clientes sigue funcionando sin la columna)
+     */
+    public function get_ultima_factura_por_cliente(array $codigos) : array|false {
+        $codigos = array_values(array_unique(array_filter(array_map('intval', $codigos))));
+        if (!$codigos) return [];
+
+        $inserts = '';
+        foreach (array_chunk($codigos, 1000) as $bloque) {
+            $inserts .= 'INSERT INTO #k (cod) VALUES (' . implode('),(', $bloque) . ");\n";
+        }
+
+        $query = "
+            SET NOCOUNT ON;
+            DROP TABLE IF EXISTS #k;
+            CREATE TABLE #k (cod int NOT NULL PRIMARY KEY);
+            {$inserts}
+            SELECT k.cod, f.nro, f.codgas,
+                   CONVERT(varchar(10), DATEADD(day, f.fch - 1, '19000101'), 23) AS fecha,
+                   CASE WHEN f.codgas = 0 THEN 'Corporativo' ELSE e.Nombre END AS estacion
+              FROM #k k
+             CROSS APPLY (
+                   SELECT TOP 1 c.nro, c.codgas, c.fch
+                     FROM [SG12].dbo.DocumentosC c WITH (NOLOCK)
+                    WHERE c.codopr = k.cod AND c.tip = 3
+                      AND ISNULL(CAST(c.txtref AS varchar(20)), '') NOT LIKE '@N:CANCELAD%'
+                    ORDER BY c.fch DESC, c.nro DESC
+             ) f
+              LEFT JOIN [TG].[dbo].[Estaciones] e ON e.Codigo = f.codgas;
+            DROP TABLE IF EXISTS #k;";
+        $rs = $this->sql->selectSafe($query);
+        if ($rs === false) return false;
+
+        $out = [];
+        foreach ($rs as $r) {
+            $out[(int)$r['cod']] = [
+                'Factura'        => (int)$r['nro'],
+                'Fecha'          => $r['fecha'],
+                'CodigoEstacion' => (int)$r['codgas'],
+                'Estacion'       => $r['estacion'] ?? ('Estación ' . $r['codgas']),
+            ];
+        }
+        return $out;
+    }
+
     /** Valores actuales (den/rfc/regfis/codpos/correo/codest) de un cliente en la estación, para capturar el "anterior" antes de editar. */
     public function get_cliente_contado_actual(array $est, int $cod) : ?array {
         $inner = "SELECT cod, den, rfc, regfis, codpos, correo, codest FROM [{$est['BaseDatos']}].dbo.Clientes WHERE cod = {$cod}";

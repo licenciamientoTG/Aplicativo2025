@@ -62,7 +62,7 @@ let clientes_contado_table = $('#clientes_contado_table').DataTable({
             className: 'd-none',
             title: 'Clientes_Contado',
             exportOptions: {
-                columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12],
+                columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13],
                 orthogonal: 'export'
             }
         }
@@ -104,6 +104,24 @@ let clientes_contado_table = $('#clientes_contado_table').DataTable({
         },
         {'data': 'Estatus'},
         {'data': 'Registrado'},
+        {
+            // Llega en una segunda petición (cargarUltimasFacturas): undefined = aún cargando
+            'data': 'UltimaFactura',
+            'defaultContent': '',
+            'render': function (data, type) {
+                if (data === undefined) {
+                    return type === 'display' ? '<span class="vf-vacio">Cargando…</span>' : '';
+                }
+                if (data === null || data === false) {
+                    if (type !== 'display') return '';
+                    return `<span class="vf-vacio">${data === null ? 'Sin facturas' : 'No disponible'}</span>`;
+                }
+                if (type === 'sort') return data.Fecha + ' ' + data.Factura;
+                if (type !== 'display') return `${data.Fecha} ${data.Factura} (${data.Estacion})`;
+                return `<span class="uf-factura">${esc(data.Fecha)} · ${esc(data.Factura)}</span>` +
+                       `<span class="uf-estacion">(${esc(data.Estacion)})</span>`;
+            }
+        },
         {
             'data': null,
             'orderable': false,
@@ -207,6 +225,7 @@ $estacion.on('change', function () {
     if (busquedaXhr) {
         busquedaXhr.abort();
     }
+    cancelarCargaFacturas();
 
     clientes_contado_table.clear();
     setMensajeTablaVacia(hayEstacion ? EMPTY_SIN_BUSCAR : EMPTY_SIN_ESTACION);
@@ -225,6 +244,53 @@ $estacion.on('change', function () {
 
 $termino.on('input', limpiarErrorTermino);
 
+// ── Última factura de cada cliente (cualquier estación) ──
+// Petición aparte: con 5000 clientes tarda varios segundos y no debe frenar la tabla.
+let facturasXhr = null;
+
+function cancelarCargaFacturas() {
+    if (facturasXhr) facturasXhr.abort();
+    facturasXhr = null;
+}
+
+function asignarUltimaFactura(porCodigo) {
+    clientes_contado_table.rows().every(function () {
+        const d = this.data();
+        // false = no se pudo consultar; null = el cliente no tiene facturas
+        d.UltimaFactura = porCodigo ? (porCodigo[d.Codigo] || null) : false;
+        this.data(d);
+    });
+    clientes_contado_table.draw(false);
+}
+
+function cargarUltimasFacturas() {
+    cancelarCargaFacturas();
+    const codigos = clientes_contado_table.rows().data().toArray().map(d => d.Codigo);
+    if (!codigos.length) return;
+
+    const xhr = facturasXhr = $.ajax({
+        url: '/operations/clientes_contado_facturas',
+        method: 'POST',
+        data: { codigos: codigos.join(',') },
+        success: function (response) {
+            if (response.error) {
+                alertify.warning(response.error);
+                asignarUltimaFactura(null);
+                return;
+            }
+            asignarUltimaFactura(response.data || {});
+        },
+        error: function (xhr, status) {
+            if (status === 'abort') return; // nueva búsqueda o cambio de estación
+            alertify.warning(mensajeErrorAjax(xhr, 'consultar la última factura de los clientes'));
+            asignarUltimaFactura(null);
+        },
+        complete: function () {
+            if (facturasXhr === xhr) facturasXhr = null;
+        }
+    });
+}
+
 // ── Buscar clientes de contado en la estación seleccionada ──
 function buscarClientesContado() {
     if (busquedaXhr) return; // ya hay una búsqueda en curso
@@ -242,6 +308,7 @@ function buscarClientesContado() {
         return;
     }
 
+    cancelarCargaFacturas();
     $btnBuscar.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> Buscando...');
     $('#clientes_contado_wrapper').addClass('loading').attr('aria-busy', 'true');
 
@@ -254,6 +321,7 @@ function buscarClientesContado() {
             setMensajeTablaVacia(EMPTY_SIN_RESULTADOS);
             if (response.data && response.data.length > 0) {
                 clientes_contado_table.rows.add(response.data.map(validarFila)).draw();
+                cargarUltimasFacturas();
                 if (response.truncated) {
                     alertify.warning(`Se encontraron ${response.data.length} registros (puede haber más; afina la búsqueda para ver el resto)`);
                 } else {

@@ -3618,6 +3618,23 @@ class Operations{
         ]);
     }
 
+    /**
+     * Última factura de cada cliente (en cualquier estación) para la columna
+     * "Última factura". Va en una petición aparte de clientes_contado_search
+     * porque tarda varios segundos con 5000 clientes y no debe frenar la tabla.
+     */
+    function clientes_contado_facturas() : void {
+        // Texto "1,2,3" y no codigos[]: 5000 elementos rebasan max_input_vars (1000)
+        $codigos = array_slice(explode(',', (string)($_POST['codigos'] ?? '')), 0, ClientesModel::CONTADO_MAX_ROWS);
+        $facturas = $this->clientesModel->get_ultima_factura_por_cliente($codigos);
+        if ($facturas === false) {
+            json_output(['data' => [], 'error' => 'No se pudo consultar la última factura de los clientes.']);
+            return;
+        }
+        // Objeto {cod: factura}; json_encode de un arreglo vacío daría [] y el front espera objeto
+        json_output(['data' => (object)$facturas]);
+    }
+
     function edit_cliente_contado() : void {
         $codgas = (int)($_POST['codgas'] ?? 0);
         $cod    = (int)($_POST['cod'] ?? 0);
