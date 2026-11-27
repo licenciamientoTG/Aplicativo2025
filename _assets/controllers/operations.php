@@ -3607,6 +3607,7 @@ class Operations{
                 'Telefono'       => $r['tel'],
                 'Correo'         => $r['correo'],
                 'Estatus'        => $r['estatus'],
+                'CodigoEstatus'  => $r['codest'] === null ? null : (int)$r['codest'],
                 'Registrado'     => $r['logfch'],
             ];
         }
@@ -3625,6 +3626,7 @@ class Operations{
         $regfis = (string)($_POST['regfis'] ?? '');
         $codpos = trim((string)($_POST['codpos'] ?? ''));
         $correo = (string)($_POST['correo'] ?? '');
+        $codestPost = $_POST['codest'] ?? '';
 
         if (!$codgas || !$cod) {
             json_output(['success' => false, 'message' => 'Faltan datos requeridos (estación o código de cliente).']);
@@ -3679,10 +3681,19 @@ class Operations{
         }
         $correo = $vCorreo['normalizado'];
 
-        $result = $this->clientesModel->update_cliente_contado($codgas, $cod, $den, $rfc, $regfis, $codpos, $correo, (int)$_SESSION['tg_user']['Id']);
+        // Estatus: solo los valores conocidos (0 Activo, 1 Suspendido, -1 Deshabilitado)
+        if (!is_numeric($codestPost) || !array_key_exists((int)$codestPost, ClientesModel::CONTADO_ESTATUS)) {
+            json_output(['success' => false, 'message' => 'Elige un estatus válido (Activo, Suspendido o Deshabilitado).']);
+            return;
+        }
+        $codest = (int)$codestPost;
+
+        $result = $this->clientesModel->update_cliente_contado($codgas, $cod, $den, $rfc, $regfis, $codpos, $correo, $codest, (int)$_SESSION['tg_user']['Id']);
         if (!empty($result['success'])) {
             $result['correo'] = $correo; // el front refresca la fila con el valor normalizado
             $result['regfis'] = $regfis;
+            $result['codest'] = $codest;
+            $result['estatus'] = ClientesModel::CONTADO_ESTATUS[$codest];
         }
         json_output($result);
     }

@@ -12,7 +12,7 @@
     .vf-aviso    { color: #8a5300; }  /* ámbar oscuro: contraste AA sobre blanco y renglón gris */
     .vf-generico { color: #6c757d; }
     .vf-correo   { display: block; white-space: nowrap; }
-    #edit_rfc_hint.vf-aviso, #edit_correo_hint.vf-aviso, #edit_regfis_hint.vf-aviso { color: #8a5300; }
+    #edit_rfc_hint.vf-aviso, #edit_correo_hint.vf-aviso, #edit_regfis_hint.vf-aviso, #edit_codest_hint.vf-aviso { color: #8a5300; }
     #edit_regfis_hint.vf-error { color: #b02a37; }
     .vf-vacio    { color: #6c757d; font-style: italic; }
 </style>
@@ -109,7 +109,7 @@
     </div>
 </div>
 
-{# ── Modal: editar razón social / RFC / régimen / código postal / correo ── #}
+{# ── Modal: editar razón social / RFC / régimen / código postal / correo / estatus ── #}
 <div class="modal fade" id="modal_edit_cliente_contado" tabindex="-1"
      aria-labelledby="modal_edit_cliente_contado_title" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -178,6 +178,18 @@
                     <div class="form-text small" id="edit_correo_hint" aria-live="polite">
                         Varios correos se separan con punto y coma (;) o uno por renglón. Puede quedar vacío.
                     </div>
+                </div>
+                <div class="mb-2">
+                    <label class="col-form-label-sm" for="edit_codest">Estatus</label>
+                    <select class="form-control form-control-sm" id="edit_codest" required
+                            aria-describedby="edit_codest_feedback edit_codest_hint">
+                        <option value="">— Elige un estatus —</option>
+                        {% for codigo, nombre in estatus %}
+                        <option value="{{ codigo }}">{{ nombre }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="invalid-feedback" id="edit_codest_feedback"></div>
+                    <div class="form-text small" id="edit_codest_hint" aria-live="polite"></div>
                 </div>
             </div>
             <div class="modal-footer">

@@ -375,6 +375,22 @@ function actualizarHintRegimen() {
     }
 }
 
+// Estatus del cliente al abrir el modal ('' si trae un valor fuera del catálogo)
+let codestOriginal = '';
+
+function actualizarHintEstatus() {
+    const val = $('#edit_codest').val();
+    if (val === '') {
+        setHint($('#edit_codest_hint'), codestOriginal === '' ? 'El estatus actual no es válido; elige uno para poder guardar.' : '', codestOriginal === '' ? 'aviso' : null);
+    } else if (val !== codestOriginal && val === '-1') {
+        setHint($('#edit_codest_hint'), 'Al guardar, el cliente quedará deshabilitado (dado de baja) en la estación y en el corporativo.', 'aviso');
+    } else if (val !== codestOriginal && val === '1') {
+        setHint($('#edit_codest_hint'), 'Al guardar, el cliente quedará suspendido.', 'aviso');
+    } else {
+        setHint($('#edit_codest_hint'), '', null);
+    }
+}
+
 function actualizarHintCorreo() {
     const raw = $('#edit_correo').val();
     const v = VF.correos(raw);
@@ -398,11 +414,15 @@ $('#clientes_contado_table tbody').on('click', '.btn-edit-contado', function () 
     $('#edit_den').val(row.Nombre);
     $('#edit_rfc').val((row.RFC || '').toUpperCase());
     cargarRegimen(row.RegimenFiscal);
+    const codest = row.CodigoEstatus == null ? '' : String(row.CodigoEstatus);
+    codestOriginal = $('#edit_codest option').filter((i, o) => o.value !== '' && o.value === codest).length ? codest : '';
+    $('#edit_codest').val(codestOriginal);
     $('#edit_codpos').val(row.CodigoPostal);
     $('#edit_correo').val(row.Correo || '');
     actualizarHintRfc();
     actualizarHintRegimen();
     actualizarHintCorreo();
+    actualizarHintEstatus();
 
     bootstrap.Modal.getOrCreateInstance(modalEditEl).show();
 });
@@ -426,6 +446,12 @@ $('#edit_rfc').on('input', function () {
     actualizarHintRfc();
     actualizarHintRegimen(); // el régimen depende de si el RFC es de física o moral
 }).on('blur', actualizarHintRfc);
+
+$('#edit_codest').on('change', function () {
+    $(this).removeClass('is-invalid');
+    $('#edit_codest_feedback').text('');
+    actualizarHintEstatus();
+});
 
 $('#edit_regfis').on('change', function () {
     $(this).removeClass('is-invalid');
@@ -462,6 +488,8 @@ function validarClienteContado(p) {
     const vCorreo = VF.correos(p.correo);
     if (vCorreo.nivel === 'error') return { campo: 'correo', mensaje: vCorreo.mensaje };
 
+    if (p.codest === '') return { campo: 'codest', mensaje: 'Elige un estatus (Activo, Suspendido o Deshabilitado)' };
+
     return null;
 }
 
@@ -478,6 +506,7 @@ $formEdit.on('submit', function (e) {
         regfis: $('#edit_regfis').val() || '',
         codpos: $('#edit_codpos').val().trim(),
         correo: $('#edit_correo').val(),
+        codest: $('#edit_codest').val() || '',
     };
 
     limpiarErroresEdicion();
@@ -505,6 +534,8 @@ $formEdit.on('submit', function (e) {
                         d.Nombre = payload.den;
                         d.RFC = payload.rfc;
                         d.RegimenFiscal = response.regfis !== undefined ? response.regfis : payload.regfis;
+                        d.CodigoEstatus = response.codest !== undefined ? response.codest : parseInt(payload.codest, 10);
+                        if (response.estatus) d.Estatus = response.estatus;
                         d.CodigoPostal = payload.codpos;
                         d.Correo = response.correo != null ? response.correo : VF.correos(payload.correo).normalizado;
                         this.data(validarFila(d));
