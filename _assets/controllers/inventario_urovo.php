@@ -2,7 +2,7 @@
 class inventario_urovo {
     private $twig;
     private InventarioUrovoModel $model;
-    private const LOCATIONS = ['estacion','almacen','reparacion','perdida','baja_definitiva'];
+    private const LOCATIONS = ['estacion','almacen','soporte_01','soporte_02','reparacion','perdida','baja_definitiva'];
     private const TERMINAL_TYPES = ['urovo','verifone'];
     private const CONDITIONS = ['operativa','dañada','desconocida','extraviada'];
     private const DAMAGE_TYPES = ['pantalla_quebrada','pantalla_negra','carcasa_exterior','puerto_carga_punta','usb_danado','falta_bateria','touch','modo_seguro','impresora','tapa_impresora','boton_encendido','tapa_bateria','lector_tarjetas','otro'];

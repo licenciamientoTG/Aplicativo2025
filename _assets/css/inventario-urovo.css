@@ -110,6 +110,19 @@
 #urovoInventory .urovo-dashboard-gap span { color:#536e74; font-size:.8rem; font-weight:700; }
 #urovoInventory .urovo-dashboard-gap strong { color:var(--urovo-ink); font-size:2rem; font-variant-numeric:tabular-nums; line-height:1.1; }
 #urovoInventory .urovo-dashboard-gap small { color:#536a70; font-size:.78rem; line-height:1.45; }
+#urovoInventory .urovo-dashboard-inventory-cards { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.75rem; }
+#urovoInventory .urovo-dashboard-inventory-card { display:grid; align-content:center; gap:.18rem; min-width:0; min-height:104px; padding:.85rem 1rem; border:1px solid var(--urovo-line); border-left:3px solid var(--urovo-teal); border-radius:.35rem; background:#fff; }
+#urovoInventory .urovo-dashboard-inventory-card span { color:#536e74; font-size:.78rem; font-weight:700; }
+#urovoInventory .urovo-dashboard-inventory-card strong { color:var(--urovo-ink); font-size:1.8rem; font-variant-numeric:tabular-nums; line-height:1.1; }
+#urovoInventory .urovo-dashboard-inventory-card small { color:#536a70; font-size:.73rem; line-height:1.4; }
+#urovoInventory .urovo-stock-summary { display:grid; gap:.45rem; }
+#urovoInventory .urovo-stock-heading { display:flex; align-items:center; justify-content:space-between; gap:.75rem; }
+#urovoInventory .urovo-stock-heading h3 { margin:0; color:var(--urovo-ink); font-size:1.05rem; font-weight:700; }
+#urovoInventory .urovo-stock-heading>span { color:#536e74; font-size:.85rem; }
+#urovoInventory .urovo-stock-heading strong { color:var(--urovo-ink); font-size:1.1rem; font-variant-numeric:tabular-nums; }
+#urovoInventory .urovo-stock-table { min-width:0; }
+#urovoInventory .urovo-stock-table th:first-child { text-align:left; }
+#urovoInventory .urovo-stock-table td { width:25%; }
 #urovoInventory .urovo-dashboard-table-wrap { min-width:0; overflow-x:auto; border:1px solid var(--urovo-line); border-radius:.4rem; background:#fff; overscroll-behavior-x:contain; }
 #urovoInventory .urovo-dashboard-table { min-width:880px; margin:0; }
 #urovoInventory .urovo-dashboard-table .is-type-hidden { display:none!important; }
@@ -347,6 +360,7 @@
   #urovoInventory .urovo-dashboard-filter { flex:1; flex-wrap:wrap; }
   #urovoInventory .urovo-dashboard-filter select { flex:1 1 100%; width:100%; }
   #urovoInventory .urovo-dashboard-cards { grid-template-columns:1fr; }
+  #urovoInventory .urovo-dashboard-inventory-cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
   #urovoInventory .urovo-dashboard-gap { min-height:96px; }
   #urovoDetailModal .urovo-detail-fields { grid-template-columns:1fr; }
   #urovoBatchModal .urovo-damage-list>div, #urovoDetailModal .urovo-damage-list>div { grid-template-columns:1fr; }
@@ -355,6 +369,9 @@
   #urovoSummaryModal .urovo-summary-condition-counts { gap:.25rem; }
   #urovoBatchModal .modal-footer { display:flex; gap:.45rem; }
   #urovoBatchModal .modal-footer .btn { flex:1; }
+}
+@media (min-width: 561px) and (max-width: 900px) {
+  #urovoInventory .urovo-dashboard-inventory-cards { grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
 @media (pointer: coarse) {
   #urovoBatchModal .urovo-damage-list label, #urovoDetailModal .urovo-damage-list label { min-height:44px; align-items:center; }

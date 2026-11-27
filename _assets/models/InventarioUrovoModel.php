@@ -1,6 +1,6 @@
 <?php
 class InventarioUrovoModel extends Model {
-    private const LOCATIONS = ['estacion', 'almacen', 'reparacion', 'perdida', 'baja_definitiva'];
+    private const LOCATIONS = ['estacion', 'almacen', 'soporte_01', 'soporte_02', 'reparacion', 'perdida', 'baja_definitiva'];
     /* First value is TG.dbo.Estaciones.Codigo; names and goals come from the user's table.
        The user's 11007 / Independencia row maps to TG Codigo 3, named "19 Aguascalientes". */
     private const DASHBOARD_OBJECTIVES = [
@@ -42,8 +42,8 @@ class InventarioUrovoModel extends Model {
         $openByStation=['urovo'=>[],'verifone'=>[]];
         foreach ($openIncidents as $row) $openByStation[(string)$row['tipo_terminal']][(int)$row['station_id']]=(int)$row['open_count'];
         $totals=[
-            'urovo'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_reparacion'=>0,'total_danadas_estacion'=>0],
-            'verifone'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_reparacion'=>0,'total_danadas_estacion'=>0],
+            'urovo'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_stock_danada'=>0,'total_stock_operativa'=>0,'total_soporte_01'=>0,'total_soporte_02'=>0,'total_reparacion'=>0,'total_danadas_estacion'=>0],
+            'verifone'=>['total_objetivo'=>0,'total_funcionando'=>0,'total_stock'=>0,'total_stock_danada'=>0,'total_stock_operativa'=>0,'total_soporte_01'=>0,'total_soporte_02'=>0,'total_reparacion'=>0,'total_danadas_estacion'=>0],
         ];
         $rows=[];
         foreach (self::DASHBOARD_OBJECTIVES as [$stationId,$name,$objective]) {
@@ -58,16 +58,38 @@ class InventarioUrovoModel extends Model {
             $totals['verifone']['total_funcionando']+=$verifoneFunctioning;
         }
         $inventoryTotals=$this->sql->select("SELECT tipo_terminal,
-                SUM(CASE WHEN ubicacion_tipo='almacen' THEN 1 ELSE 0 END) AS stock,
+                SUM(CASE WHEN ubicacion_tipo='almacen' THEN 1 ELSE 0 END) AS stock_total,
+                SUM(CASE WHEN ubicacion_tipo='almacen' AND condicion='dañada' THEN 1 ELSE 0 END) AS stock_danada,
+                SUM(CASE WHEN ubicacion_tipo='almacen' AND condicion='operativa' THEN 1 ELSE 0 END) AS stock_operativa,
+                SUM(CASE WHEN ubicacion_tipo='soporte_01' THEN 1 ELSE 0 END) AS soporte_01,
+                SUM(CASE WHEN ubicacion_tipo='soporte_02' THEN 1 ELSE 0 END) AS soporte_02,
                 SUM(CASE WHEN ubicacion_tipo='reparacion' THEN 1 ELSE 0 END) AS reparacion
             FROM [TG].[dbo].[inv_urovo_terminales]
-            WHERE tipo_terminal IN (?,?) AND ubicacion_tipo IN (?,?)
-            GROUP BY tipo_terminal",['urovo','verifone','almacen','reparacion']);
+            WHERE tipo_terminal IN (?,?) AND ubicacion_tipo IN (?,?,?,?)
+            GROUP BY tipo_terminal",['urovo','verifone','almacen','soporte_01','soporte_02','reparacion']);
         foreach ($inventoryTotals as $row) {
             $type=(string)$row['tipo_terminal'];
             if (!isset($totals[$type])) continue;
-            $totals[$type]['total_stock']=(int)($row['stock']??0);
+            $totals[$type]['total_stock']=(int)($row['stock_total']??0);
+            $totals[$type]['total_stock_danada']=(int)($row['stock_danada']??0);
+            $totals[$type]['total_stock_operativa']=(int)($row['stock_operativa']??0);
+            $totals[$type]['total_soporte_01']=(int)($row['soporte_01']??0);
+            $totals[$type]['total_soporte_02']=(int)($row['soporte_02']??0);
             $totals[$type]['total_reparacion']=(int)($row['reparacion']??0);
+        }
+        $locationCounts=$this->sql->select("SELECT tipo_terminal,ubicacion_tipo,condicion,COUNT(*) AS cantidad
+            FROM [TG].[dbo].[inv_urovo_terminales]
+            WHERE tipo_terminal IN (?,?) AND ubicacion_tipo IN (?,?,?,?,?)
+            GROUP BY tipo_terminal,ubicacion_tipo,condicion",['urovo','verifone','estacion','almacen','soporte_01','soporte_02','reparacion']);
+        $locationSummary=[];
+        foreach (['urovo','verifone'] as $type) $locationSummary[$type]=['estacion'=>['operativa'=>0,'dañada'=>0,'total'=>0], 'stock'=>['operativa'=>0,'dañada'=>0,'total'=>0], 'soporte_01'=>0,'soporte_02'=>0,'reparacion'=>0];
+        foreach ($locationCounts as $row) {
+            $type=(string)$row['tipo_terminal']; $location=(string)$row['ubicacion_tipo']; $condition=(string)$row['condicion']; $count=(int)$row['cantidad'];
+            if ($location==='estacion' || $location==='almacen') {
+                $key=$location==='estacion'?'estacion':'stock';
+                $locationSummary[$type][$key]['total']+=$count;
+                if (isset($locationSummary[$type][$key][$condition])) $locationSummary[$type][$key][$condition]+=$count;
+            } elseif (isset($locationSummary[$type][$location])) $locationSummary[$type][$location]+=$count;
         }
         $damagedStations=$this->sql->select("SELECT tipo_terminal,COUNT(*) AS danadas
             FROM [TG].[dbo].[inv_urovo_terminales]
@@ -80,10 +102,10 @@ class InventarioUrovoModel extends Model {
         }
         foreach ($totals as $type=>&$total) {
             $total['faltante_en_estacion']=max(0,$total['total_objetivo']-$total['total_funcionando']);
-            $total['faltante_total']=max(0,$total['total_objetivo']-($total['total_funcionando']+$total['total_danadas_estacion']+$total['total_stock']+$total['total_reparacion']));
+            $total['faltante_total']=max(0,$total['total_objetivo']-($total['total_funcionando']+$total['total_danadas_estacion']+$total['total_stock']+$total['total_soporte_01']+$total['total_soporte_02']+$total['total_reparacion']));
         }
         unset($total);
-        return ['rows'=>$rows,'totals'=>$totals];
+        return ['rows'=>$rows,'totals'=>$totals,'location_summary'=>$locationSummary];
     }
 
     /** Resumen por estación, agregando cada fuente antes de unirla para evitar multiplicar conteos. */

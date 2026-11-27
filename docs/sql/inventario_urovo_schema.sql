@@ -39,7 +39,7 @@ BEGIN
             )
         ),
         CONSTRAINT [CK_inv_urovo_terminales_tipo_terminal] CHECK ([tipo_terminal] IN ('urovo','verifone')),
-        CONSTRAINT [CK_inv_urovo_terminales_ubicacion] CHECK ([ubicacion_tipo] IN ('estacion','almacen','reparacion','perdida','baja_definitiva')),
+        CONSTRAINT [CK_inv_urovo_terminales_ubicacion] CHECK ([ubicacion_tipo] IN ('estacion','almacen','soporte_01','soporte_02','reparacion','perdida','baja_definitiva')),
         CONSTRAINT [CK_inv_urovo_terminales_damage_types_json] CHECK ([damage_types_json] IS NULL OR ISJSON([damage_types_json]) = 1),
         CONSTRAINT [CK_inv_urovo_terminales_estacion] CHECK (([ubicacion_tipo] = 'estacion' AND [estacion_codigo] IS NOT NULL) OR ([ubicacion_tipo] <> 'estacion' AND [estacion_codigo] IS NULL)),
         CONSTRAINT [FK_inv_urovo_terminales_estacion] FOREIGN KEY ([estacion_codigo]) REFERENCES [dbo].[Estaciones] ([Codigo])
@@ -74,8 +74,8 @@ BEGIN
         CONSTRAINT [FK_urovo_mov_est_origen] FOREIGN KEY ([estacion_origen_codigo]) REFERENCES [dbo].[Estaciones] ([Codigo]),
         CONSTRAINT [FK_urovo_mov_est_destino] FOREIGN KEY ([estacion_destino_codigo]) REFERENCES [dbo].[Estaciones] ([Codigo]),
         CONSTRAINT [CK_urovo_mov_tipo] CHECK ([tipo_evento] IN ('alta','traslado','cambio_condicion','asignacion','reparacion','baja','ajuste')),
-        CONSTRAINT [CK_urovo_mov_origen] CHECK ([ubicacion_origen_tipo] IS NULL OR [ubicacion_origen_tipo] IN ('estacion','almacen','reparacion','perdida','baja_definitiva')),
-        CONSTRAINT [CK_urovo_mov_destino] CHECK ([ubicacion_destino_tipo] IS NULL OR [ubicacion_destino_tipo] IN ('estacion','almacen','reparacion','perdida','baja_definitiva'))
+        CONSTRAINT [CK_urovo_mov_origen] CHECK ([ubicacion_origen_tipo] IS NULL OR [ubicacion_origen_tipo] IN ('estacion','almacen','soporte_01','soporte_02','reparacion','perdida','baja_definitiva')),
+        CONSTRAINT [CK_urovo_mov_destino] CHECK ([ubicacion_destino_tipo] IS NULL OR [ubicacion_destino_tipo] IN ('estacion','almacen','soporte_01','soporte_02','reparacion','perdida','baja_definitiva'))
     );
     CREATE INDEX [IX_urovo_mov_terminal_fecha] ON [dbo].[inv_urovo_movimientos] ([terminal_id],[fecha_evento],[id]);
 END;

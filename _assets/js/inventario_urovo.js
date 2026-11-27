@@ -4,7 +4,7 @@
     var $root = $('#urovoInventory');
     if (!$root.length) return;
     var stations = [], rows = [], currentTerminal = null, searchTimer, currentPage = 1, pageSize = 10, returnToSummary = false, dashboardLoading=false, stationReportLoading=false, modalReturnFocus=null, supportsPopover='popover' in HTMLElement.prototype, dashboardSort={type:'urovo',key:'station_name',direction:1};
-    var labels = { estacion: 'En estación', almacen: 'Stock', reparacion: 'Reparación', perdida: 'Extraviado', baja_definitiva: 'Baja definitiva' };
+    var labels = { estacion: 'En estación', almacen: 'Stock (Corpo)', soporte_01: 'Soporte 01', soporte_02: 'Soporte 02', reparacion: 'En reparación', perdida: 'Extraviado', baja_definitiva: 'Baja definitiva' };
     var conditionLabels = { operativa: 'Operativa', dañada: 'Dañada', desconocida: 'Desconocida', extraviada: 'Extraviada' };
     var damageTypes = [['pantalla_quebrada','Pantalla quebrada'],['pantalla_negra','Pantalla Negra'],['carcasa_exterior','Carcasa Exterior'],['puerto_carga_punta','Puerto de Carga (Punta)'],['usb_danado','USB dañado'],['falta_bateria','Falta batería'],['touch','Touch'],['modo_seguro','Modo Seguro'],['impresora','Impresora'],['tapa_impresora','Tapa de impresora'],['boton_encendido','Botón de encendido'],['tapa_bateria','Tapa de batería'],['lector_tarjetas','Lector de Tarjetas'],['otro','Otro']];
     function showModal(id) { var el=document.getElementById(id); if(!hasOpenModal())modalReturnFocus=document.activeElement; if (window.bootstrap && bootstrap.Modal) bootstrap.Modal.getOrCreateInstance(el).show(); else $('#' + id).modal('show'); }
@@ -189,18 +189,29 @@
       var showMojo=$('#urovoDashboardMojoToggle').attr('aria-expanded')==='true';
       function mojoCell(row,type){return '<td class="text-center '+type+'-column urovo-dashboard-mojo-column urovo-dashboard-mojo-'+type+'"'+(showMojo?'':' hidden')+'>'+mojoLink(row,type)+'</td>';}
       $('#urovoDashboardRows').html(entries.length?entries.map(function(row){return '<tr><th scope="row">'+esc(row.station_name)+'</th>'+cells('urovo',row)+mojoCell(row,'urovo')+cells('verifone',row)+mojoCell(row,'verifone')+'</tr>';}).join(''):'<tr><td colspan="9" class="urovo-empty">No hay objetivos para mostrar.</td></tr>');
-      function updateCards(label,data){var objective=Number(data.total_objetivo)||0,functioning=Number(data.total_funcionando)||0,damaged=Number(data.total_danadas_estacion)||0,stock=Number(data.total_stock)||0,repair=Number(data.total_reparacion)||0;
+      function updateCards(label,data){var objective=Number(data.total_objetivo)||0,functioning=Number(data.total_funcionando)||0,damaged=Number(data.total_danadas_estacion)||0,stock=Number(data.total_stock)||0,support01=Number(data.total_soporte_01)||0,support02=Number(data.total_soporte_02)||0,repair=Number(data.total_reparacion)||0;
         $('#urovoDashboard'+label+'StationMissing').text(Number(data.faltante_en_estacion)||0);
         $('#urovoDashboard'+label+'StationBreakdown').text('Objetivo de '+label+' (suma de estaciones): '+objective+' · Funcionando ('+label+' Operativas en estaciones): '+functioning);
         $('#urovoDashboard'+label+'TotalMissing').text(Number(data.faltante_total)||0);
-        $('#urovoDashboard'+label+'TotalBreakdown').text('Funcionando '+label+': '+functioning+' + Dañadas en estaciones: '+damaged+' + Stock '+label+': '+stock+' + Reparación '+label+': '+repair+' − Objetivo '+label+': '+objective);
+        $('#urovoDashboard'+label+'TotalBreakdown').text('Funcionando '+label+': '+functioning+' + Dañadas en estaciones: '+damaged+' + Stock '+label+': '+stock+' + Soporte 01: '+support01+' + Soporte 02: '+support02+' + Reparación '+label+': '+repair+' − Objetivo '+label+': '+objective);
       }
       updateCards('Urovo',urovo); updateCards('Verifone',verifone);
+      renderLocationSummary(data.location_summary||{});
       function totalCells(type,data){var objective=Number(data.total_objetivo)||0,functioning=Number(data.total_funcionando)||0,difference=functioning-objective;return '<td class="text-right '+type+'-column">'+esc(objective)+'</td><td class="text-right '+type+'-column">'+esc(functioning)+'</td><td class="text-right '+type+'-column '+(difference<0?'is-short':(difference>0?'is-surplus':''))+'">'+(difference>0?'+':'')+esc(difference)+'</td><td class="'+type+'-column urovo-dashboard-mojo-column urovo-dashboard-mojo-'+type+'"'+(showMojo?'':' hidden')+'></td>';}
       $('#urovoDashboardTotalsRow').html('<tr><th scope="row">Total</th>'+totalCells('urovo',urovo)+totalCells('verifone',verifone)+'</tr>');
       applyDashboardTypeFilter();
     }
-    function applyDashboardTypeFilter(){var selected=$('#urovoDashboardType').val()||'all';$('.urovo-dashboard-card').each(function(){$(this).toggle(selected==='all'||$(this).data('terminal-type')===selected);});$('.urovo-column').toggleClass('is-type-hidden',selected==='verifone');$('.verifone-column').toggleClass('is-type-hidden',selected==='urovo');$('.urovo-dashboard-mojo-urovo').toggleClass('is-type-hidden',selected==='verifone');$('.urovo-dashboard-mojo-verifone').toggleClass('is-type-hidden',selected==='urovo');}
+    function renderLocationSummary(summary){
+      var selected=$('#urovoDashboardType').val()||'all',types=selected==='all'?['urovo','verifone']:[selected],total=function(location,condition){return types.reduce(function(sum,type){var item=(summary[type]||{})[location]||{};return sum+(condition?Number(item[condition])||0:Number(item)||0);},0);};
+      var station=summaryTotals(summary,types,'estacion'),stock=summaryTotals(summary,types,'stock');
+      $('#urovoDashStationTotal').text(station.total);$('#urovoDashStationBreakdown').text('Operativas: '+station.operativa+' · Dañadas: '+station.dañada);
+      $('#urovoDashStockTotal').text(stock.total);$('#urovoDashStockBreakdown').text('Operativas: '+stock.operativa+' · Dañadas: '+stock.dañada);
+      $('#urovoDashSupport01').text(total('soporte_01'));$('#urovoDashSupport02').text(total('soporte_02'));$('#urovoDashRepair').text(total('reparacion'));
+      var values=[total('stock','dañada'),total('stock','operativa'),total('soporte_01'),total('soporte_02'),total('reparacion')],sum=values.reduce(function(a,b){return a+b;},0);
+      $('#urovoStockDamaged').text(values[0]);$('#urovoStockOperational').text(values[1]);$('#urovoStockSupport01').text(values[2]);$('#urovoStockSupport02').text(values[3]);$('#urovoStockRepair').text(values[4]);$('#urovoStockTotal,#urovoStockGrandTotal').text(sum);
+    }
+    function summaryTotals(summary,types,key){return types.reduce(function(out,type){var value=(summary[type]||{})[key]||{};out.total+=Number(value.total)||0;out.operativa+=Number(value.operativa)||0;out.dañada+=Number(value.dañada)||0;return out;},{total:0,operativa:0,dañada:0});}
+    function applyDashboardTypeFilter(){var selected=$('#urovoDashboardType').val()||'all';$('.urovo-dashboard-card').each(function(){$(this).toggle(selected==='all'||$(this).data('terminal-type')===selected);});$('.urovo-column').toggleClass('is-type-hidden',selected==='verifone');$('.verifone-column').toggleClass('is-type-hidden',selected==='urovo');$('.urovo-dashboard-mojo-urovo').toggleClass('is-type-hidden',selected==='verifone');$('.urovo-dashboard-mojo-verifone').toggleClass('is-type-hidden',selected==='urovo');if(window.urovoDashboardData)renderLocationSummary(window.urovoDashboardData.location_summary||{});}
     function loadDashboard() {
       if(dashboardLoading)return; dashboardLoading=true;
       $('#urovoDashboardRows').html('<tr><td colspan="9" class="urovo-empty">Cargando dashboard…</td></tr>');
